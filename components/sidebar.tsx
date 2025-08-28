@@ -167,7 +167,7 @@ export function Sidebar({
                 <Shield className="h-4 w-4 text-sidebar-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-sidebar-foreground">Sistema SST</h1>
+                <h1 className="text-lg font-bold text-sidebar-foreground">MASTPROD SST</h1>
                 <p className="text-xs text-sidebar-foreground/60">Gestão Integrada</p>
               </div>
             </div>
@@ -228,8 +228,8 @@ export function Sidebar({
         {(!collapsed || isMobile) && (
           <div className="p-4 border-t border-sidebar-border bg-sidebar/30">
             <div className="text-xs text-sidebar-foreground/50 text-center">
-              <p>Sistema SST v2.0</p>
-              <p>© 2024 - Todos os direitos reservados</p>
+              <p>Sistema SST v1.0</p>
+              <p>© 2025 - Todos os direitos reservados</p>
             </div>
           </div>
         )}
