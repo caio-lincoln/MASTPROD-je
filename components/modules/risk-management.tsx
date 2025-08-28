@@ -1,6 +1,6 @@
 "use client"
 
-import { Table, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
+import { Table, TableBody, TableHead, TableHeader, TableRow, TableCell } from "@/components/ui/table"
 import {
   Dialog,
   DialogTrigger,
@@ -396,7 +396,7 @@ export function RiskManagement() {
             <CardContent>
               <div className="hidden sm:block overflow-x-auto">
                 <Table>
-                  <TableHead>
+                  <TableHeader>
                     <TableRow>
                       <TableHead>Setor</TableHead>
                       <TableHead>Risco</TableHead>
@@ -406,7 +406,7 @@ export function RiskManagement() {
                       <TableHead>Status</TableHead>
                       <TableHead>Ações</TableHead>
                     </TableRow>
-                  </TableHead>
+                  </TableHeader>
                   <TableBody>
                     {companyRisks.map((risk) => (
                       <TableRow key={risk.id}>

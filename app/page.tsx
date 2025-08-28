@@ -14,6 +14,7 @@ import { ESocialIntegration } from "@/components/modules/esocial-integration"
 import { NonConformities } from "@/components/modules/non-conformities"
 import { WorkplaceSafety } from "@/components/modules/workplace-safety"
 import { Settings } from "@/components/modules/settings"
+import { MobileSidebarOverlay } from "@/components/mobile-sidebar-overlay"
 
 export default function Home() {
   const [activeModule, setActiveModule] = useState("dashboard")
@@ -66,9 +67,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen bg-background">
-      {isMobile && mobileSidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileSidebarOpen(false)} />
-      )}
+      <MobileSidebarOverlay isOpen={isMobile && mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
 
       <Sidebar
         activeModule={activeModule}
@@ -88,7 +87,9 @@ export default function Home() {
           mobileSidebarOpen={mobileSidebarOpen}
           setMobileSidebarOpen={setMobileSidebarOpen}
         />
-        <main className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6">{renderModule()}</main>
+        <main className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6 bg-background/50">
+          <div className="max-w-full mx-auto">{renderModule()}</div>
+        </main>
       </div>
     </div>
   )
