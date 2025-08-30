@@ -9,6 +9,16 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { useCompany, type Company } from "@/contexts/company-context"
+import {
   Users,
   Building,
   Shield,
@@ -22,6 +32,8 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  Building2,
+  AlertCircle,
 } from "lucide-react"
 
 interface User {
@@ -45,6 +57,8 @@ interface CompanyInfo {
 }
 
 const SettingsComponent = () => {
+  const { companies, setCompanies } = useCompany()
+
   const [users] = useState<User[]>([
     {
       id: "1",
@@ -105,6 +119,18 @@ const SettingsComponent = () => {
 
   const [showPassword, setShowPassword] = useState(false)
 
+  const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null)
+  const [companyForm, setCompanyForm] = useState({
+    name: "",
+    cnpj: "",
+    address: "",
+    phone: "",
+    email: "",
+    logo: "",
+    isActive: true,
+  })
+
   const getRoleColor = (role: string) => {
     switch (role) {
       case "admin":
@@ -143,6 +169,69 @@ const SettingsComponent = () => {
     setNotifications((prev) => ({ ...prev, [key]: value }))
   }
 
+  const handleCompanyFormChange = (field: string, value: string | boolean) => {
+    setCompanyForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const openCompanyDialog = (company?: Company) => {
+    if (company) {
+      setEditingCompany(company)
+      setCompanyForm({
+        name: company.name,
+        cnpj: company.cnpj,
+        address: company.address,
+        phone: company.phone,
+        email: company.email,
+        logo: company.logo || "",
+        isActive: company.isActive,
+      })
+    } else {
+      setEditingCompany(null)
+      setCompanyForm({
+        name: "",
+        cnpj: "",
+        address: "",
+        phone: "",
+        email: "",
+        logo: "",
+        isActive: true,
+      })
+    }
+    setIsCompanyDialogOpen(true)
+  }
+
+  const handleSaveCompany = () => {
+    if (editingCompany) {
+      const updatedCompanies = companies.map((company) =>
+        company.id === editingCompany.id ? { ...company, ...companyForm } : company,
+      )
+      setCompanies(updatedCompanies)
+    } else {
+      const newCompany: Company = {
+        id: Date.now().toString(),
+        ...companyForm,
+        createdAt: new Date(),
+      }
+      setCompanies([...companies, newCompany])
+    }
+    setIsCompanyDialogOpen(false)
+  }
+
+  const handleDeleteCompany = (companyId: string) => {
+    const updatedCompanies = companies.filter((company) => company.id !== companyId)
+    setCompanies(updatedCompanies)
+  }
+
+  const validateCNPJ = (cnpj: string) => {
+    const cnpjRegex = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/
+    return cnpjRegex.test(cnpj)
+  }
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -153,8 +242,9 @@ const SettingsComponent = () => {
       </div>
 
       <Tabs defaultValue="company" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="company">Empresa</TabsTrigger>
+          <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="users">Usuários</TabsTrigger>
           <TabsTrigger value="permissions">Permissões</TabsTrigger>
           <TabsTrigger value="notifications">Notificações</TabsTrigger>
@@ -237,6 +327,192 @@ const SettingsComponent = () => {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="companies" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5" />
+                    Gestão de Empresas
+                  </CardTitle>
+                  <CardDescription>Cadastre e gerencie as empresas do sistema</CardDescription>
+                </div>
+                <Button onClick={() => openCompanyDialog()}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Empresa
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {companies.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <h3 className="mt-2 text-sm font-semibold text-muted-foreground">Nenhuma empresa cadastrada</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Comece cadastrando sua primeira empresa.</p>
+                  </div>
+                ) : (
+                  companies.map((company) => (
+                    <div key={company.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{company.name}</h4>
+                          <Badge className={getStatusColor(company.isActive ? "active" : "inactive")}>
+                            {company.isActive ? "Ativa" : "Inativa"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">CNPJ: {company.cnpj}</p>
+                        <p className="text-sm text-muted-foreground">{company.address}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {company.phone} • {company.email}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Cadastrada em: {company.createdAt.toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openCompanyDialog(company)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteCompany(company.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Dialog open={isCompanyDialogOpen} onOpenChange={setIsCompanyDialogOpen}>
+            <DialogContent className="sm:max-w-[600px]">
+              <DialogHeader>
+                <DialogTitle>{editingCompany ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
+                <DialogDescription>
+                  {editingCompany
+                    ? "Edite as informações da empresa selecionada."
+                    : "Preencha os dados para cadastrar uma nova empresa."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-name">Razão Social *</Label>
+                    <Input
+                      id="company-name"
+                      value={companyForm.name}
+                      onChange={(e) => handleCompanyFormChange("name", e.target.value)}
+                      placeholder="Digite a razão social"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-cnpj">CNPJ *</Label>
+                    <Input
+                      id="company-cnpj"
+                      value={companyForm.cnpj}
+                      onChange={(e) => handleCompanyFormChange("cnpj", e.target.value)}
+                      placeholder="00.000.000/0000-00"
+                    />
+                    {companyForm.cnpj && !validateCNPJ(companyForm.cnpj) && (
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Formato de CNPJ inválido
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="company-address">Endereço *</Label>
+                  <Textarea
+                    id="company-address"
+                    value={companyForm.address}
+                    onChange={(e) => handleCompanyFormChange("address", e.target.value)}
+                    placeholder="Digite o endereço completo"
+                    rows={2}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-phone">Telefone *</Label>
+                    <Input
+                      id="company-phone"
+                      value={companyForm.phone}
+                      onChange={(e) => handleCompanyFormChange("phone", e.target.value)}
+                      placeholder="(00) 0000-0000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-email">E-mail *</Label>
+                    <Input
+                      id="company-email"
+                      type="email"
+                      value={companyForm.email}
+                      onChange={(e) => handleCompanyFormChange("email", e.target.value)}
+                      placeholder="contato@empresa.com"
+                    />
+                    {companyForm.email && !validateEmail(companyForm.email) && (
+                      <p className="text-sm text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Formato de e-mail inválido
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="company-logo">Logo (URL)</Label>
+                  <Input
+                    id="company-logo"
+                    value={companyForm.logo}
+                    onChange={(e) => handleCompanyFormChange("logo", e.target.value)}
+                    placeholder="https://exemplo.com/logo.png"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="company-active"
+                    checked={companyForm.isActive}
+                    onCheckedChange={(value) => handleCompanyFormChange("isActive", value)}
+                  />
+                  <Label htmlFor="company-active">Empresa ativa</Label>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCompanyDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSaveCompany}
+                  disabled={
+                    !companyForm.name ||
+                    !companyForm.cnpj ||
+                    !companyForm.address ||
+                    !companyForm.phone ||
+                    !companyForm.email ||
+                    !validateCNPJ(companyForm.cnpj) ||
+                    !validateEmail(companyForm.email)
+                  }
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingCompany ? "Salvar Alterações" : "Cadastrar Empresa"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
