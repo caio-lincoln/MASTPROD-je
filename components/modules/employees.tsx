@@ -28,6 +28,8 @@ interface Employee {
   companyId: string
   nome: string
   cpf: string
+  matriculaESocial?: string
+  dataNascimento: string
   cargo: string
   setor: string
   admissao: string
@@ -44,6 +46,8 @@ const allEmployeeData: Employee[] = [
     companyId: "1",
     nome: "João Silva",
     cpf: "123.456.789-00",
+    matriculaESocial: "ESC001234",
+    dataNascimento: "1985-03-15",
     cargo: "Operador de Máquina",
     setor: "Produção",
     admissao: "2023-01-15",
@@ -57,6 +61,8 @@ const allEmployeeData: Employee[] = [
     companyId: "1",
     nome: "Maria Santos",
     cpf: "987.654.321-00",
+    matriculaESocial: "ESC005678",
+    dataNascimento: "1990-07-22",
     cargo: "Soldadora",
     setor: "Produção",
     admissao: "2022-03-20",
@@ -70,6 +76,7 @@ const allEmployeeData: Employee[] = [
     companyId: "1",
     nome: "Pedro Oliveira",
     cpf: "456.789.123-00",
+    dataNascimento: "1988-12-10",
     cargo: "Mecânico",
     setor: "Manutenção",
     admissao: "2023-06-10",
@@ -84,6 +91,8 @@ const allEmployeeData: Employee[] = [
     companyId: "2",
     nome: "Ana Costa",
     cpf: "789.123.456-00",
+    matriculaESocial: "ESC009876",
+    dataNascimento: "1982-05-18",
     cargo: "Supervisora",
     setor: "Qualidade",
     admissao: "2021-11-05",
@@ -97,6 +106,8 @@ const allEmployeeData: Employee[] = [
     companyId: "2",
     nome: "Carlos Ferreira",
     cpf: "321.654.987-00",
+    matriculaESocial: "ESC054321",
+    dataNascimento: "1987-11-30",
     cargo: "Técnico de Segurança",
     setor: "SST",
     admissao: "2022-08-12",
@@ -111,6 +122,7 @@ const allEmployeeData: Employee[] = [
     companyId: "3",
     nome: "Lucia Mendes",
     cpf: "654.321.789-00",
+    dataNascimento: "1995-08-14",
     cargo: "Operadora",
     setor: "Produção",
     admissao: "2023-02-28",
@@ -164,6 +176,77 @@ export function Employees() {
   const { selectedCompany } = useCompany()
   const employeeData = useCompanyData(allEmployeeData)
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isNewEmployeeDialogOpen, setIsNewEmployeeDialogOpen] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [formData, setFormData] = useState({
+    nome: "",
+    cpf: "",
+    matriculaESocial: "",
+    dataNascimento: "",
+    cargo: "",
+    setor: "",
+    admissao: "",
+    email: "",
+    telefone: "",
+    endereco: "",
+  })
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
+  const validateAge = (birthDate: string) => {
+    if (!birthDate) return false
+    const today = new Date()
+    const birth = new Date(birthDate)
+    const age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      return age - 1 >= 14
+    }
+    return age >= 14
+  }
+
+  const validateESocialMatricula = (matricula: string) => {
+    if (!matricula) return true // Campo opcional
+    return /^[A-Za-z0-9]{1,20}$/.test(matricula)
+  }
+
+  const validateForm = () => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.nome.trim()) {
+      errors.nome = "Nome é obrigatório"
+    }
+
+    if (!formData.cpf.trim()) {
+      errors.cpf = "CPF é obrigatório"
+    }
+
+    if (!formData.dataNascimento) {
+      errors.dataNascimento = "Data de nascimento é obrigatória"
+    } else if (!validateAge(formData.dataNascimento)) {
+      errors.dataNascimento = "Funcionário deve ter pelo menos 14 anos"
+    }
+
+    if (formData.matriculaESocial && !validateESocialMatricula(formData.matriculaESocial)) {
+      errors.matriculaESocial = "Matrícula deve conter apenas letras e números (máx. 20 caracteres)"
+    }
+
+    if (!formData.cargo) {
+      errors.cargo = "Cargo é obrigatório"
+    }
+
+    if (!formData.setor) {
+      errors.setor = "Setor é obrigatório"
+    }
+
+    if (!formData.admissao) {
+      errors.admissao = "Data de admissão é obrigatória"
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
 
   const stats = {
     total: employeeData.length,
@@ -171,6 +254,54 @@ export function Employees() {
     examesPendentes: employeeData.filter((e) => e.exameMedico === "Vencendo" || e.exameMedico === "Vencido").length,
     treinamentosPendentes: employeeData.filter((e) => e.treinamentos === "Pendente" || e.treinamentos === "Vencido")
       .length,
+  }
+
+  const resetForm = () => {
+    setFormData({
+      nome: "",
+      cpf: "",
+      matriculaESocial: "",
+      dataNascimento: "",
+      cargo: "",
+      setor: "",
+      admissao: "",
+      email: "",
+      telefone: "",
+      endereco: "",
+    })
+    setFormErrors({})
+  }
+
+  const handleEditEmployee = (employee: Employee) => {
+    setEditingEmployee(employee)
+    setFormData({
+      nome: employee.nome,
+      cpf: employee.cpf,
+      matriculaESocial: employee.matriculaESocial || "",
+      dataNascimento: employee.dataNascimento,
+      cargo: employee.cargo,
+      setor: employee.setor,
+      admissao: employee.admissao,
+      email: "joao.silva@empresa.com", // Placeholder
+      telefone: "(11) 99999-9999", // Placeholder
+      endereco: "Rua Exemplo, 123", // Placeholder
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleCancel = () => {
+    resetForm()
+    setIsNewEmployeeDialogOpen(false)
+    setIsEditDialogOpen(false)
+    setEditingEmployee(null)
+  }
+
+  const handleSave = () => {
+    if (validateForm()) {
+      // Here you would typically save to database
+      console.log("[v0] Saving employee data:", formData)
+      handleCancel()
+    }
   }
 
   if (!selectedCompany) {
@@ -206,84 +337,147 @@ export function Employees() {
             Gestão completa de funcionários e informações SST - {selectedCompany.name}
           </p>
         </div>
-        <Dialog>
+        <Dialog open={isNewEmployeeDialogOpen} onOpenChange={setIsNewEmployeeDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button onClick={() => setIsNewEmployeeDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Funcionário
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Cadastrar Novo Funcionário</DialogTitle>
               <DialogDescription>Adicione um novo funcionário ao sistema com informações SST</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="nome">Nome Completo</Label>
-                  <Input placeholder="Digite o nome completo" />
+                  <Label htmlFor="nome">Nome Completo *</Label>
+                  <Input
+                    placeholder="Digite o nome completo"
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    className={formErrors.nome ? "border-red-500" : ""}
+                  />
+                  {formErrors.nome && <p className="text-sm text-red-500">{formErrors.nome}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="cpf">CPF</Label>
-                  <Input placeholder="000.000.000-00" />
+                  <Label htmlFor="cpf">CPF *</Label>
+                  <Input
+                    placeholder="000.000.000-00"
+                    value={formData.cpf}
+                    onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                    className={formErrors.cpf ? "border-red-500" : ""}
+                  />
+                  {formErrors.cpf && <p className="text-sm text-red-500">{formErrors.cpf}</p>}
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Cargo</Label>
-                  <Select>
-                    <SelectTrigger>
+                  <Label htmlFor="matriculaESocial">Matrícula do eSocial</Label>
+                  <Input
+                    placeholder="Ex: ESC001234 (opcional)"
+                    value={formData.matriculaESocial}
+                    onChange={(e) => setFormData({ ...formData, matriculaESocial: e.target.value })}
+                    maxLength={20}
+                    className={formErrors.matriculaESocial ? "border-red-500" : ""}
+                  />
+                  {formErrors.matriculaESocial && <p className="text-sm text-red-500">{formErrors.matriculaESocial}</p>}
+                  <p className="text-xs text-muted-foreground">Apenas letras e números, máximo 20 caracteres</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dataNascimento">Data de Nascimento *</Label>
+                  <Input
+                    type="date"
+                    value={formData.dataNascimento}
+                    onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
+                    className={formErrors.dataNascimento ? "border-red-500" : ""}
+                  />
+                  {formErrors.dataNascimento && <p className="text-sm text-red-500">{formErrors.dataNascimento}</p>}
+                  <p className="text-xs text-muted-foreground">Idade mínima: 14 anos</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Cargo *</Label>
+                  <Select value={formData.cargo} onValueChange={(value) => setFormData({ ...formData, cargo: value })}>
+                    <SelectTrigger className={formErrors.cargo ? "border-red-500" : ""}>
                       <SelectValue placeholder="Selecione o cargo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="operador">Operador de Máquina</SelectItem>
-                      <SelectItem value="soldador">Soldador</SelectItem>
-                      <SelectItem value="mecanico">Mecânico</SelectItem>
-                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="Operador de Máquina">Operador de Máquina</SelectItem>
+                      <SelectItem value="Soldadora">Soldadora</SelectItem>
+                      <SelectItem value="Mecânico">Mecânico</SelectItem>
+                      <SelectItem value="Supervisora">Supervisora</SelectItem>
+                      <SelectItem value="Técnico de Segurança">Técnico de Segurança</SelectItem>
+                      <SelectItem value="Operadora">Operadora</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formErrors.cargo && <p className="text-sm text-red-500">{formErrors.cargo}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label>Setor</Label>
-                  <Select>
-                    <SelectTrigger>
+                  <Label>Setor *</Label>
+                  <Select value={formData.setor} onValueChange={(value) => setFormData({ ...formData, setor: value })}>
+                    <SelectTrigger className={formErrors.setor ? "border-red-500" : ""}>
                       <SelectValue placeholder="Selecione o setor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="producao">Produção</SelectItem>
-                      <SelectItem value="manutencao">Manutenção</SelectItem>
-                      <SelectItem value="qualidade">Qualidade</SelectItem>
-                      <SelectItem value="almoxarifado">Almoxarifado</SelectItem>
+                      <SelectItem value="Produção">Produção</SelectItem>
+                      <SelectItem value="Manutenção">Manutenção</SelectItem>
+                      <SelectItem value="Qualidade">Qualidade</SelectItem>
+                      <SelectItem value="SST">SST</SelectItem>
                     </SelectContent>
                   </Select>
+                  {formErrors.setor && <p className="text-sm text-red-500">{formErrors.setor}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="admissao">Data de Admissão</Label>
-                  <Input type="date" />
+                  <Label htmlFor="admissao">Data de Admissão *</Label>
+                  <Input
+                    type="date"
+                    value={formData.admissao}
+                    onChange={(e) => setFormData({ ...formData, admissao: e.target.value })}
+                    className={formErrors.admissao ? "border-red-500" : ""}
+                  />
+                  {formErrors.admissao && <p className="text-sm text-red-500">{formErrors.admissao}</p>}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">E-mail</Label>
-                  <Input type="email" placeholder="funcionario@empresa.com" />
+                  <Input
+                    type="email"
+                    placeholder="funcionario@empresa.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="telefone">Telefone</Label>
-                  <Input placeholder="(11) 99999-9999" />
+                  <Input
+                    placeholder="(11) 99999-9999"
+                    value={formData.telefone}
+                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                  />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="endereco">Endereço Completo</Label>
-                <Input placeholder="Rua, número, bairro, cidade - CEP" />
+                <Input
+                  placeholder="Rua, número, bairro, cidade - CEP"
+                  value={formData.endereco}
+                  onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                />
               </div>
             </div>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline">Cancelar</Button>
-              <Button>Cadastrar Funcionário</Button>
+              <Button variant="outline" onClick={handleCancel}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSave}>Cadastrar Funcionário</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -313,9 +507,9 @@ export function Employees() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">Todos</SelectItem>
-                    <SelectItem value="producao">Produção</SelectItem>
-                    <SelectItem value="manutencao">Manutenção</SelectItem>
-                    <SelectItem value="qualidade">Qualidade</SelectItem>
+                    <SelectItem value="Produção">Produção</SelectItem>
+                    <SelectItem value="Manutenção">Manutenção</SelectItem>
+                    <SelectItem value="Qualidade">Qualidade</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select>
@@ -404,7 +598,7 @@ export function Employees() {
                           <Button variant="ghost" size="sm" onClick={() => setSelectedEmployee(employee)}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditEmployee(employee)}>
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="sm">
@@ -623,6 +817,11 @@ export function Employees() {
                     {selectedEmployee.cargo} - {selectedEmployee.setor}
                   </p>
                   <p className="text-sm text-muted-foreground">CPF: {selectedEmployee.cpf}</p>
+                  {selectedEmployee.matriculaESocial && (
+                    <p className="text-sm text-muted-foreground">
+                      Matrícula eSocial: {selectedEmployee.matriculaESocial}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -632,6 +831,10 @@ export function Employees() {
                     <CardTitle className="text-lg">Informações Pessoais</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Data de Nascimento:</span>
+                      <span>{new Date(selectedEmployee.dataNascimento).toLocaleDateString("pt-BR")}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Data de Admissão:</span>
                       <span>{new Date(selectedEmployee.admissao).toLocaleDateString("pt-BR")}</span>
@@ -679,6 +882,146 @@ export function Employees() {
                   </CardContent>
                 </Card>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Modal de Edição do Funcionário */}
+      {editingEmployee && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar Funcionário</DialogTitle>
+              <DialogDescription>Atualize as informações do funcionário {editingEmployee.nome}</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome Completo *</Label>
+                  <Input
+                    placeholder="Digite o nome completo"
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    className={formErrors.nome ? "border-red-500" : ""}
+                  />
+                  {formErrors.nome && <p className="text-sm text-red-500">{formErrors.nome}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cpf">CPF *</Label>
+                  <Input
+                    placeholder="000.000.000-00"
+                    value={formData.cpf}
+                    onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                    className={formErrors.cpf ? "border-red-500" : ""}
+                  />
+                  {formErrors.cpf && <p className="text-sm text-red-500">{formErrors.cpf}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="matriculaESocial">Matrícula do eSocial</Label>
+                  <Input
+                    placeholder="Ex: ESC001234 (opcional)"
+                    value={formData.matriculaESocial}
+                    onChange={(e) => setFormData({ ...formData, matriculaESocial: e.target.value })}
+                    maxLength={20}
+                    className={formErrors.matriculaESocial ? "border-red-500" : ""}
+                  />
+                  {formErrors.matriculaESocial && <p className="text-sm text-red-500">{formErrors.matriculaESocial}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dataNascimento">Data de Nascimento *</Label>
+                  <Input
+                    type="date"
+                    value={formData.dataNascimento}
+                    onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
+                    className={formErrors.dataNascimento ? "border-red-500" : ""}
+                  />
+                  {formErrors.dataNascimento && <p className="text-sm text-red-500">{formErrors.dataNascimento}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Cargo *</Label>
+                  <Select value={formData.cargo} onValueChange={(value) => setFormData({ ...formData, cargo: value })}>
+                    <SelectTrigger className={formErrors.cargo ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Selecione o cargo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Operador de Máquina">Operador de Máquina</SelectItem>
+                      <SelectItem value="Soldadora">Soldadora</SelectItem>
+                      <SelectItem value="Mecânico">Mecânico</SelectItem>
+                      <SelectItem value="Supervisora">Supervisora</SelectItem>
+                      <SelectItem value="Técnico de Segurança">Técnico de Segurança</SelectItem>
+                      <SelectItem value="Operadora">Operadora</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formErrors.cargo && <p className="text-sm text-red-500">{formErrors.cargo}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>Setor *</Label>
+                  <Select value={formData.setor} onValueChange={(value) => setFormData({ ...formData, setor: value })}>
+                    <SelectTrigger className={formErrors.setor ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Selecione o setor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Produção">Produção</SelectItem>
+                      <SelectItem value="Manutenção">Manutenção</SelectItem>
+                      <SelectItem value="Qualidade">Qualidade</SelectItem>
+                      <SelectItem value="SST">SST</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {formErrors.setor && <p className="text-sm text-red-500">{formErrors.setor}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admissao">Data de Admissão *</Label>
+                  <Input
+                    type="date"
+                    value={formData.admissao}
+                    onChange={(e) => setFormData({ ...formData, admissao: e.target.value })}
+                    className={formErrors.admissao ? "border-red-500" : ""}
+                  />
+                  {formErrors.admissao && <p className="text-sm text-red-500">{formErrors.admissao}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">E-mail</Label>
+                  <Input
+                    type="email"
+                    placeholder="funcionario@empresa.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="telefone">Telefone</Label>
+                  <Input
+                    placeholder="(11) 99999-9999"
+                    value={formData.telefone}
+                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="endereco">Endereço Completo</Label>
+                <Input
+                  placeholder="Rua, número, bairro, cidade - CEP"
+                  value={formData.endereco}
+                  onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={handleCancel}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSave}>Salvar Alterações</Button>
             </div>
           </DialogContent>
         </Dialog>

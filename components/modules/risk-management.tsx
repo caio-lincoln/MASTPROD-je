@@ -32,6 +32,10 @@ const riskDataByCompany = {
       severidade: "Média",
       nivel: "Alto",
       status: "Ativo",
+      descricao: "Exposição a ruído acima de 85 dB durante operação de máquinas industriais",
+      medidasControle: "Uso obrigatório de protetor auricular, manutenção preventiva de equipamentos",
+      responsavel: "João Silva",
+      dataIdentificacao: "2024-01-15",
     },
     {
       id: 2,
@@ -41,6 +45,10 @@ const riskDataByCompany = {
       severidade: "Alta",
       nivel: "Alto",
       status: "Ativo",
+      descricao: "Atividades de manutenção realizadas em estruturas acima de 2 metros",
+      medidasControle: "Treinamento NR-35, uso de EPI específico, inspeção de equipamentos",
+      responsavel: "Maria Santos",
+      dataIdentificacao: "2024-02-10",
     },
   ],
   "2": [
@@ -52,6 +60,10 @@ const riskDataByCompany = {
       severidade: "Baixa",
       nivel: "Médio",
       status: "Controlado",
+      descricao: "Levantamento e transporte manual de cargas pesadas",
+      medidasControle: "Treinamento em ergonomia, uso de equipamentos auxiliares",
+      responsavel: "Carlos Lima",
+      dataIdentificacao: "2024-03-05",
     },
     {
       id: 4,
@@ -61,6 +73,10 @@ const riskDataByCompany = {
       severidade: "Baixa",
       nivel: "Baixo",
       status: "Controlado",
+      descricao: "Posturas inadequadas durante trabalho em computador",
+      medidasControle: "Mobiliário ergonômico, pausas regulares, ginástica laboral",
+      responsavel: "Ana Costa",
+      dataIdentificacao: "2024-04-12",
     },
   ],
   "3": [
@@ -72,6 +88,10 @@ const riskDataByCompany = {
       severidade: "Alta",
       nivel: "Alto",
       status: "Ativo",
+      descricao: "Manuseio de substâncias químicas perigosas durante análises",
+      medidasControle: "Capela de exaustão, EPI específico, procedimentos de emergência",
+      responsavel: "Roberto Costa",
+      dataIdentificacao: "2024-05-08",
     },
   ],
 }
@@ -137,6 +157,18 @@ const getStatusColor = (status: string) => {
 
 export function RiskManagement() {
   const [selectedRisk, setSelectedRisk] = useState<any>(null)
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingRisk, setEditingRisk] = useState<any>(null)
+  const [editFormData, setEditFormData] = useState({
+    setor: "",
+    risco: "",
+    probabilidade: "",
+    severidade: "",
+    descricao: "",
+    medidasControle: "",
+    responsavel: "",
+  })
   const { selectedCompany } = useCompany()
 
   const companyRisks = selectedCompany ? riskDataByCompany[selectedCompany.id] || [] : []
@@ -149,6 +181,46 @@ export function RiskManagement() {
     baixo: companyRisks.filter((r) => r.nivel === "Baixo").length,
     ativo: companyRisks.filter((r) => r.status === "Ativo").length,
     controlado: companyRisks.filter((r) => r.status === "Controlado").length,
+  }
+
+  const handleViewRisk = (risk: any) => {
+    setSelectedRisk(risk)
+    setIsViewDialogOpen(true)
+  }
+
+  const handleEditRisk = (risk: any) => {
+    setEditingRisk(risk)
+    setEditFormData({
+      setor: risk.setor,
+      risco: risk.risco,
+      probabilidade: risk.probabilidade,
+      severidade: risk.severidade,
+      descricao: risk.descricao || "",
+      medidasControle: risk.medidasControle || "",
+      responsavel: risk.responsavel || "",
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveRisk = () => {
+    console.log("[v0] Saving risk changes:", editFormData)
+    // Here you would typically update the risk in the database
+    setIsEditDialogOpen(false)
+    setEditingRisk(null)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditDialogOpen(false)
+    setEditingRisk(null)
+    setEditFormData({
+      setor: "",
+      risco: "",
+      probabilidade: "",
+      severidade: "",
+      descricao: "",
+      medidasControle: "",
+      responsavel: "",
+    })
   }
 
   if (!selectedCompany) {
@@ -425,10 +497,10 @@ export function RiskManagement() {
                         </TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => handleViewRisk(risk)}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => handleEditRisk(risk)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                           </div>
@@ -458,11 +530,11 @@ export function RiskManagement() {
                       <div>Nível: {risk.nivel}</div>
                     </div>
                     <div className="flex space-x-2">
-                      <Button variant="ghost" size="sm" className="h-8 px-2">
+                      <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleViewRisk(risk)}>
                         <Eye className="h-3 w-3 mr-1" />
                         Ver
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-8 px-2">
+                      <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleEditRisk(risk)}>
                         <Edit className="h-3 w-3 mr-1" />
                         Editar
                       </Button>
@@ -585,6 +657,199 @@ export function RiskManagement() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {selectedRisk && (
+        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Detalhes do Risco</DialogTitle>
+              <DialogDescription>Informações completas do risco identificado</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Informações Básicas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Setor:</span>
+                      <span className="font-medium">{selectedRisk.setor}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Probabilidade:</span>
+                      <span>{selectedRisk.probabilidade}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Severidade:</span>
+                      <span>{selectedRisk.severidade}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nível de Risco:</span>
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-3 h-3 rounded-full ${getRiskColor(selectedRisk.nivel)}`} />
+                        <span className="font-medium">{selectedRisk.nivel}</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge variant={getStatusColor(selectedRisk.status) as any}>{selectedRisk.status}</Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Responsável:</span>
+                      <span>{selectedRisk.responsavel}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Descrição do Risco</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm">{selectedRisk.descricao}</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Medidas de Controle</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm">{selectedRisk.medidasControle}</p>
+                </CardContent>
+              </Card>
+
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+                  Fechar
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsViewDialogOpen(false)
+                    handleEditRisk(selectedRisk)
+                  }}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar Risco
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {editingRisk && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar Risco</DialogTitle>
+              <DialogDescription>Atualize as informações do risco "{editingRisk.risco}"</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Setor</Label>
+                  <Select
+                    value={editFormData.setor}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, setor: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o setor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Produção">Produção</SelectItem>
+                      <SelectItem value="Manutenção">Manutenção</SelectItem>
+                      <SelectItem value="Almoxarifado">Almoxarifado</SelectItem>
+                      <SelectItem value="Escritório">Escritório</SelectItem>
+                      <SelectItem value="Laboratório">Laboratório</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Responsável</Label>
+                  <Input
+                    value={editFormData.responsavel}
+                    onChange={(e) => setEditFormData({ ...editFormData, responsavel: e.target.value })}
+                    placeholder="Nome do responsável"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Descrição do Risco</Label>
+                <Input
+                  value={editFormData.risco}
+                  onChange={(e) => setEditFormData({ ...editFormData, risco: e.target.value })}
+                  placeholder="Descrição breve do risco"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Descrição Detalhada</Label>
+                <Textarea
+                  value={editFormData.descricao}
+                  onChange={(e) => setEditFormData({ ...editFormData, descricao: e.target.value })}
+                  placeholder="Descreva detalhadamente o risco identificado"
+                  className="min-h-[80px]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Probabilidade</Label>
+                  <Select
+                    value={editFormData.probabilidade}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, probabilidade: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Baixa">Baixa</SelectItem>
+                      <SelectItem value="Média">Média</SelectItem>
+                      <SelectItem value="Alta">Alta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Severidade</Label>
+                  <Select
+                    value={editFormData.severidade}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, severidade: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Baixa">Baixa</SelectItem>
+                      <SelectItem value="Média">Média</SelectItem>
+                      <SelectItem value="Alta">Alta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Medidas de Controle</Label>
+                <Textarea
+                  value={editFormData.medidasControle}
+                  onChange={(e) => setEditFormData({ ...editFormData, medidasControle: e.target.value })}
+                  placeholder="Descreva as medidas de controle implementadas ou planejadas"
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={handleCancelEdit}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveRisk}>Salvar Alterações</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

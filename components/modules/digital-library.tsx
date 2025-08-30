@@ -252,6 +252,17 @@ export function DigitalLibrary() {
   const { selectedCompany } = useCompany()
   const [selectedDocument, setSelectedDocument] = useState<any>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingDocument, setEditingDocument] = useState<any>(null)
+  const [editFormData, setEditFormData] = useState({
+    nome: "",
+    categoria: "",
+    versao: "",
+    dataVencimento: "",
+    responsavel: "",
+    descricao: "",
+    tags: "",
+  })
 
   const documentData = selectedCompany ? documentDataByCompany[selectedCompany.id] || [] : []
   const categoryData = getCategoryDataForCompany(documentData)
@@ -269,6 +280,41 @@ export function DigitalLibrary() {
     activeDocuments: documentData.filter((doc) => doc.status === "Ativo").length,
     expiringSoon: documentData.filter((doc) => doc.status === "Vencendo").length,
     expired: documentData.filter((doc) => doc.status === "Vencido").length,
+  }
+
+  const handleEditDocument = (document: any) => {
+    setEditingDocument(document)
+    setEditFormData({
+      nome: document.nome,
+      categoria: document.categoria,
+      versao: document.versao,
+      dataVencimento: document.dataVencimento,
+      responsavel: document.responsavel,
+      descricao: "Descrição do documento...", // Placeholder
+      tags: "segurança, procedimento", // Placeholder
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleSaveChanges = () => {
+    console.log("[v0] Saving document changes:", editFormData)
+    // Here you would typically update the document in the database
+    setIsEditDialogOpen(false)
+    setEditingDocument(null)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditDialogOpen(false)
+    setEditingDocument(null)
+    setEditFormData({
+      nome: "",
+      categoria: "",
+      versao: "",
+      dataVencimento: "",
+      responsavel: "",
+      descricao: "",
+      tags: "",
+    })
   }
 
   if (!selectedCompany) {
@@ -527,7 +573,7 @@ export function DigitalLibrary() {
                             <Button variant="ghost" size="sm">
                               <Download className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => handleEditDocument(doc)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                           </div>
@@ -799,6 +845,7 @@ export function DigitalLibrary() {
         </TabsContent>
       </Tabs>
 
+      {/* Modal de Detalhes do Documento */}
       {selectedDocument && (
         <Dialog open={!!selectedDocument} onOpenChange={() => setSelectedDocument(null)}>
           <DialogContent className="max-w-4xl">
@@ -870,7 +917,13 @@ export function DigitalLibrary() {
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </Button>
-                <Button variant="outline">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedDocument(null)
+                    handleEditDocument(selectedDocument)
+                  }}
+                >
                   <Edit className="h-4 w-4 mr-2" />
                   Editar
                 </Button>
@@ -879,6 +932,111 @@ export function DigitalLibrary() {
                   Visualizar
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {editingDocument && (
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar Documento</DialogTitle>
+              <DialogDescription>Atualize as informações do documento "{editingDocument.nome}"</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nome do Documento</Label>
+                  <Input
+                    value={editFormData.nome}
+                    onChange={(e) => setEditFormData({ ...editFormData, nome: e.target.value })}
+                    placeholder="Ex: PGR 2024"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Categoria</Label>
+                  <Select
+                    value={editFormData.categoria}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, categoria: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Programa">Programa</SelectItem>
+                      <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
+                      <SelectItem value="Procedimento">Procedimento</SelectItem>
+                      <SelectItem value="Manual">Manual</SelectItem>
+                      <SelectItem value="Formulário">Formulário</SelectItem>
+                      <SelectItem value="Certificado">Certificado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Versão</Label>
+                  <Input
+                    value={editFormData.versao}
+                    onChange={(e) => setEditFormData({ ...editFormData, versao: e.target.value })}
+                    placeholder="Ex: 1.0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data de Vencimento</Label>
+                  <Input
+                    type="date"
+                    value={editFormData.dataVencimento}
+                    onChange={(e) => setEditFormData({ ...editFormData, dataVencimento: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Responsável</Label>
+                <Select
+                  value={editFormData.responsavel}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, responsavel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="João Santos">João Santos</SelectItem>
+                    <SelectItem value="Maria Silva">Maria Silva</SelectItem>
+                    <SelectItem value="Carlos Lima">Carlos Lima</SelectItem>
+                    <SelectItem value="Ana Costa">Ana Costa</SelectItem>
+                    <SelectItem value="Roberto Costa">Roberto Costa</SelectItem>
+                    <SelectItem value="Ana Ferreira">Ana Ferreira</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Textarea
+                  value={editFormData.descricao}
+                  onChange={(e) => setEditFormData({ ...editFormData, descricao: e.target.value })}
+                  placeholder="Descreva o conteúdo do documento"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Tags</Label>
+                <Input
+                  value={editFormData.tags}
+                  onChange={(e) => setEditFormData({ ...editFormData, tags: e.target.value })}
+                  placeholder="Ex: segurança, procedimento, emergência (separadas por vírgula)"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={handleCancelEdit}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveChanges}>Salvar Alterações</Button>
             </div>
           </DialogContent>
         </Dialog>
