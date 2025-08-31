@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -35,6 +46,13 @@ import {
   Clock,
   Mail,
   AlertTriangle,
+  Trash2,
+  Send,
+  RefreshCw,
+  FileSpreadsheet,
+  CheckCircle,
+  XCircle,
+  Loader2,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -163,34 +181,74 @@ const reportHistoryByCompany = {
   ],
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "Ativo":
-      return "default"
-    case "Concluído":
-      return "default"
-    case "Processando":
-      return "secondary"
-    case "Erro":
-      return "destructive"
-    default:
-      return "secondary"
-  }
-}
-
-const getFormatIcon = (formato: string) => {
-  switch (formato.toLowerCase()) {
-    case "pdf":
-      return "📄"
-    case "excel":
-    case "xlsx":
-      return "📊"
-    case "word":
-    case "docx":
-      return "📝"
-    default:
-      return "📁"
-  }
+const esocialReportsByCompany = {
+  1: [
+    {
+      id: 1,
+      evento: "S-2220",
+      tipo: "Exame Médico Ocupacional",
+      funcionario: "João Silva",
+      cpf: "123.456.789-00",
+      dataEvento: "2024-12-15T10:30:00",
+      status: "Enviado",
+      protocolo: "1.2.202412.0000001",
+      tentativas: 1,
+      ultimaTentativa: "2024-12-15T10:35:00",
+    },
+    {
+      id: 2,
+      evento: "S-2240",
+      tipo: "Condições Ambientais do Trabalho",
+      funcionario: "Maria Santos",
+      cpf: "987.654.321-00",
+      dataEvento: "2024-12-14T14:20:00",
+      status: "Pendente",
+      protocolo: null,
+      tentativas: 0,
+      ultimaTentativa: null,
+    },
+    {
+      id: 3,
+      evento: "S-2210",
+      tipo: "Comunicação de Acidente de Trabalho",
+      funcionario: "Carlos Lima",
+      cpf: "456.789.123-00",
+      dataEvento: "2024-12-13T16:45:00",
+      status: "Erro",
+      protocolo: null,
+      tentativas: 3,
+      ultimaTentativa: "2024-12-13T17:15:00",
+      erro: "Erro de validação: CPF inválido",
+    },
+  ],
+  2: [
+    {
+      id: 4,
+      evento: "S-2220",
+      tipo: "Exame Médico Ocupacional",
+      funcionario: "Ana Costa",
+      cpf: "321.654.987-00",
+      dataEvento: "2024-12-12T09:15:00",
+      status: "Enviado",
+      protocolo: "1.2.202412.0000002",
+      tentativas: 1,
+      ultimaTentativa: "2024-12-12T09:20:00",
+    },
+  ],
+  3: [
+    {
+      id: 5,
+      evento: "S-2240",
+      tipo: "Condições Ambientais do Trabalho",
+      funcionario: "Pedro Oliveira",
+      cpf: "789.123.456-00",
+      dataEvento: "2024-12-11T11:30:00",
+      status: "Enviado",
+      protocolo: "1.2.202412.0000003",
+      tentativas: 1,
+      ultimaTentativa: "2024-12-11T11:35:00",
+    },
+  ],
 }
 
 export function Reports() {
@@ -198,9 +256,21 @@ export function Reports() {
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
   const [selectedModules, setSelectedModules] = useState<string[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [isConfiguring, setIsConfiguring] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<any>(null)
+  const [reportToDelete, setReportToDelete] = useState<any>(null)
+  const [selectedEsocialEvent, setSelectedEsocialEvent] = useState<any>(null)
+  const [isResending, setIsResending] = useState(false)
+  const [esocialConfig, setEsocialConfig] = useState({
+    eventTypes: [] as string[],
+    frequency: "manual",
+    companies: [] as string[],
+  })
 
   const reportTemplates = selectedCompany ? reportTemplatesByCompany[selectedCompany.id] || [] : []
   const reportHistory = selectedCompany ? reportHistoryByCompany[selectedCompany.id] || [] : []
+  const esocialReports = selectedCompany ? esocialReportsByCompany[selectedCompany.id] || [] : []
 
   const totalTemplates = reportTemplates.length
   const totalReports = reportHistory.length
@@ -217,6 +287,139 @@ export function Reports() {
     "Não Conformidades",
     "Segurança do Trabalho",
   ]
+
+  const handleGenerateReport = async (template: any) => {
+    setIsGenerating(true)
+    try {
+      // Simular chamada API
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      // Aqui seria a chamada real para /api/reports/generate
+      console.log("[v0] Gerando relatório:", template.nome)
+
+      // Simular sucesso
+      alert(`Relatório "${template.nome}" gerado com sucesso!`)
+    } catch (error) {
+      console.error("[v0] Erro ao gerar relatório:", error)
+      alert("Erro ao gerar relatório. Tente novamente.")
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const handleConfigureTemplate = (template: any) => {
+    setSelectedTemplate(template)
+    setIsConfiguring(true)
+  }
+
+  const handleViewReport = (report: any) => {
+    setSelectedReport(report)
+  }
+
+  const handleDownloadReport = async (report: any) => {
+    try {
+      // Simular download
+      console.log("[v0] Baixando relatório:", report.nome)
+
+      // Aqui seria a chamada real para /api/reports/download
+      const link = document.createElement("a")
+      link.href = `#` // URL real do arquivo
+      link.download = `${report.nome}.${report.formato.toLowerCase()}`
+      link.click()
+
+      alert(`Download de "${report.nome}" iniciado!`)
+    } catch (error) {
+      console.error("[v0] Erro no download:", error)
+      alert("Erro no download. Tente novamente.")
+    }
+  }
+
+  const handleDeleteReport = async (report: any) => {
+    try {
+      // Simular chamada API
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      console.log("[v0] Excluindo relatório:", report.nome)
+      alert(`Relatório "${report.nome}" excluído com sucesso!`)
+      setReportToDelete(null)
+    } catch (error) {
+      console.error("[v0] Erro ao excluir:", error)
+      alert("Erro ao excluir relatório.")
+    }
+  }
+
+  const handleViewEsocialEvent = (event: any) => {
+    setSelectedEsocialEvent(event)
+  }
+
+  const handleResendEsocialEvent = async (event: any) => {
+    setIsResending(true)
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      console.log("[v0] Reenviando evento eSocial:", event.evento)
+      alert(`Evento ${event.evento} reenviado com sucesso!`)
+    } catch (error) {
+      console.error("[v0] Erro ao reenviar:", error)
+      alert("Erro ao reenviar evento.")
+    } finally {
+      setIsResending(false)
+    }
+  }
+
+  const handleExportEsocial = async (format: string) => {
+    try {
+      console.log("[v0] Exportando eSocial em formato:", format)
+      alert(`Exportação em ${format} iniciada!`)
+    } catch (error) {
+      console.error("[v0] Erro na exportação:", error)
+      alert("Erro na exportação.")
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "Ativo":
+      case "Concluído":
+      case "Enviado":
+        return "default"
+      case "Processando":
+      case "Pendente":
+        return "secondary"
+      case "Erro":
+        return "destructive"
+      default:
+        return "secondary"
+    }
+  }
+
+  const getFormatIcon = (formato: string) => {
+    switch (formato.toLowerCase()) {
+      case "pdf":
+        return "📄"
+      case "excel":
+      case "xlsx":
+        return "📊"
+      case "word":
+      case "docx":
+        return "📝"
+      default:
+        return "📁"
+    }
+  }
+
+  const getEsocialStatusIcon = (status: string) => {
+    switch (status) {
+      case "Enviado":
+        return <CheckCircle className="h-4 w-4 text-green-500" />
+      case "Pendente":
+        return <Clock className="h-4 w-4 text-yellow-500" />
+      case "Erro":
+        return <XCircle className="h-4 w-4 text-red-500" />
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />
+    }
+  }
 
   if (!selectedCompany) {
     return (
@@ -397,6 +600,7 @@ export function Reports() {
         <TabsList>
           <TabsTrigger value="templates">Modelos</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
+          <TabsTrigger value="esocial">eSocial</TabsTrigger>
           <TabsTrigger value="agendados">Agendados</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
@@ -511,12 +715,16 @@ export function Reports() {
                         </div>
 
                         <div className="flex justify-end space-x-2">
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => handleConfigureTemplate(template)}>
                             <Settings className="h-4 w-4 mr-1" />
                             Configurar
                           </Button>
-                          <Button size="sm">
-                            <Download className="h-4 w-4 mr-1" />
+                          <Button size="sm" onClick={() => handleGenerateReport(template)} disabled={isGenerating}>
+                            {isGenerating ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4 mr-1" />
+                            )}
                             Gerar
                           </Button>
                         </div>
@@ -622,14 +830,32 @@ export function Reports() {
                           <div className="flex space-x-2">
                             {report.status === "Concluído" && (
                               <>
-                                <Button variant="ghost" size="sm">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDownloadReport(report)}
+                                  title="Download"
+                                >
                                   <Download className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewReport(report)}
+                                  title="Visualizar"
+                                >
                                   <Eye className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm">
+                                <Button variant="ghost" size="sm" title="Enviar por email">
                                   <Mail className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setReportToDelete(report)}
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
                               </>
                             )}
@@ -644,208 +870,273 @@ export function Reports() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="agendados" className="space-y-4">
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Clock className="h-5 w-5" />
-                  <span>Relatórios Agendados</span>
-                </CardTitle>
-                <CardDescription>Relatórios configurados para geração automática</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-4 border rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h4 className="font-medium">Relatório Geral de SST</h4>
-                      <p className="text-sm text-muted-foreground">Todo dia 1º do mês às 08:00</p>
-                    </div>
-                    <Badge>Ativo</Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground">Próxima execução: 01/01/2025 às 08:00</div>
-                </div>
-
-                <div className="p-4 border rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h4 className="font-medium">Controle de Exames</h4>
-                      <p className="text-sm text-muted-foreground">Toda segunda-feira às 09:00</p>
-                    </div>
-                    <Badge>Ativo</Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground">Próxima execução: 23/12/2024 às 09:00</div>
-                </div>
-
-                <div className="p-4 border rounded-lg">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h4 className="font-medium">Não Conformidades</h4>
-                      <p className="text-sm text-muted-foreground">A cada 15 dias às 14:00</p>
-                    </div>
-                    <Badge variant="secondary">Pausado</Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground">Última execução: 15/12/2024 às 14:00</div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Configurar Novo Agendamento</CardTitle>
-                <CardDescription>Automatize a geração de relatórios</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Modelo de Relatório</Label>
+        <TabsContent value="esocial" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Relatórios eSocial - {selectedCompany.nome}</CardTitle>
+              <CardDescription>Eventos eSocial transmitidos e pendentes</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex space-x-2">
+                  <Input placeholder="Buscar por funcionário ou evento..." className="w-64" />
                   <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o modelo" />
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Evento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="geral">Relatório Geral de SST</SelectItem>
-                      <SelectItem value="exames">Controle de Exames</SelectItem>
-                      <SelectItem value="riscos">Matriz de Riscos</SelectItem>
-                      <SelectItem value="treinamentos">Eficácia de Treinamentos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="s-2220">S-2220</SelectItem>
+                      <SelectItem value="s-2240">S-2240</SelectItem>
+                      <SelectItem value="s-2210">S-2210</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="enviado">Enviado</SelectItem>
+                      <SelectItem value="pendente">Pendente</SelectItem>
+                      <SelectItem value="erro">Erro</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Frequência</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a frequência" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="diario">Diário</SelectItem>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="quinzenal">Quinzenal</SelectItem>
-                      <SelectItem value="mensal">Mensal</SelectItem>
-                      <SelectItem value="trimestral">Trimestral</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex space-x-2">
+                  <Button variant="outline">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Configurações
+                  </Button>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Gerar Manualmente
+                  </Button>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Horário</Label>
-                    <Input type="time" defaultValue="08:00" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Formato</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="PDF" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pdf">PDF</SelectItem>
-                        <SelectItem value="excel">Excel</SelectItem>
-                        <SelectItem value="word">Word</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>E-mails para Envio</Label>
-                  <Input placeholder="email1@empresa.com, email2@empresa.com" />
-                </div>
-
-                <Button className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Criar Agendamento
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="configuracoes" className="space-y-4">
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configurações Gerais</CardTitle>
-                <CardDescription>Configurações padrão para geração de relatórios</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Formato Padrão</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="PDF" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pdf">PDF</SelectItem>
-                      <SelectItem value="excel">Excel</SelectItem>
-                      <SelectItem value="word">Word</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Logo da Empresa</Label>
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center">
-                    <p className="text-sm text-muted-foreground">Clique para fazer upload do logo</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Rodapé Padrão</Label>
-                  <Input placeholder="© 2024 Empresa - Sistema SST" />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="watermark" />
-                  <Label htmlFor="watermark">Incluir marca d'água nos relatórios</Label>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Permissões de Acesso</CardTitle>
-                <CardDescription>Controle quem pode gerar e acessar relatórios</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Administradores</p>
-                      <p className="text-sm text-muted-foreground">Acesso total a todos os relatórios</p>
-                    </div>
-                    <Badge>Total</Badge>
-                  </div>
-
-                  <div className="flex justify-between items-center p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Coordenadores SST</p>
-                      <p className="text-sm text-muted-foreground">Acesso aos relatórios de sua área</p>
-                    </div>
-                    <Badge variant="secondary">Limitado</Badge>
-                  </div>
-
-                  <div className="flex justify-between items-center p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">Supervisores</p>
-                      <p className="text-sm text-muted-foreground">Apenas visualização de relatórios</p>
-                    </div>
-                    <Badge variant="outline">Leitura</Badge>
-                  </div>
-                </div>
-
-                <Button className="w-full bg-transparent" variant="outline">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Gerenciar Permissões
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Evento</TableHead>
+                    <TableHead>Funcionário</TableHead>
+                    <TableHead>CPF</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Protocolo</TableHead>
+                    <TableHead>Tentativas</TableHead>
+                    <TableHead>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {esocialReports.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">
+                        <FileSpreadsheet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">Nenhum evento eSocial para esta empresa.</p>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    esocialReports.map((event) => (
+                      <TableRow key={event.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{event.evento}</p>
+                            <p className="text-sm text-muted-foreground">{event.tipo}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{event.funcionario}</TableCell>
+                        <TableCell>{event.cpf}</TableCell>
+                        <TableCell>{format(new Date(event.dataEvento), "dd/MM/yyyy HH:mm")}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            {getEsocialStatusIcon(event.status)}
+                            <Badge variant={getStatusColor(event.status) as any}>{event.status}</Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {event.protocolo ? (
+                            <span className="font-mono text-sm">{event.protocolo}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className={event.tentativas > 1 ? "text-orange-600" : ""}>{event.tentativas}</span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewEsocialEvent(event)}
+                              title="Visualizar"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {(event.status === "Erro" || event.status === "Pendente") && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleResendEsocialEvent(event)}
+                                disabled={isResending}
+                                title="Reenviar"
+                              >
+                                {isResending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleExportEsocial("xml")}
+                              title="Exportar"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
+      {selectedReport && (
+        <Dialog open={!!selectedReport} onOpenChange={() => setSelectedReport(null)}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Visualizar Relatório</DialogTitle>
+              <DialogDescription>{selectedReport.nome}</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="border rounded-lg p-4 bg-muted/10">
+                <p className="text-center text-muted-foreground">Preview do relatório seria exibido aqui</p>
+                <p className="text-center text-sm text-muted-foreground mt-2">
+                  Formato: {selectedReport.formato} | Tamanho: {selectedReport.tamanho}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setSelectedReport(null)}>
+                Fechar
+              </Button>
+              <Button onClick={() => handleDownloadReport(selectedReport)}>
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {reportToDelete && (
+        <AlertDialog open={!!reportToDelete} onOpenChange={() => setReportToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir o relatório "{reportToDelete.nome}"? Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDeleteReport(reportToDelete)}>Excluir</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {selectedEsocialEvent && (
+        <Dialog open={!!selectedEsocialEvent} onOpenChange={() => setSelectedEsocialEvent(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Detalhes do Evento eSocial</DialogTitle>
+              <DialogDescription>
+                {selectedEsocialEvent.evento} - {selectedEsocialEvent.tipo}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Funcionário</Label>
+                  <p>{selectedEsocialEvent.funcionario}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">CPF</Label>
+                  <p>{selectedEsocialEvent.cpf}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Data do Evento</Label>
+                  <p>{format(new Date(selectedEsocialEvent.dataEvento), "dd/MM/yyyy HH:mm")}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div className="flex items-center space-x-2">
+                    {getEsocialStatusIcon(selectedEsocialEvent.status)}
+                    <Badge variant={getStatusColor(selectedEsocialEvent.status) as any}>
+                      {selectedEsocialEvent.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {selectedEsocialEvent.protocolo && (
+                <div>
+                  <Label className="text-sm font-medium">Protocolo</Label>
+                  <p className="font-mono">{selectedEsocialEvent.protocolo}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Tentativas</Label>
+                  <p>{selectedEsocialEvent.tentativas}</p>
+                </div>
+                {selectedEsocialEvent.ultimaTentativa && (
+                  <div>
+                    <Label className="text-sm font-medium">Última Tentativa</Label>
+                    <p>{format(new Date(selectedEsocialEvent.ultimaTentativa), "dd/MM/yyyy HH:mm")}</p>
+                  </div>
+                )}
+              </div>
+
+              {selectedEsocialEvent.erro && (
+                <div>
+                  <Label className="text-sm font-medium">Erro</Label>
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-700">{selectedEsocialEvent.erro}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setSelectedEsocialEvent(null)}>
+                Fechar
+              </Button>
+              {(selectedEsocialEvent.status === "Erro" || selectedEsocialEvent.status === "Pendente") && (
+                <Button onClick={() => handleResendEsocialEvent(selectedEsocialEvent)}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Reenviar
+                </Button>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Modal de Detalhes do Template */}
-      {selectedTemplate && (
+      {selectedTemplate && !isConfiguring && (
         <Dialog open={!!selectedTemplate} onOpenChange={() => setSelectedTemplate(null)}>
           <DialogContent className="max-w-4xl">
             <DialogHeader>
@@ -911,15 +1202,119 @@ export function Reports() {
               </Card>
 
               <div className="flex justify-end space-x-2">
-                <Button variant="outline">
+                <Button variant="outline" onClick={() => handleConfigureTemplate(selectedTemplate)}>
                   <Settings className="h-4 w-4 mr-2" />
                   Configurar
                 </Button>
-                <Button>
+                <Button onClick={() => handleGenerateReport(selectedTemplate)}>
                   <Download className="h-4 w-4 mr-2" />
                   Gerar Agora
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {isConfiguring && selectedTemplate && (
+        <Dialog open={isConfiguring} onOpenChange={() => setIsConfiguring(false)}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Configurar Template - {selectedTemplate.nome}</DialogTitle>
+              <DialogDescription>Personalize as configurações do modelo de relatório</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nome do Template</Label>
+                  <Input defaultValue={selectedTemplate.nome} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Periodicidade</Label>
+                  <Select defaultValue={selectedTemplate.periodicidade.toLowerCase()}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="diario">Diário</SelectItem>
+                      <SelectItem value="semanal">Semanal</SelectItem>
+                      <SelectItem value="mensal">Mensal</SelectItem>
+                      <SelectItem value="trimestral">Trimestral</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Textarea defaultValue={selectedTemplate.descricao} />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Módulos Incluídos</Label>
+                <div className="grid grid-cols-2 gap-2 p-4 border rounded-lg">
+                  {availableModules.map((module) => (
+                    <div key={module} className="flex items-center space-x-2">
+                      <Checkbox id={`config-${module}`} defaultChecked={selectedTemplate.modulos.includes(module)} />
+                      <Label htmlFor={`config-${module}`} className="text-sm">
+                        {module}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Formato Padrão</Label>
+                  <Select defaultValue="pdf">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="excel">Excel</SelectItem>
+                      <SelectItem value="word">Word</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select defaultValue={selectedTemplate.status.toLowerCase()}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Envio Automático</Label>
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Checkbox id="auto-send" />
+                    <Label htmlFor="auto-send" className="text-sm">
+                      Enviar por email
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsConfiguring(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  // Salvar configurações
+                  alert("Configurações salvas com sucesso!")
+                  setIsConfiguring(false)
+                  setSelectedTemplate(null)
+                }}
+              >
+                Salvar Configurações
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

@@ -21,7 +21,21 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Heart, Plus, CalendarIcon, FileText, AlertCircle, CheckCircle, Clock } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Heart,
+  Plus,
+  CalendarIcon,
+  FileText,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Eye,
+  MoreHorizontal,
+  Download,
+  Edit,
+} from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
@@ -152,6 +166,10 @@ const getStatusIcon = (status: string) => {
 
 export function OccupationalHealth() {
   const [selectedDate, setSelectedDate] = useState<Date>()
+  const [selectedExam, setSelectedExam] = useState<any>(null)
+  const [showExamDetails, setShowExamDetails] = useState(false)
+  const [showAsoDialog, setShowAsoDialog] = useState(false)
+  const [selectedEmployee, setSelectedEmployee] = useState<any>(null)
   const { selectedCompany } = useCompany()
 
   const companyExams = selectedCompany ? examDataByCompany[selectedCompany.id] || [] : []
@@ -165,6 +183,22 @@ export function OccupationalHealth() {
     emDia: companyExams.filter((e) => e.status === "Em Dia").length,
     vencendo: companyExams.filter((e) => e.status === "Vencendo").length,
     vencidos: companyExams.filter((e) => e.status === "Vencido").length,
+  }
+
+  const handleViewExam = (exam: any) => {
+    setSelectedExam(exam)
+    setShowExamDetails(true)
+  }
+
+  const handleGenerateAso = (employee?: any) => {
+    setSelectedEmployee(employee)
+    setShowAsoDialog(true)
+  }
+
+  const handleAsoSubmit = () => {
+    console.log("[v0] Generating ASO for:", selectedEmployee)
+    setShowAsoDialog(false)
+    setSelectedEmployee(null)
   }
 
   if (!selectedCompany) {
@@ -409,14 +443,31 @@ export function OccupationalHealth() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex space-x-2">
-                          <Button variant="ghost" size="sm">
-                            <FileText className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm">
-                            <CalendarIcon className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleViewExam(exam)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Visualizar Detalhes
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleGenerateAso(exam)}>
+                              <FileText className="h-4 w-4 mr-2" />
+                              Gerar ASO
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <CalendarIcon className="h-4 w-4 mr-2" />
+                              Reagendar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -491,7 +542,7 @@ export function OccupationalHealth() {
                     <CardDescription>Emitir novo atestado de saúde ocupacional</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button className="w-full">
+                    <Button className="w-full" onClick={() => handleGenerateAso()}>
                       <Plus className="h-4 w-4 mr-2" />
                       Novo ASO
                     </Button>
@@ -571,6 +622,182 @@ export function OccupationalHealth() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showExamDetails} onOpenChange={setShowExamDetails}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Exame Médico</DialogTitle>
+            <DialogDescription>Informações completas do exame ocupacional</DialogDescription>
+          </DialogHeader>
+          {selectedExam && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Funcionário</Label>
+                  <p className="font-medium">{selectedExam.funcionario}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Cargo</Label>
+                  <p>{selectedExam.cargo}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Tipo de Exame</Label>
+                  <p>{selectedExam.tipoExame}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Status</Label>
+                  <div className="flex items-center space-x-2">
+                    {getStatusIcon(selectedExam.status)}
+                    <Badge variant={getStatusColor(selectedExam.status) as any}>{selectedExam.status}</Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Data do Exame</Label>
+                  <p>{format(new Date(selectedExam.dataExame), "dd/MM/yyyy")}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Próximo Exame</Label>
+                  <p>{format(new Date(selectedExam.proximoExame), "dd/MM/yyyy")}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Médico Responsável</Label>
+                  <p>{selectedExam.medico}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowExamDetails(false)}>
+              Fechar
+            </Button>
+            <Button onClick={() => handleGenerateAso(selectedExam)}>
+              <FileText className="h-4 w-4 mr-2" />
+              Gerar ASO
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAsoDialog} onOpenChange={setShowAsoDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Gerar Atestado de Saúde Ocupacional (ASO)</DialogTitle>
+            <DialogDescription>
+              Preencha os dados para emissão do ASO
+              {selectedEmployee && ` para ${selectedEmployee.funcionario}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Funcionário *</Label>
+                <Select defaultValue={selectedEmployee?.funcionario?.toLowerCase()}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o funcionário" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companyExams.map((exam) => (
+                      <SelectItem key={exam.id} value={exam.funcionario.toLowerCase()}>
+                        {exam.funcionario}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo de ASO *</Label>
+                <Select defaultValue={selectedEmployee?.tipoExame?.toLowerCase()}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admissional">Admissional</SelectItem>
+                    <SelectItem value="periodico">Periódico</SelectItem>
+                    <SelectItem value="retorno">Retorno ao Trabalho</SelectItem>
+                    <SelectItem value="mudanca">Mudança de Função</SelectItem>
+                    <SelectItem value="demissional">Demissional</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Data do Exame *</Label>
+                <Input type="date" defaultValue={selectedEmployee?.dataExame || format(new Date(), "yyyy-MM-dd")} />
+              </div>
+              <div className="space-y-2">
+                <Label>Médico Responsável *</Label>
+                <Select defaultValue={selectedEmployee?.medico?.toLowerCase().replace(/\s+/g, "-")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o médico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dr-carlos-santos">Dr. Carlos Santos</SelectItem>
+                    <SelectItem value="dra-ana-costa">Dra. Ana Costa</SelectItem>
+                    <SelectItem value="dr-roberto-lima">Dr. Roberto Lima</SelectItem>
+                    <SelectItem value="dra-fernanda-silva">Dra. Fernanda Silva</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Resultado do Exame *</Label>
+                <Select defaultValue="apto">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o resultado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="apto">Apto</SelectItem>
+                    <SelectItem value="apto-com-restricoes">Apto com Restrições</SelectItem>
+                    <SelectItem value="inapto">Inapto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Próximo Exame</Label>
+                <Input
+                  type="date"
+                  defaultValue={
+                    selectedEmployee?.proximoExame ||
+                    format(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), "yyyy-MM-dd")
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observações Médicas</Label>
+              <Textarea
+                placeholder="Observações sobre o estado de saúde do funcionário, restrições ou recomendações..."
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Riscos Ocupacionais Identificados</Label>
+              <Textarea placeholder="Liste os riscos ocupacionais aos quais o funcionário está exposto..." rows={2} />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowAsoDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleAsoSubmit}>
+              <Download className="h-4 w-4 mr-2" />
+              Gerar e Baixar ASO
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

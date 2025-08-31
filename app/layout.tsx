@@ -18,10 +18,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR">
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="pt-BR" className="h-full">
+      <body className={`font-sans h-full overflow-hidden ${GeistSans.variable} ${GeistMono.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <CompanyProvider>{children}</CompanyProvider>
+          <CompanyProvider>
+            <div className="h-full w-full flex flex-col">{children}</div>
+          </CompanyProvider>
         </ThemeProvider>
       </body>
     </html>

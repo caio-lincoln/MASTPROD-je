@@ -10,14 +10,18 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import { Calendar } from "@/components/ui/calendar"
@@ -31,10 +35,13 @@ import {
   Clock,
   CheckCircle,
   Download,
-  Play,
   BookOpen,
   Award,
   AlertCircle,
+  MoreHorizontal,
+  Eye,
+  Edit,
+  Trash2,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -54,6 +61,7 @@ const trainingDataByCompany = {
       pendentes: 7,
       proximaTurma: "2025-01-15",
       companyId: "1",
+      descricao: "Treinamento obrigatório para trabalhos realizados acima de 2 metros de altura, conforme NR-35.",
     },
     {
       id: 2,
@@ -68,6 +76,7 @@ const trainingDataByCompany = {
       pendentes: 0,
       proximaTurma: "2025-02-10",
       companyId: "1",
+      descricao: "Capacitação em segurança para trabalhos com instalações elétricas energizadas.",
     },
   ],
   "2": [
@@ -84,6 +93,7 @@ const trainingDataByCompany = {
       pendentes: 30,
       proximaTurma: "2025-01-20",
       companyId: "2",
+      descricao: "Treinamento básico de primeiros socorros para situações de emergência.",
     },
     {
       id: 4,
@@ -98,6 +108,7 @@ const trainingDataByCompany = {
       pendentes: 6,
       proximaTurma: "2025-01-25",
       companyId: "2",
+      descricao: "Capacitação para trabalhos em espaços confinados com atmosfera controlada.",
     },
   ],
   "3": [
@@ -114,6 +125,7 @@ const trainingDataByCompany = {
       pendentes: 4,
       proximaTurma: "2025-02-05",
       companyId: "3",
+      descricao: "Treinamento sobre segurança na operação de máquinas e equipamentos.",
     },
   ],
 }
@@ -197,6 +209,23 @@ export function Training() {
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTraining, setSelectedTraining] = useState<any>(null)
 
+  const [isNewTrainingOpen, setIsNewTrainingOpen] = useState(false)
+  const [isEditTrainingOpen, setIsEditTrainingOpen] = useState(false)
+  const [isViewTrainingOpen, setIsViewTrainingOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [editingTraining, setEditingTraining] = useState<any>(null)
+  const [deletingTraining, setDeletingTraining] = useState<any>(null)
+
+  const [formData, setFormData] = useState({
+    nome: "",
+    categoria: "",
+    cargaHoraria: "",
+    validade: "",
+    instrutor: "",
+    descricao: "",
+    proximaTurma: null as Date | null,
+  })
+
   const trainingData = selectedCompany ? trainingDataByCompany[selectedCompany.id] || [] : []
   const participantData = selectedCompany ? participantDataByCompany[selectedCompany.id] || [] : []
 
@@ -205,6 +234,99 @@ export function Training() {
     totalParticipantes: trainingData.reduce((acc, t) => acc + t.participantes, 0),
     totalConcluidos: trainingData.reduce((acc, t) => acc + t.concluidos, 0),
     totalPendentes: trainingData.reduce((acc, t) => acc + t.pendentes, 0),
+  }
+
+  const handleNewTraining = () => {
+    setFormData({
+      nome: "",
+      categoria: "",
+      cargaHoraria: "",
+      validade: "",
+      instrutor: "",
+      descricao: "",
+      proximaTurma: null,
+    })
+    setIsNewTrainingOpen(true)
+  }
+
+  const handleEditTraining = (training: any) => {
+    setEditingTraining(training)
+    setFormData({
+      nome: training.nome,
+      categoria: training.categoria,
+      cargaHoraria: training.cargaHoraria.toString(),
+      validade: training.validade.toString(),
+      instrutor: training.instrutor,
+      descricao: training.descricao || "",
+      proximaTurma: new Date(training.proximaTurma),
+    })
+    setIsEditTrainingOpen(true)
+  }
+
+  const handleViewTraining = (training: any) => {
+    setSelectedTraining(training)
+    setIsViewTrainingOpen(true)
+  }
+
+  const handleDeleteTraining = (training: any) => {
+    setDeletingTraining(training)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleSaveTraining = () => {
+    // Validate required fields
+    if (!formData.nome || !formData.categoria || !formData.cargaHoraria || !formData.validade || !formData.instrutor) {
+      alert("Por favor, preencha todos os campos obrigatórios.")
+      return
+    }
+
+    console.log("[v0] Saving training:", formData)
+
+    if (editingTraining) {
+      // Update existing training
+      console.log("[v0] Updating training:", editingTraining.id)
+      setIsEditTrainingOpen(false)
+      setEditingTraining(null)
+    } else {
+      // Create new training
+      console.log("[v0] Creating new training")
+      setIsNewTrainingOpen(false)
+    }
+
+    // Reset form
+    setFormData({
+      nome: "",
+      categoria: "",
+      cargaHoraria: "",
+      validade: "",
+      instrutor: "",
+      descricao: "",
+      proximaTurma: null,
+    })
+  }
+
+  const handleCancelForm = () => {
+    setIsNewTrainingOpen(false)
+    setIsEditTrainingOpen(false)
+    setEditingTraining(null)
+    setFormData({
+      nome: "",
+      categoria: "",
+      cargaHoraria: "",
+      validade: "",
+      instrutor: "",
+      descricao: "",
+      proximaTurma: null,
+    })
+  }
+
+  const confirmDelete = () => {
+    if (deletingTraining) {
+      console.log("[v0] Deleting training:", deletingTraining.id)
+      // Here you would delete from the actual data source
+      setIsDeleteDialogOpen(false)
+      setDeletingTraining(null)
+    }
   }
 
   if (!selectedCompany) {
@@ -249,94 +371,10 @@ export function Training() {
             Gestão de treinamentos e certificações digitais - {selectedCompany.name}
           </p>
         </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Treinamento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Criar Novo Treinamento</DialogTitle>
-              <DialogDescription>
-                Configure um novo programa de treinamento para {selectedCompany.name}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome do Treinamento</Label>
-                  <Input placeholder="Ex: NR-35 - Trabalho em Altura" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nr">Norma Regulamentadora</SelectItem>
-                      <SelectItem value="capacitacao">Capacitação Geral</SelectItem>
-                      <SelectItem value="tecnico">Treinamento Técnico</SelectItem>
-                      <SelectItem value="comportamental">Comportamental</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Carga Horária</Label>
-                  <Input type="number" placeholder="8" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Validade (meses)</Label>
-                  <Input type="number" placeholder="24" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Instrutor</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="joao">João Santos</SelectItem>
-                      <SelectItem value="maria">Maria Silva</SelectItem>
-                      <SelectItem value="carlos">Dr. Carlos Lima</SelectItem>
-                      <SelectItem value="roberto">Roberto Costa</SelectItem>
-                      <SelectItem value="ana">Ana Ferreira</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea placeholder="Descreva o conteúdo e objetivos do treinamento" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Data da Próxima Turma</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, "PPP", { locale: ptBR }) : "Selecione a data"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline">Cancelar</Button>
-              <Button>Criar Treinamento</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={handleNewTraining}>
+          <Plus className="h-4 w-4 mr-2" />
+          Novo Treinamento
+        </Button>
       </div>
 
       <Tabs defaultValue="treinamentos" className="space-y-4">
@@ -432,9 +470,30 @@ export function Training() {
                         </div>
                         <div className="flex items-center space-x-2">
                           <Badge variant={getStatusColor(training.status) as any}>{training.status}</Badge>
-                          <Button variant="ghost" size="sm" onClick={() => setSelectedTraining(training)}>
-                            <Play className="h-4 w-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleViewTraining(training)}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                Visualizar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEditTraining(training)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteTraining(training)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
 
@@ -732,13 +791,241 @@ export function Training() {
         </TabsContent>
       </Tabs>
 
-      {selectedTraining && (
-        <Dialog open={!!selectedTraining} onOpenChange={() => setSelectedTraining(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>{selectedTraining.nome}</DialogTitle>
-              <DialogDescription>Detalhes completos do treinamento</DialogDescription>
-            </DialogHeader>
+      <Dialog open={isNewTrainingOpen} onOpenChange={setIsNewTrainingOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Criar Novo Treinamento</DialogTitle>
+            <DialogDescription>Configure um novo programa de treinamento para {selectedCompany.name}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome do Treinamento *</Label>
+                <Input
+                  placeholder="Ex: NR-35 - Trabalho em Altura"
+                  value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Categoria *</Label>
+                <Select
+                  value={formData.categoria}
+                  onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
+                    <SelectItem value="Capacitação Geral">Capacitação Geral</SelectItem>
+                    <SelectItem value="Treinamento Técnico">Treinamento Técnico</SelectItem>
+                    <SelectItem value="Comportamental">Comportamental</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Carga Horária *</Label>
+                <Input
+                  type="number"
+                  placeholder="8"
+                  value={formData.cargaHoraria}
+                  onChange={(e) => setFormData({ ...formData, cargaHoraria: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Validade (meses) *</Label>
+                <Input
+                  type="number"
+                  placeholder="24"
+                  value={formData.validade}
+                  onChange={(e) => setFormData({ ...formData, validade: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Instrutor *</Label>
+                <Select
+                  value={formData.instrutor}
+                  onValueChange={(value) => setFormData({ ...formData, instrutor: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="João Santos">João Santos</SelectItem>
+                    <SelectItem value="Maria Silva">Maria Silva</SelectItem>
+                    <SelectItem value="Dr. Carlos Lima">Dr. Carlos Lima</SelectItem>
+                    <SelectItem value="Roberto Costa">Roberto Costa</SelectItem>
+                    <SelectItem value="Ana Ferreira">Ana Ferreira</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Textarea
+                placeholder="Descreva o conteúdo e objetivos do treinamento"
+                value={formData.descricao}
+                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data da Próxima Turma</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.proximaTurma
+                      ? format(formData.proximaTurma, "PPP", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={formData.proximaTurma}
+                    onSelect={(date) => setFormData({ ...formData, proximaTurma: date })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={handleCancelForm}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveTraining}>Criar Treinamento</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditTrainingOpen} onOpenChange={setIsEditTrainingOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar Treinamento</DialogTitle>
+            <DialogDescription>Edite as informações do treinamento para {selectedCompany.name}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome do Treinamento *</Label>
+                <Input
+                  placeholder="Ex: NR-35 - Trabalho em Altura"
+                  value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Categoria *</Label>
+                <Select
+                  value={formData.categoria}
+                  onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
+                    <SelectItem value="Capacitação Geral">Capacitação Geral</SelectItem>
+                    <SelectItem value="Treinamento Técnico">Treinamento Técnico</SelectItem>
+                    <SelectItem value="Comportamental">Comportamental</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Carga Horária *</Label>
+                <Input
+                  type="number"
+                  placeholder="8"
+                  value={formData.cargaHoraria}
+                  onChange={(e) => setFormData({ ...formData, cargaHoraria: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Validade (meses) *</Label>
+                <Input
+                  type="number"
+                  placeholder="24"
+                  value={formData.validade}
+                  onChange={(e) => setFormData({ ...formData, validade: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Instrutor *</Label>
+                <Select
+                  value={formData.instrutor}
+                  onValueChange={(value) => setFormData({ ...formData, instrutor: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="João Santos">João Santos</SelectItem>
+                    <SelectItem value="Maria Silva">Maria Silva</SelectItem>
+                    <SelectItem value="Dr. Carlos Lima">Dr. Carlos Lima</SelectItem>
+                    <SelectItem value="Roberto Costa">Roberto Costa</SelectItem>
+                    <SelectItem value="Ana Ferreira">Ana Ferreira</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Textarea
+                placeholder="Descreva o conteúdo e objetivos do treinamento"
+                value={formData.descricao}
+                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data da Próxima Turma</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.proximaTurma
+                      ? format(formData.proximaTurma, "PPP", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={formData.proximaTurma}
+                    onSelect={(date) => setFormData({ ...formData, proximaTurma: date })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={handleCancelForm}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveTraining}>Salvar Alterações</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isViewTrainingOpen} onOpenChange={setIsViewTrainingOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{selectedTraining?.nome}</DialogTitle>
+            <DialogDescription>Detalhes completos do treinamento</DialogDescription>
+          </DialogHeader>
+          {selectedTraining && (
             <div className="grid gap-6 py-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
@@ -804,10 +1091,45 @@ export function Training() {
                   </CardContent>
                 </Card>
               </div>
+
+              {selectedTraining.descricao && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Descrição</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground">{selectedTraining.descricao}</p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+          )}
+          <div className="flex justify-end">
+            <Button onClick={() => setIsViewTrainingOpen(false)}>Fechar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o treinamento "{deletingTraining?.nome}"? Esta ação não pode ser desfeita e
+              todos os dados relacionados serão perdidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Shield,
   HardHat,
@@ -23,7 +25,13 @@ import {
   MapPin,
   Users,
   AlertCircle,
+  Eye,
+  FileText,
+  Upload,
+  Settings,
+  History,
 } from "lucide-react"
+import { format } from "date-fns"
 
 interface SafetyInspection {
   id: string
@@ -231,11 +239,56 @@ const equipmentByCompany = {
 const WorkplaceSafety = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState("all")
+  const [selectedInspection, setSelectedInspection] = useState<SafetyInspection | null>(null)
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
+  const [selectedEquipment, setSelectedEquipment] = useState<SafetyEquipment | null>(null)
+  const [showInspectionDetails, setShowInspectionDetails] = useState(false)
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  const [showInvestigationDialog, setShowInvestigationDialog] = useState(false)
+  const [showEvidenceDialog, setShowEvidenceDialog] = useState(false)
+  const [showInspectDialog, setShowInspectDialog] = useState(false)
+  const [showMaintenanceDialog, setShowMaintenanceDialog] = useState(false)
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false)
   const { selectedCompany } = useCompany()
 
   const companyInspections = selectedCompany ? inspectionsByCompany[selectedCompany.id] || [] : []
   const companyIncidents = selectedCompany ? incidentsByCompany[selectedCompany.id] || [] : []
   const companyEquipment = selectedCompany ? equipmentByCompany[selectedCompany.id] || [] : []
+
+  const handleViewInspectionDetails = (inspection: SafetyInspection) => {
+    setSelectedInspection(inspection)
+    setShowInspectionDetails(true)
+  }
+
+  const handleScheduleNext = (inspection: SafetyInspection) => {
+    setSelectedInspection(inspection)
+    setShowScheduleDialog(true)
+  }
+
+  const handleInvestigate = (incident: Incident) => {
+    setSelectedIncident(incident)
+    setShowInvestigationDialog(true)
+  }
+
+  const handleAddEvidence = (incident: Incident) => {
+    setSelectedIncident(incident)
+    setShowEvidenceDialog(true)
+  }
+
+  const handleInspectEquipment = (equipment: SafetyEquipment) => {
+    setSelectedEquipment(equipment)
+    setShowInspectDialog(true)
+  }
+
+  const handleMaintenance = (equipment: SafetyEquipment) => {
+    setSelectedEquipment(equipment)
+    setShowMaintenanceDialog(true)
+  }
+
+  const handleHistory = (equipment: SafetyEquipment) => {
+    setSelectedEquipment(equipment)
+    setShowHistoryDialog(true)
+  }
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return "text-green-600"
@@ -473,13 +526,16 @@ const WorkplaceSafety = () => {
                       ))}
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => handleViewInspectionDetails(inspection)}>
+                        <Eye className="h-4 w-4 mr-2" />
                         Ver Detalhes
                       </Button>
                       <Button variant="outline" size="sm">
+                        <FileText className="h-4 w-4 mr-2" />
                         Gerar Relatório
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => handleScheduleNext(inspection)}>
+                        <Calendar className="h-4 w-4 mr-2" />
                         Agendar Próxima
                       </Button>
                     </div>
@@ -546,13 +602,16 @@ const WorkplaceSafety = () => {
                     </div>
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleInvestigate(incident)}>
+                      <Search className="h-4 w-4 mr-2" />
                       Investigar
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleAddEvidence(incident)}>
+                      <Upload className="h-4 w-4 mr-2" />
                       Adicionar Evidência
                     </Button>
                     <Button variant="outline" size="sm">
+                      <FileText className="h-4 w-4 mr-2" />
                       Gerar Relatório
                     </Button>
                   </div>
@@ -597,13 +656,16 @@ const WorkplaceSafety = () => {
                     </div>
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleInspectEquipment(eq)}>
+                      <CheckCircle className="h-4 w-4 mr-2" />
                       Inspecionar
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleMaintenance(eq)}>
+                      <Settings className="h-4 w-4 mr-2" />
                       Manutenção
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => handleHistory(eq)}>
+                      <History className="h-4 w-4 mr-2" />
                       Histórico
                     </Button>
                   </div>
@@ -712,6 +774,511 @@ const WorkplaceSafety = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Inspection Details Dialog */}
+      <Dialog open={showInspectionDetails} onOpenChange={setShowInspectionDetails}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Inspeção</DialogTitle>
+            <DialogDescription>Informações completas da inspeção de segurança</DialogDescription>
+          </DialogHeader>
+          {selectedInspection && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">ID da Inspeção</Label>
+                  <p className="font-medium">{selectedInspection.id}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Área</Label>
+                  <p>{selectedInspection.area}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Inspetor</Label>
+                  <p>{selectedInspection.inspector}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Data</Label>
+                  <p>{new Date(selectedInspection.date).toLocaleDateString("pt-BR")}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-muted-foreground">Score Geral</Label>
+                <div className="flex items-center space-x-2">
+                  <div className={`text-2xl font-bold ${getScoreColor(selectedInspection.score)}`}>
+                    {selectedInspection.score}%
+                  </div>
+                  <Badge className={getStatusColor(selectedInspection.status)}>
+                    {selectedInspection.status === "completed" ? "Concluída" : "Pendente"}
+                  </Badge>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <Label className="text-sm font-medium text-muted-foreground">Itens Avaliados</Label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {selectedInspection.items.map((item, index) => (
+                    <div key={index} className="p-3 border rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium">{item.category}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {item.compliant}/{item.total}
+                        </span>
+                      </div>
+                      <Progress value={(item.compliant / item.total) * 100} className="h-2" />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {((item.compliant / item.total) * 100).toFixed(1)}% de conformidade
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowInspectionDetails(false)}>
+              Fechar
+            </Button>
+            <Button onClick={() => handleScheduleNext(selectedInspection!)}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Agendar Próxima
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule Next Inspection Dialog */}
+      <Dialog open={showScheduleDialog} onOpenChange={setShowScheduleDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Agendar Próxima Inspeção</DialogTitle>
+            <DialogDescription>
+              Agende uma nova inspeção baseada na inspeção anterior
+              {selectedInspection && ` - ${selectedInspection.area}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Área *</Label>
+                <Input defaultValue={selectedInspection?.area} />
+              </div>
+              <div className="space-y-2">
+                <Label>Inspetor *</Label>
+                <Select defaultValue={selectedInspection?.inspector.toLowerCase().replace(/\s+/g, "-")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o inspetor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="joao-silva">João Silva</SelectItem>
+                    <SelectItem value="maria-santos">Maria Santos</SelectItem>
+                    <SelectItem value="pedro-costa">Pedro Costa</SelectItem>
+                    <SelectItem value="ana-lima">Ana Lima</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Data da Inspeção *</Label>
+                <Input
+                  type="date"
+                  defaultValue={format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), "yyyy-MM-dd")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridade</Label>
+                <Select defaultValue="normal">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a prioridade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="baixa">Baixa</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="urgente">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea
+                placeholder="Observações especiais para esta inspeção..."
+                defaultValue={
+                  selectedInspection?.score && selectedInspection.score < 80
+                    ? "Atenção especial aos itens que apresentaram não conformidade na inspeção anterior."
+                    : ""
+                }
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowScheduleDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => setShowScheduleDialog(false)}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Agendar Inspeção
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Investigation Dialog */}
+      <Dialog open={showInvestigationDialog} onOpenChange={setShowInvestigationDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Investigação de Incidente</DialogTitle>
+            <DialogDescription>
+              Preencha os detalhes da investigação
+              {selectedIncident && ` - ${selectedIncident.id}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-muted-foreground">Tipo de Incidente</Label>
+                <p>
+                  {selectedIncident?.type === "accident"
+                    ? "Acidente"
+                    : selectedIncident?.type === "near-miss"
+                      ? "Quase Acidente"
+                      : "Condição Insegura"}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-muted-foreground">Severidade</Label>
+                <Badge className={getSeverityColor(selectedIncident?.severity || "")}>
+                  {selectedIncident?.severity === "critical"
+                    ? "Crítica"
+                    : selectedIncident?.severity === "high"
+                      ? "Alta"
+                      : selectedIncident?.severity === "medium"
+                        ? "Média"
+                        : "Baixa"}
+                </Badge>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-muted-foreground">Descrição do Incidente</Label>
+              <p className="p-2 bg-muted rounded">{selectedIncident?.description}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Análise de Causa Raiz *</Label>
+              <Textarea placeholder="Descreva as causas identificadas que levaram ao incidente..." rows={3} />
+            </div>
+            <div className="space-y-2">
+              <Label>Medidas Corretivas *</Label>
+              <Textarea placeholder="Liste as medidas corretivas implementadas ou planejadas..." rows={3} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Responsável pela Investigação *</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="joao-silva">João Silva</SelectItem>
+                    <SelectItem value="maria-santos">Maria Santos</SelectItem>
+                    <SelectItem value="pedro-costa">Pedro Costa</SelectItem>
+                    <SelectItem value="ana-lima">Ana Lima</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Prazo para Conclusão</Label>
+                <Input
+                  type="date"
+                  defaultValue={format(new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), "yyyy-MM-dd")}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowInvestigationDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => setShowInvestigationDialog(false)}>
+              <FileText className="h-4 w-4 mr-2" />
+              Salvar Investigação
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Evidence Dialog */}
+      <Dialog open={showEvidenceDialog} onOpenChange={setShowEvidenceDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Adicionar Evidência</DialogTitle>
+            <DialogDescription>
+              Faça upload de arquivos relacionados ao incidente
+              {selectedIncident && ` - ${selectedIncident.id}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-muted-foreground">Incidente</Label>
+              <p className="p-2 bg-muted rounded">{selectedIncident?.description}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo de Evidência *</Label>
+              <Select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="foto">Fotografia</SelectItem>
+                  <SelectItem value="video">Vídeo</SelectItem>
+                  <SelectItem value="documento">Documento</SelectItem>
+                  <SelectItem value="relatorio">Relatório</SelectItem>
+                  <SelectItem value="laudo">Laudo Técnico</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Arquivo *</Label>
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
+                <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground mb-2">Clique para selecionar ou arraste arquivos aqui</p>
+                <p className="text-xs text-muted-foreground">Formatos aceitos: JPG, PNG, PDF, DOC, MP4 (máx. 10MB)</p>
+                <Input type="file" className="mt-2" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.mp4" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição da Evidência</Label>
+              <Textarea placeholder="Descreva o conteúdo da evidência e sua relevância para o caso..." />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowEvidenceDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => setShowEvidenceDialog(false)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Adicionar Evidência
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Equipment Inspection Dialog */}
+      <Dialog open={showInspectDialog} onOpenChange={setShowInspectDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Inspeção de Equipamento</DialogTitle>
+            <DialogDescription>
+              Registre uma nova inspeção
+              {selectedEquipment && ` - ${selectedEquipment.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-muted-foreground">Equipamento</Label>
+              <p className="font-medium">{selectedEquipment?.name}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Data da Inspeção *</Label>
+                <Input type="date" defaultValue={format(new Date(), "yyyy-MM-dd")} />
+              </div>
+              <div className="space-y-2">
+                <Label>Resultado *</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o resultado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="aprovado">Aprovado</SelectItem>
+                    <SelectItem value="aprovado-restricoes">Aprovado com Restrições</SelectItem>
+                    <SelectItem value="reprovado">Reprovado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Observações *</Label>
+              <Textarea
+                placeholder="Descreva o estado do equipamento, problemas encontrados, recomendações..."
+                rows={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Próxima Inspeção</Label>
+              <Input type="date" defaultValue={format(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), "yyyy-MM-dd")} />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowInspectDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => setShowInspectDialog(false)}>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Registrar Inspeção
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Equipment Maintenance Dialog */}
+      <Dialog open={showMaintenanceDialog} onOpenChange={setShowMaintenanceDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Manutenção de Equipamento</DialogTitle>
+            <DialogDescription>
+              Registre ou agende manutenção
+              {selectedEquipment && ` - ${selectedEquipment.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-muted-foreground">Equipamento</Label>
+              <p className="font-medium">{selectedEquipment?.name}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo de Manutenção *</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="preventiva">Preventiva</SelectItem>
+                    <SelectItem value="corretiva">Corretiva</SelectItem>
+                    <SelectItem value="preditiva">Preditiva</SelectItem>
+                    <SelectItem value="emergencial">Emergencial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Data Programada *</Label>
+                <Input
+                  type="date"
+                  defaultValue={format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), "yyyy-MM-dd")}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição dos Serviços *</Label>
+              <Textarea placeholder="Descreva os serviços de manutenção a serem realizados..." rows={3} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Responsável Técnico</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o técnico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="joao-silva">João Silva</SelectItem>
+                    <SelectItem value="maria-santos">Maria Santos</SelectItem>
+                    <SelectItem value="pedro-costa">Pedro Costa</SelectItem>
+                    <SelectItem value="ana-lima">Ana Lima</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridade</Label>
+                <Select defaultValue="normal">
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a prioridade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="baixa">Baixa</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="alta">Alta</SelectItem>
+                    <SelectItem value="urgente">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowMaintenanceDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => setShowMaintenanceDialog(false)}>
+              <Settings className="h-4 w-4 mr-2" />
+              Agendar Manutenção
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Equipment History Dialog */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Histórico do Equipamento</DialogTitle>
+            <DialogDescription>
+              Histórico completo de inspeções e manutenções
+              {selectedEquipment && ` - ${selectedEquipment.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-muted-foreground">Equipamento</Label>
+              <p className="font-medium">{selectedEquipment?.name}</p>
+              <p className="text-sm text-muted-foreground">Local: {selectedEquipment?.location}</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-semibold mb-3">Inspeções Recentes</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center p-3 border rounded">
+                    <div>
+                      <p className="font-medium">Inspeção de Rotina</p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedEquipment && new Date(selectedEquipment.lastInspection).toLocaleDateString("pt-BR")} -
+                        João Silva
+                      </p>
+                    </div>
+                    <Badge className="bg-green-100 text-green-800 border-green-200">Aprovado</Badge>
+                  </div>
+                  <div className="flex justify-between items-center p-3 border rounded">
+                    <div>
+                      <p className="font-medium">Inspeção Preventiva</p>
+                      <p className="text-sm text-muted-foreground">15/11/2024 - Maria Santos</p>
+                    </div>
+                    <Badge className="bg-green-100 text-green-800 border-green-200">Aprovado</Badge>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h4 className="font-semibold mb-3">Manutenções Realizadas</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center p-3 border rounded">
+                    <div>
+                      <p className="font-medium">Manutenção Preventiva</p>
+                      <p className="text-sm text-muted-foreground">10/11/2024 - Pedro Costa</p>
+                    </div>
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">Concluída</Badge>
+                  </div>
+                  <div className="flex justify-between items-center p-3 border rounded">
+                    <div>
+                      <p className="font-medium">Troca de Filtros</p>
+                      <p className="text-sm text-muted-foreground">05/10/2024 - Ana Lima</p>
+                    </div>
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">Concluída</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowHistoryDialog(false)}>
+              Fechar
+            </Button>
+            <Button variant="outline">
+              <FileText className="h-4 w-4 mr-2" />
+              Exportar Histórico
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

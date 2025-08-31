@@ -116,7 +116,27 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /* Adding full-screen layout foundation */
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Ensuring root container takes full viewport */
+  #__next,
+  [data-nextjs-scroll-focus-boundary] {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
   }
 }
