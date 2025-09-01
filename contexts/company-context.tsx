@@ -1,6 +1,8 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createClient } from "@/lib/supabase/client"
+import type { User } from "@supabase/supabase-js"
 
 export interface Company {
   id: string
@@ -20,71 +22,111 @@ interface CompanyContextType {
   setSelectedCompany: (company: Company | null) => void
   setCompanies: (companies: Company[]) => void
   isLoading: boolean
+  user: User | null
+  addCompany: (company: Omit<Company, "id" | "createdAt">) => Promise<Company | null>
+  updateCompany: (id: string, updates: Partial<Company>) => Promise<boolean>
+  deleteCompany: (id: string) => Promise<boolean>
 }
 
 const CompanyContext = createContext<CompanyContextType | undefined>(undefined)
-
-// Mock data para demonstração
-const mockCompanies: Company[] = [
-  {
-    id: "1",
-    name: "Empresa Alpha Ltda",
-    cnpj: "12.345.678/0001-90",
-    address: "Rua das Flores, 123 - São Paulo/SP",
-    phone: "(11) 3456-7890",
-    email: "contato@alpha.com.br",
-    isActive: true,
-    createdAt: new Date("2023-01-15"),
-  },
-  {
-    id: "2",
-    name: "Beta Indústria S.A.",
-    cnpj: "98.765.432/0001-10",
-    address: "Av. Industrial, 456 - Rio de Janeiro/RJ",
-    phone: "(21) 2345-6789",
-    email: "admin@beta.com.br",
-    isActive: true,
-    createdAt: new Date("2023-02-20"),
-  },
-  {
-    id: "3",
-    name: "Gamma Serviços",
-    cnpj: "11.222.333/0001-44",
-    address: "Rua do Comércio, 789 - Belo Horizonte/MG",
-    phone: "(31) 3456-7890",
-    email: "info@gamma.com.br",
-    isActive: true,
-    createdAt: new Date("2023-03-10"),
-  },
-]
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(null)
+  const supabase = createClient()
 
   useEffect(() => {
-    // Simular carregamento das empresas
-    const loadCompanies = async () => {
+    const loadUserAndCompanies = async () => {
       setIsLoading(true)
-      // Simular delay de API
-      await new Promise((resolve) => setTimeout(resolve, 1000))
 
-      setCompanies(mockCompanies)
+      try {
+        // Obter usuário autenticado
+        const {
+          data: { user: currentUser },
+        } = await supabase.auth.getUser()
+        setUser(currentUser)
 
-      // Verificar se há empresa salva no localStorage
-      const savedCompanyId = localStorage.getItem("selectedCompanyId")
-      if (savedCompanyId) {
-        const savedCompany = mockCompanies.find((c) => c.id === savedCompanyId)
-        if (savedCompany) {
-          setSelectedCompany(savedCompany)
+        if (currentUser) {
+          // Buscar empresas do usuário através da tabela usuario_empresas
+          const { data: userCompanies, error: userCompaniesError } = await supabase
+            .from("usuario_empresas")
+            .select(`
+              empresa_id,
+              role,
+              empresas (
+                id,
+                nome,
+                cnpj,
+                endereco,
+                telefone,
+                email,
+                logo_url,
+                status,
+                created_at
+              )
+            `)
+            .eq("user_id", currentUser.id)
+
+          if (userCompaniesError) {
+            console.error("Erro ao buscar empresas do usuário:", userCompaniesError)
+            setIsLoading(false)
+            return
+          }
+
+          // Transformar dados para o formato esperado
+          const formattedCompanies: Company[] =
+            userCompanies
+              ?.filter((uc) => uc.empresas)
+              .map((uc) => ({
+                id: uc.empresas.id,
+                name: uc.empresas.nome,
+                cnpj: uc.empresas.cnpj || "",
+                address: uc.empresas.endereco || "",
+                phone: uc.empresas.telefone || "",
+                email: uc.empresas.email || "",
+                logo: uc.empresas.logo_url || undefined,
+                isActive: uc.empresas.status,
+                createdAt: new Date(uc.empresas.created_at),
+              })) || []
+
+          setCompanies(formattedCompanies)
+
+          // Verificar se há empresa salva no localStorage
+          const savedCompanyId = localStorage.getItem("selectedCompanyId")
+          if (savedCompanyId) {
+            const savedCompany = formattedCompanies.find((c) => c.id === savedCompanyId)
+            if (savedCompany) {
+              setSelectedCompany(savedCompany)
+            }
+          }
         }
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error)
+      } finally {
+        setIsLoading(false)
       }
-
-      setIsLoading(false)
     }
 
-    loadCompanies()
+    loadUserAndCompanies()
+
+    // Escutar mudanças de autenticação
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        setUser(null)
+        setCompanies([])
+        setSelectedCompany(null)
+        localStorage.removeItem("selectedCompanyId")
+      } else if (event === "SIGNED_IN" && session?.user) {
+        setUser(session.user)
+        loadUserAndCompanies()
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const handleSetSelectedCompany = (company: Company | null) => {
@@ -96,6 +138,122 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const addCompany = async (companyData: Omit<Company, "id" | "createdAt">): Promise<Company | null> => {
+    if (!user) return null
+
+    try {
+      // Inserir empresa
+      const { data: newCompany, error: companyError } = await supabase
+        .from("empresas")
+        .insert({
+          nome: companyData.name,
+          cnpj: companyData.cnpj,
+          endereco: companyData.address,
+          telefone: companyData.phone,
+          email: companyData.email,
+          logo_url: companyData.logo,
+          status: companyData.isActive,
+        })
+        .select()
+        .single()
+
+      if (companyError) {
+        console.error("Erro ao criar empresa:", companyError)
+        return null
+      }
+
+      // Criar relacionamento usuário-empresa
+      const { error: relationError } = await supabase.from("usuario_empresas").insert({
+        user_id: user.id,
+        empresa_id: newCompany.id,
+        role: "admin",
+      })
+
+      if (relationError) {
+        console.error("Erro ao criar relacionamento:", relationError)
+        return null
+      }
+
+      const formattedCompany: Company = {
+        id: newCompany.id,
+        name: newCompany.nome,
+        cnpj: newCompany.cnpj || "",
+        address: newCompany.endereco || "",
+        phone: newCompany.telefone || "",
+        email: newCompany.email || "",
+        logo: newCompany.logo_url || undefined,
+        isActive: newCompany.status,
+        createdAt: new Date(newCompany.created_at),
+      }
+
+      setCompanies((prev) => [...prev, formattedCompany])
+      return formattedCompany
+    } catch (error) {
+      console.error("Erro ao adicionar empresa:", error)
+      return null
+    }
+  }
+
+  const updateCompany = async (id: string, updates: Partial<Company>): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("empresas")
+        .update({
+          nome: updates.name,
+          cnpj: updates.cnpj,
+          endereco: updates.address,
+          telefone: updates.phone,
+          email: updates.email,
+          logo_url: updates.logo,
+          status: updates.isActive,
+        })
+        .eq("id", id)
+
+      if (error) {
+        console.error("Erro ao atualizar empresa:", error)
+        return false
+      }
+
+      // Atualizar estado local
+      setCompanies((prev) => prev.map((company) => (company.id === id ? { ...company, ...updates } : company)))
+
+      // Atualizar empresa selecionada se for a mesma
+      if (selectedCompany?.id === id) {
+        setSelectedCompany((prev) => (prev ? { ...prev, ...updates } : null))
+      }
+
+      return true
+    } catch (error) {
+      console.error("Erro ao atualizar empresa:", error)
+      return false
+    }
+  }
+
+  const deleteCompany = async (id: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase.from("empresas").delete().eq("id", id)
+
+      if (error) {
+        console.error("Erro ao deletar empresa:", error)
+        return false
+      }
+
+      // Atualizar estado local
+      setCompanies((prev) => prev.filter((company) => company.id !== id))
+
+      // Limpar empresa selecionada se for a mesma
+      if (selectedCompany?.id === id) {
+        setSelectedCompany(null)
+        localStorage.removeItem("selectedCompanyId")
+      }
+
+      return true
+    } catch (error) {
+      console.error("Erro ao deletar empresa:", error)
+      return false
+    }
+  }
+
   return (
     <CompanyContext.Provider
       value={{
@@ -104,6 +262,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         setSelectedCompany: handleSetSelectedCompany,
         setCompanies,
         isLoading,
+        user,
+        addCompany,
+        updateCompany,
+        deleteCompany,
       }}
     >
       {children}

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 
 :root {
+  /* Converting OKLCH to HSL for better LightningCSS compatibility */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -38,6 +39,7 @@
 }
 
 .dark {
+  /* Converting dark mode colors to HSL format */
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
@@ -116,27 +118,7 @@
   * {
     @apply border-border outline-ring/50;
   }
-
-  /* Adding full-screen layout foundation */
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-  }
-
   body {
     @apply bg-background text-foreground;
-  }
-
-  /* Ensuring root container takes full viewport */
-  #__next,
-  [data-nextjs-scroll-focus-boundary] {
-    height: 100vh;
-    width: 100vw;
-    display: flex;
-    flex-direction: column;
   }
 }

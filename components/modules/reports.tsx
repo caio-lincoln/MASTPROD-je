@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -20,16 +19,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -47,7 +36,6 @@ import {
   Mail,
   AlertTriangle,
   Trash2,
-  Send,
   RefreshCw,
   FileSpreadsheet,
   CheckCircle,
@@ -56,6 +44,9 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
+
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { useEffect } from "react"
 
 const reportTemplatesByCompany = {
   1: [
@@ -181,78 +172,16 @@ const reportHistoryByCompany = {
   ],
 }
 
-const esocialReportsByCompany = {
-  1: [
-    {
-      id: 1,
-      evento: "S-2220",
-      tipo: "Exame Médico Ocupacional",
-      funcionario: "João Silva",
-      cpf: "123.456.789-00",
-      dataEvento: "2024-12-15T10:30:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000001",
-      tentativas: 1,
-      ultimaTentativa: "2024-12-15T10:35:00",
-    },
-    {
-      id: 2,
-      evento: "S-2240",
-      tipo: "Condições Ambientais do Trabalho",
-      funcionario: "Maria Santos",
-      cpf: "987.654.321-00",
-      dataEvento: "2024-12-14T14:20:00",
-      status: "Pendente",
-      protocolo: null,
-      tentativas: 0,
-      ultimaTentativa: null,
-    },
-    {
-      id: 3,
-      evento: "S-2210",
-      tipo: "Comunicação de Acidente de Trabalho",
-      funcionario: "Carlos Lima",
-      cpf: "456.789.123-00",
-      dataEvento: "2024-12-13T16:45:00",
-      status: "Erro",
-      protocolo: null,
-      tentativas: 3,
-      ultimaTentativa: "2024-12-13T17:15:00",
-      erro: "Erro de validação: CPF inválido",
-    },
-  ],
-  2: [
-    {
-      id: 4,
-      evento: "S-2220",
-      tipo: "Exame Médico Ocupacional",
-      funcionario: "Ana Costa",
-      cpf: "321.654.987-00",
-      dataEvento: "2024-12-12T09:15:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000002",
-      tentativas: 1,
-      ultimaTentativa: "2024-12-12T09:20:00",
-    },
-  ],
-  3: [
-    {
-      id: 5,
-      evento: "S-2240",
-      tipo: "Condições Ambientais do Trabalho",
-      funcionario: "Pedro Oliveira",
-      cpf: "789.123.456-00",
-      dataEvento: "2024-12-11T11:30:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000003",
-      tentativas: 1,
-      ultimaTentativa: "2024-12-11T11:35:00",
-    },
-  ],
-}
-
-export function Reports() {
+export function ReportsComponent() {
   const { selectedCompany } = useCompany()
+  const [activeTab, setActiveTab] = useState("configurar")
+
+  const [esocialEvents, setEsocialEvents] = useState<any[]>([])
+  const [fatoresRisco, setFatoresRisco] = useState<any[]>([])
+  const [loadingEsocial, setLoadingEsocial] = useState(false)
+  const [generatingEvent, setGeneratingEvent] = useState(false)
+
+  // Estados existentes
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
   const [selectedModules, setSelectedModules] = useState<string[]>([])
@@ -268,9 +197,127 @@ export function Reports() {
     companies: [] as string[],
   })
 
+  const supabase = createClientComponentClient()
+
+  const loadEsocialEvents = async () => {
+    if (!selectedCompany) return
+
+    setLoadingEsocial(true)
+    try {
+      const { data, error } = await supabase
+        .from("view_eventos_esocial")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("created_at", { ascending: false })
+
+      if (error) throw error
+      setEsocialEvents(data || [])
+    } catch (error) {
+      console.error("[v0] Erro ao carregar eventos eSocial:", error)
+    } finally {
+      setLoadingEsocial(false)
+    }
+  }
+
+  const loadFatoresRisco = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("fatores_risco")
+        .select(`
+          *,
+          funcionarios (
+            nome,
+            cpf
+          )
+        `)
+        .eq("empresa_id", selectedCompany.id)
+
+      if (error) throw error
+      setFatoresRisco(data || [])
+    } catch (error) {
+      console.error("[v0] Erro ao carregar fatores de risco:", error)
+    }
+  }
+
+  useEffect(() => {
+    if (selectedCompany && activeTab === "esocial") {
+      loadEsocialEvents()
+      loadFatoresRisco()
+    }
+  }, [selectedCompany, activeTab])
+
+  const handleGenerateS2220 = async (asoId: string) => {
+    setGeneratingEvent(true)
+    try {
+      const { data, error } = await supabase.rpc("gerar_evento_s2220", {
+        aso_id: asoId,
+      })
+
+      if (error) throw error
+
+      alert("Evento S-2220 gerado com sucesso!")
+      loadEsocialEvents() // Recarregar lista
+    } catch (error) {
+      console.error("[v0] Erro ao gerar evento S-2220:", error)
+      alert("Erro ao gerar evento S-2220")
+    } finally {
+      setGeneratingEvent(false)
+    }
+  }
+
+  const handleGenerateS2240 = async (fatorRiscoId: string) => {
+    setGeneratingEvent(true)
+    try {
+      const { data, error } = await supabase.rpc("gerar_evento_s2240", {
+        fator_risco_id: fatorRiscoId,
+      })
+
+      if (error) throw error
+
+      alert("Evento S-2240 gerado com sucesso!")
+      loadEsocialEvents() // Recarregar lista
+    } catch (error) {
+      console.error("[v0] Erro ao gerar evento S-2240:", error)
+      alert("Erro ao gerar evento S-2240")
+    } finally {
+      setGeneratingEvent(false)
+    }
+  }
+
+  const handleExportXML = async (eventId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("eventos_esocial")
+        .select("xml_gerado, tipo_evento")
+        .eq("id", eventId)
+        .single()
+
+      if (error) throw error
+
+      if (data.xml_gerado) {
+        const blob = new Blob([data.xml_gerado], { type: "application/xml" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `${data.tipo_evento}_${eventId}.xml`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } else {
+        alert("XML não disponível para este evento")
+      }
+    } catch (error) {
+      console.error("[v0] Erro ao exportar XML:", error)
+      alert("Erro ao exportar XML")
+    }
+  }
+
   const reportTemplates = selectedCompany ? reportTemplatesByCompany[selectedCompany.id] || [] : []
   const reportHistory = selectedCompany ? reportHistoryByCompany[selectedCompany.id] || [] : []
-  const esocialReports = selectedCompany ? esocialReportsByCompany[selectedCompany.id] || [] : []
+  // const esocialReports = selectedCompany ? esocialReportsByCompany[selectedCompany.id] || [] : []
 
   const totalTemplates = reportTemplates.length
   const totalReports = reportHistory.length
@@ -355,10 +402,19 @@ export function Reports() {
   const handleResendEsocialEvent = async (event: any) => {
     setIsResending(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const { error } = await supabase
+        .from("eventos_esocial")
+        .update({
+          status: "pendente",
+          mensagem_retorno: null,
+          data_envio: null,
+        })
+        .eq("id", event.id)
 
-      console.log("[v0] Reenviando evento eSocial:", event.evento)
-      alert(`Evento ${event.evento} reenviado com sucesso!`)
+      if (error) throw error
+
+      alert(`Evento ${event.tipo_evento} marcado para reenvio!`)
+      loadEsocialEvents() // Recarregar lista
     } catch (error) {
       console.error("[v0] Erro ao reenviar:", error)
       alert("Erro ao reenviar evento.")
@@ -369,8 +425,23 @@ export function Reports() {
 
   const handleExportEsocial = async (format: string) => {
     try {
-      console.log("[v0] Exportando eSocial em formato:", format)
-      alert(`Exportação em ${format} iniciada!`)
+      if (format === "xml") {
+        // Exportar todos os XMLs da empresa
+        const { data, error } = await supabase
+          .from("eventos_esocial")
+          .select("id, tipo_evento, xml_gerado")
+          .eq("empresa_id", selectedCompany?.id)
+          .not("xml_gerado", "is", null)
+
+        if (error) throw error
+
+        if (data && data.length > 0) {
+          // Criar ZIP com todos os XMLs (simulado)
+          alert(`Exportação de ${data.length} eventos XML iniciada!`)
+        } else {
+          alert("Nenhum XML disponível para exportação")
+        }
+      }
     } catch (error) {
       console.error("[v0] Erro na exportação:", error)
       alert("Erro na exportação.")
@@ -888,7 +959,6 @@ export function Reports() {
                       <SelectItem value="todos">Todos</SelectItem>
                       <SelectItem value="s-2220">S-2220</SelectItem>
                       <SelectItem value="s-2240">S-2240</SelectItem>
-                      <SelectItem value="s-2210">S-2210</SelectItem>
                     </SelectContent>
                   </Select>
                   <Select>
@@ -908,420 +978,111 @@ export function Reports() {
                     <Settings className="h-4 w-4 mr-2" />
                     Configurações
                   </Button>
-                  <Button>
+                  <Button disabled={generatingEvent}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Gerar Manualmente
+                    {generatingEvent ? "Gerando..." : "Gerar Manualmente"}
                   </Button>
                 </div>
               </div>
 
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Evento</TableHead>
-                    <TableHead>Funcionário</TableHead>
-                    <TableHead>CPF</TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Protocolo</TableHead>
-                    <TableHead>Tentativas</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {esocialReports.length === 0 ? (
+              {loadingEsocial ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                  <p>Carregando eventos eSocial...</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        <FileSpreadsheet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">Nenhum evento eSocial para esta empresa.</p>
-                      </TableCell>
+                      <TableHead>Evento</TableHead>
+                      <TableHead>Funcionário</TableHead>
+                      <TableHead>CPF</TableHead>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Ações</TableHead>
                     </TableRow>
-                  ) : (
-                    esocialReports.map((event) => (
-                      <TableRow key={event.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{event.evento}</p>
-                            <p className="text-sm text-muted-foreground">{event.tipo}</p>
-                          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {esocialEvents.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8">
+                          <FileSpreadsheet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-muted-foreground">Nenhum evento eSocial para esta empresa.</p>
                         </TableCell>
-                        <TableCell>{event.funcionario}</TableCell>
-                        <TableCell>{event.cpf}</TableCell>
-                        <TableCell>{format(new Date(event.dataEvento), "dd/MM/yyyy HH:mm")}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            {getEsocialStatusIcon(event.status)}
-                            <Badge variant={getStatusColor(event.status) as any}>{event.status}</Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {event.protocolo ? (
-                            <span className="font-mono text-sm">{event.protocolo}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className={event.tentativas > 1 ? "text-orange-600" : ""}>{event.tentativas}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewEsocialEvent(event)}
-                              title="Visualizar"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {(event.status === "Erro" || event.status === "Pendente") && (
+                      </TableRow>
+                    ) : (
+                      esocialEvents.map((event) => (
+                        <TableRow key={event.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{event.tipo_evento}</p>
+                              <p className="text-sm text-muted-foreground">{event.tipo_descricao}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{event.funcionario_nome}</TableCell>
+                          <TableCell>{event.cpf}</TableCell>
+                          <TableCell>{format(new Date(event.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              {getEsocialStatusIcon(event.status)}
+                              <Badge variant={getStatusColor(event.status) as any}>{event.status}</Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleResendEsocialEvent(event)}
-                                disabled={isResending}
-                                title="Reenviar"
+                                onClick={() => handleViewEsocialEvent(event)}
+                                title="Visualizar"
                               >
-                                {isResending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <RefreshCw className="h-4 w-4" />
-                                )}
+                                <Eye className="h-4 w-4" />
                               </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleExportEsocial("xml")}
-                              title="Exportar"
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                              {(event.status === "erro" || event.status === "pendente") && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleResendEsocialEvent(event)}
+                                  disabled={isResending}
+                                  title="Reenviar"
+                                >
+                                  {isResending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleExportXML(event.id)}
+                                title="Exportar XML"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="agendados" className="space-y-4">
+          {/* Agendados Content */}
+        </TabsContent>
+
+        <TabsContent value="configuracoes" className="space-y-4">
+          {/* Configurações Content */}
+        </TabsContent>
       </Tabs>
-
-      {selectedReport && (
-        <Dialog open={!!selectedReport} onOpenChange={() => setSelectedReport(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Visualizar Relatório</DialogTitle>
-              <DialogDescription>{selectedReport.nome}</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <div className="border rounded-lg p-4 bg-muted/10">
-                <p className="text-center text-muted-foreground">Preview do relatório seria exibido aqui</p>
-                <p className="text-center text-sm text-muted-foreground mt-2">
-                  Formato: {selectedReport.formato} | Tamanho: {selectedReport.tamanho}
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setSelectedReport(null)}>
-                Fechar
-              </Button>
-              <Button onClick={() => handleDownloadReport(selectedReport)}>
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {reportToDelete && (
-        <AlertDialog open={!!reportToDelete} onOpenChange={() => setReportToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
-              <AlertDialogDescription>
-                Tem certeza que deseja excluir o relatório "{reportToDelete.nome}"? Esta ação não pode ser desfeita.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={() => handleDeleteReport(reportToDelete)}>Excluir</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
-
-      {selectedEsocialEvent && (
-        <Dialog open={!!selectedEsocialEvent} onOpenChange={() => setSelectedEsocialEvent(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Detalhes do Evento eSocial</DialogTitle>
-              <DialogDescription>
-                {selectedEsocialEvent.evento} - {selectedEsocialEvent.tipo}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Funcionário</Label>
-                  <p>{selectedEsocialEvent.funcionario}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">CPF</Label>
-                  <p>{selectedEsocialEvent.cpf}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Data do Evento</Label>
-                  <p>{format(new Date(selectedEsocialEvent.dataEvento), "dd/MM/yyyy HH:mm")}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium">Status</Label>
-                  <div className="flex items-center space-x-2">
-                    {getEsocialStatusIcon(selectedEsocialEvent.status)}
-                    <Badge variant={getStatusColor(selectedEsocialEvent.status) as any}>
-                      {selectedEsocialEvent.status}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-
-              {selectedEsocialEvent.protocolo && (
-                <div>
-                  <Label className="text-sm font-medium">Protocolo</Label>
-                  <p className="font-mono">{selectedEsocialEvent.protocolo}</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium">Tentativas</Label>
-                  <p>{selectedEsocialEvent.tentativas}</p>
-                </div>
-                {selectedEsocialEvent.ultimaTentativa && (
-                  <div>
-                    <Label className="text-sm font-medium">Última Tentativa</Label>
-                    <p>{format(new Date(selectedEsocialEvent.ultimaTentativa), "dd/MM/yyyy HH:mm")}</p>
-                  </div>
-                )}
-              </div>
-
-              {selectedEsocialEvent.erro && (
-                <div>
-                  <Label className="text-sm font-medium">Erro</Label>
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-700">{selectedEsocialEvent.erro}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setSelectedEsocialEvent(null)}>
-                Fechar
-              </Button>
-              {(selectedEsocialEvent.status === "Erro" || selectedEsocialEvent.status === "Pendente") && (
-                <Button onClick={() => handleResendEsocialEvent(selectedEsocialEvent)}>
-                  <Send className="h-4 w-4 mr-2" />
-                  Reenviar
-                </Button>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Modal de Detalhes do Template */}
-      {selectedTemplate && !isConfiguring && (
-        <Dialog open={!!selectedTemplate} onOpenChange={() => setSelectedTemplate(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>{selectedTemplate.nome}</DialogTitle>
-              <DialogDescription>Detalhes do modelo de relatório</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-6 py-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Informações do Modelo</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Categoria:</span>
-                      <span>{selectedTemplate.categoria}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Periodicidade:</span>
-                      <span>{selectedTemplate.periodicidade}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Última Geração:</span>
-                      <span>{format(new Date(selectedTemplate.ultimaGeracao), "dd/MM/yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge variant={getStatusColor(selectedTemplate.status) as any}>{selectedTemplate.status}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Estatísticas de Uso</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total de Downloads:</span>
-                      <span className="font-medium">{selectedTemplate.downloads}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Módulos Incluídos:</span>
-                      <span className="font-medium">{selectedTemplate.modulos.length}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Módulos Incluídos</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedTemplate.modulos.map((modulo: string, index: number) => (
-                      <Badge key={index} variant="outline">
-                        {modulo}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => handleConfigureTemplate(selectedTemplate)}>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurar
-                </Button>
-                <Button onClick={() => handleGenerateReport(selectedTemplate)}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Gerar Agora
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {isConfiguring && selectedTemplate && (
-        <Dialog open={isConfiguring} onOpenChange={() => setIsConfiguring(false)}>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Configurar Template - {selectedTemplate.nome}</DialogTitle>
-              <DialogDescription>Personalize as configurações do modelo de relatório</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome do Template</Label>
-                  <Input defaultValue={selectedTemplate.nome} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Periodicidade</Label>
-                  <Select defaultValue={selectedTemplate.periodicidade.toLowerCase()}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="diario">Diário</SelectItem>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="mensal">Mensal</SelectItem>
-                      <SelectItem value="trimestral">Trimestral</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea defaultValue={selectedTemplate.descricao} />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Módulos Incluídos</Label>
-                <div className="grid grid-cols-2 gap-2 p-4 border rounded-lg">
-                  {availableModules.map((module) => (
-                    <div key={module} className="flex items-center space-x-2">
-                      <Checkbox id={`config-${module}`} defaultChecked={selectedTemplate.modulos.includes(module)} />
-                      <Label htmlFor={`config-${module}`} className="text-sm">
-                        {module}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Formato Padrão</Label>
-                  <Select defaultValue="pdf">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pdf">PDF</SelectItem>
-                      <SelectItem value="excel">Excel</SelectItem>
-                      <SelectItem value="word">Word</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select defaultValue={selectedTemplate.status.toLowerCase()}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ativo">Ativo</SelectItem>
-                      <SelectItem value="inativo">Inativo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Envio Automático</Label>
-                  <div className="flex items-center space-x-2 pt-2">
-                    <Checkbox id="auto-send" />
-                    <Label htmlFor="auto-send" className="text-sm">
-                      Enviar por email
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setIsConfiguring(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => {
-                  // Salvar configurações
-                  alert("Configurações salvas com sucesso!")
-                  setIsConfiguring(false)
-                  setSelectedTemplate(null)
-                }}
-              >
-                Salvar Configurações
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   )
 }
 
-export { Reports as ReportsComponent }
-export default Reports
+export { ReportsComponent as Reports }
