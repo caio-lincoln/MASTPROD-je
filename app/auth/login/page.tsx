@@ -147,7 +147,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <div className="text-center text-xs text-muted-foreground">
-            <p>© 2024 Sistema SST. Todos os direitos reservados.</p>
+            <p>© 2025 Sistema SST MASTPROD. Todos os direitos reservados.</p>
           </div>
         </div>
       </div>
