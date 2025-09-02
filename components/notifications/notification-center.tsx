@@ -10,6 +10,7 @@ import { Bell, Check, CheckCheck, AlertTriangle, Info, Clock, Settings } from "l
 import { createClient } from "@/lib/supabase/client"
 import { useCompany } from "@/contexts/company-context"
 import { cn } from "@/lib/utils"
+import { getTimeDifference } from "@/lib/utils/date-utils"
 
 interface Notification {
   id: string
@@ -118,19 +119,19 @@ export function NotificationCenter() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+  // const formatDate = (dateString: string) => {
+  //   const date = new Date(dateString)
+  //   const now = new Date()
+  //   const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
 
-    if (diffInHours < 1) return "Agora há pouco"
-    if (diffInHours < 24) return `${diffInHours}h atrás`
+  //   if (diffInHours < 1) return "Agora há pouco"
+  //   if (diffInHours < 24) return `${diffInHours}h atrás`
 
-    const diffInDays = Math.floor(diffInHours / 24)
-    if (diffInDays < 7) return `${diffInDays}d atrás`
+  //   const diffInDays = Math.floor(diffInHours / 24)
+  //   if (diffInDays < 7) return `${diffInDays}d atrás`
 
-    return date.toLocaleDateString("pt-BR")
-  }
+  //   return date.toLocaleDateString("pt-BR")
+  // }
 
   useEffect(() => {
     loadNotifications()
@@ -202,7 +203,9 @@ export function NotificationCenter() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{notification.mensagem}</p>
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-muted-foreground">{formatDate(notification.data_criacao)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {getTimeDifference(notification.data_criacao)}
+                        </span>
                         <Badge variant="outline" className="text-xs">
                           {notification.tipo}
                         </Badge>

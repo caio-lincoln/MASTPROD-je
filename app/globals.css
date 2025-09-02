@@ -2,7 +2,6 @@
 @import "tw-animate-css";
 
 :root {
-  /* Converting OKLCH to HSL for better LightningCSS compatibility */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -39,7 +38,6 @@
 }
 
 .dark {
-  /* Converting dark mode colors to HSL format */
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
@@ -120,5 +118,11 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
   }
 }

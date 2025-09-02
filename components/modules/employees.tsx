@@ -24,6 +24,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useCompany } from "@/contexts/company-context"
 import { useLoading } from "@/hooks/use-loading"
 import { createClient } from "@/lib/supabase/client"
+import { formatDateSafe, isValidDate } from "@/lib/utils/date-utils"
 
 interface Employee {
   id: string
@@ -114,11 +115,15 @@ export function Employees() {
     if (!formData.data_nascimento) {
       errors.data_nascimento = "Data de nascimento é obrigatória"
     } else {
-      const birthDate = new Date(formData.data_nascimento)
-      const today = new Date()
-      const age = today.getFullYear() - birthDate.getFullYear()
-      if (age < 14) {
-        errors.data_nascimento = "Funcionário deve ter pelo menos 14 anos"
+      if (!isValidDate(formData.data_nascimento)) {
+        errors.data_nascimento = "Data de nascimento inválida"
+      } else {
+        const birthDate = new Date(formData.data_nascimento)
+        const today = new Date()
+        const age = today.getFullYear() - birthDate.getFullYear()
+        if (age < 14) {
+          errors.data_nascimento = "Funcionário deve ter pelo menos 14 anos"
+        }
       }
     }
 
@@ -479,7 +484,7 @@ export function Employees() {
                 )}
                 <div>
                   <Label className="text-sm font-medium">Data de Nascimento</Label>
-                  <p className="text-sm">{new Date(selectedEmployee.data_nascimento).toLocaleDateString("pt-BR")}</p>
+                  <p className="text-sm">{formatDateSafe(selectedEmployee.data_nascimento)}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Setor</Label>
