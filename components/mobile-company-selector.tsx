@@ -20,6 +20,14 @@ export function MobileCompanySelector() {
     )
   }
 
+  if (companies.length === 0) {
+    return (
+      <Button variant="ghost" size="sm" className="h-9 w-9 p-0" disabled title="Nenhuma empresa encontrada">
+        <Building2 className="h-4 w-4 text-muted-foreground" />
+      </Button>
+    )
+  }
+
   const getCompanyInitials = (name: string) => {
     return name
       .split(" ")

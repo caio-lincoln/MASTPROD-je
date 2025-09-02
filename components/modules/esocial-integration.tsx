@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
 import {
   Dialog,
   DialogContent,
@@ -32,150 +31,39 @@ import {
   Download,
   Upload,
   AlertCircle,
+  MoreHorizontal,
+  Eye,
 } from "lucide-react"
 import { format } from "date-fns"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-const eventDataByCompany = {
-  "1": [
-    {
-      id: 1,
-      evento: "S-2220",
-      descricao: "Monitoramento da Saúde do Trabalhador",
-      funcionario: "João Silva",
-      cpf: "123.456.789-00",
-      dataEvento: "2024-12-15",
-      dataEnvio: "2024-12-16T10:30:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000001",
-      retorno: "Sucesso",
-      companyId: "1",
-    },
-    {
-      id: 2,
-      evento: "S-2240",
-      descricao: "Condições Ambientais do Trabalho - Agentes Nocivos",
-      funcionario: "Maria Santos",
-      cpf: "987.654.321-00",
-      dataEvento: "2024-12-14",
-      dataEnvio: "2024-12-15T14:15:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000002",
-      retorno: "Sucesso",
-      companyId: "1",
-    },
-    {
-      id: 3,
-      evento: "S-2220",
-      descricao: "Monitoramento da Saúde do Trabalhador",
-      funcionario: "Pedro Oliveira",
-      cpf: "456.789.123-00",
-      dataEvento: "2024-12-16",
-      dataEnvio: null,
-      status: "Pendente",
-      protocolo: null,
-      retorno: null,
-      companyId: "1",
-    },
-  ],
-  "2": [
-    {
-      id: 4,
-      evento: "S-2240",
-      descricao: "Condições Ambientais do Trabalho - Agentes Nocivos",
-      funcionario: "Ana Costa",
-      cpf: "789.123.456-00",
-      dataEvento: "2024-12-13",
-      dataEnvio: "2024-12-14T09:45:00",
-      status: "Erro",
-      protocolo: null,
-      retorno: "Erro de validação - CPF inválido",
-      companyId: "2",
-    },
-    {
-      id: 5,
-      evento: "S-2210",
-      descricao: "Comunicação de Acidente de Trabalho",
-      funcionario: "Carlos Santos",
-      cpf: "321.654.987-00",
-      dataEvento: "2024-12-12",
-      dataEnvio: "2024-12-13T11:20:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000003",
-      retorno: "Sucesso",
-      companyId: "2",
-    },
-  ],
-  "3": [
-    {
-      id: 6,
-      evento: "S-2220",
-      descricao: "Monitoramento da Saúde do Trabalhador",
-      funcionario: "Lucia Mendes",
-      cpf: "654.321.987-00",
-      dataEvento: "2024-12-11",
-      dataEnvio: "2024-12-12T16:45:00",
-      status: "Enviado",
-      protocolo: "1.2.202412.0000004",
-      retorno: "Sucesso",
-      companyId: "3",
-    },
-    {
-      id: 7,
-      evento: "S-2240",
-      descricao: "Condições Ambientais do Trabalho - Agentes Nocivos",
-      funcionario: "Roberto Silva",
-      cpf: "147.258.369-00",
-      dataEvento: "2024-12-10",
-      dataEnvio: null,
-      status: "Pendente",
-      protocolo: null,
-      retorno: null,
-      companyId: "3",
-    },
-  ],
+import { createClient } from "@/lib/supabase/client"
+import { useEffect } from "react"
+
+interface ESocialEvent {
+  id: number
+  evento: string
+  descricao: string
+  funcionario_nome: string
+  funcionario_cpf: string
+  data_evento: string
+  data_envio: string | null
+  status: "Enviado" | "Pendente" | "Erro"
+  protocolo: string | null
+  retorno: string | null
+  empresa_id: string
 }
 
-const getEventTypesForCompany = (events: any[]) => {
-  const eventTypes = [
-    {
-      codigo: "S-2220",
-      nome: "Monitoramento da Saúde do Trabalhador",
-      descricao: "Informações sobre exames médicos ocupacionais",
-      obrigatorio: true,
-      prazo: "Até o dia 15 do mês seguinte",
-    },
-    {
-      codigo: "S-2240",
-      nome: "Condições Ambientais do Trabalho",
-      descricao: "Informações sobre agentes nocivos e fatores de risco",
-      obrigatorio: true,
-      prazo: "Até o dia 15 do mês seguinte",
-    },
-    {
-      codigo: "S-2210",
-      nome: "Comunicação de Acidente de Trabalho",
-      descricao: "Registro de acidentes e doenças ocupacionais",
-      obrigatorio: true,
-      prazo: "Até o 1º dia útil seguinte",
-    },
-  ]
-
-  return eventTypes
-    .map((eventType) => {
-      const typeEvents = events.filter((event) => event.evento === eventType.codigo)
-      const enviados = typeEvents.filter((event) => event.status === "Enviado").length
-      const pendentes = typeEvents.filter((event) => event.status === "Pendente").length
-      const erros = typeEvents.filter((event) => event.status === "Erro").length
-
-      return {
-        ...eventType,
-        total: typeEvents.length,
-        enviados,
-        pendentes,
-        erros,
-      }
-    })
-    .filter((eventType) => eventType.total > 0) // Only show event types that have events
+interface EventType {
+  codigo: string
+  nome: string
+  descricao: string
+  obrigatorio: boolean
+  prazo: string
+  total: number
+  enviados: number
+  pendentes: number
+  erros: number
 }
 
 const getStatusColor = (status: string) => {
@@ -210,16 +98,164 @@ const getStatusIcon = (status: string) => {
 
 export function ESocialIntegration() {
   const { selectedCompany } = useCompany()
-  const [selectedEvent, setSelectedEvent] = useState<any>(null)
+  const [selectedEvent, setSelectedEvent] = useState<ESocialEvent | null>(null)
+  const [events, setEvents] = useState<ESocialEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const eventData = selectedCompany ? eventDataByCompany[selectedCompany.id] || [] : []
-  const eventTypes = getEventTypesForCompany(eventData)
+  const supabase = createClient()
 
+  const loadEvents = async () => {
+    if (!selectedCompany) {
+      setEvents([])
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const { data, error: supabaseError } = await supabase
+        .from("eventos_esocial")
+        .select(`
+          *,
+          funcionarios (
+            nome,
+            cpf
+          )
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .order("data_evento", { ascending: false })
+
+      if (supabaseError) throw supabaseError
+
+      const transformedEvents: ESocialEvent[] = (data || []).map((event) => ({
+        id: event.id,
+        evento: event.tipo_evento,
+        descricao: getEventDescription(event.tipo_evento),
+        funcionario_nome: event.funcionarios?.nome || "N/A",
+        funcionario_cpf: event.funcionarios?.cpf || "N/A",
+        data_evento: event.data_evento,
+        data_envio: event.data_envio,
+        status: event.status as "Enviado" | "Pendente" | "Erro",
+        protocolo: event.protocolo,
+        retorno: event.retorno,
+        empresa_id: event.empresa_id,
+      }))
+
+      setEvents(transformedEvents)
+    } catch (err) {
+      console.error("Erro ao carregar eventos eSocial:", err)
+      setError("Erro ao carregar eventos eSocial")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getEventDescription = (tipoEvento: string): string => {
+    const descriptions: Record<string, string> = {
+      "S-2220": "Monitoramento da Saúde do Trabalhador",
+      "S-2240": "Condições Ambientais do Trabalho - Agentes Nocivos",
+      "S-2210": "Comunicação de Acidente de Trabalho",
+    }
+    return descriptions[tipoEvento] || tipoEvento
+  }
+
+  const getEventTypes = (events: ESocialEvent[]): EventType[] => {
+    const eventTypes = [
+      {
+        codigo: "S-2220",
+        nome: "Monitoramento da Saúde do Trabalhador",
+        descricao: "Informações sobre exames médicos ocupacionais",
+        obrigatorio: true,
+        prazo: "Até o dia 15 do mês seguinte",
+      },
+      {
+        codigo: "S-2240",
+        nome: "Condições Ambientais do Trabalho",
+        descricao: "Informações sobre agentes nocivos e fatores de risco",
+        obrigatorio: true,
+        prazo: "Até o dia 15 do mês seguinte",
+      },
+      {
+        codigo: "S-2210",
+        nome: "Comunicação de Acidente de Trabalho",
+        descricao: "Registro de acidentes e doenças ocupacionais",
+        obrigatorio: true,
+        prazo: "Até o 1º dia útil seguinte",
+      },
+    ]
+
+    return eventTypes
+      .map((eventType) => {
+        const typeEvents = events.filter((event) => event.evento === eventType.codigo)
+        const enviados = typeEvents.filter((event) => event.status === "Enviado").length
+        const pendentes = typeEvents.filter((event) => event.status === "Pendente").length
+        const erros = typeEvents.filter((event) => event.status === "Erro").length
+
+        return {
+          ...eventType,
+          total: typeEvents.length,
+          enviados,
+          pendentes,
+          erros,
+        }
+      })
+      .filter((eventType) => eventType.total > 0)
+  }
+
+  const handleGenerateEvent = async (tipoEvento: string) => {
+    if (!selectedCompany) return
+
+    try {
+      const { error } = await supabase.rpc("gerar_evento_esocial", {
+        p_empresa_id: selectedCompany.id,
+        p_tipo_evento: tipoEvento,
+      })
+
+      if (error) throw error
+
+      // Recarregar eventos após gerar
+      await loadEvents()
+    } catch (err) {
+      console.error("Erro ao gerar evento:", err)
+      setError("Erro ao gerar evento")
+    }
+  }
+
+  const handleResendEvent = async (eventId: number) => {
+    try {
+      const { error } = await supabase
+        .from("eventos_esocial")
+        .update({
+          status: "Pendente",
+          data_envio: null,
+          protocolo: null,
+          retorno: null,
+        })
+        .eq("id", eventId)
+
+      if (error) throw error
+
+      // Recarregar eventos após reenviar
+      await loadEvents()
+    } catch (err) {
+      console.error("Erro ao reenviar evento:", err)
+      setError("Erro ao reenviar evento")
+    }
+  }
+
+  useEffect(() => {
+    loadEvents()
+  }, [selectedCompany])
+
+  const eventTypes = getEventTypes(events)
   const stats = {
-    totalEvents: eventData.length,
-    enviados: eventData.filter((event) => event.status === "Enviado").length,
-    pendentes: eventData.filter((event) => event.status === "Pendente").length,
-    erros: eventData.filter((event) => event.status === "Erro").length,
+    totalEvents: events.length,
+    enviados: events.filter((event) => event.status === "Enviado").length,
+    pendentes: events.filter((event) => event.status === "Pendente").length,
+    erros: events.filter((event) => event.status === "Erro").length,
   }
 
   if (!selectedCompany) {
@@ -248,6 +284,38 @@ export function ESocialIntegration() {
             </div>
           </CardContent>
         </Card>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Integração eSocial</h2>
+        </div>
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Carregando eventos eSocial...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Integração eSocial</h2>
+        </div>
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">{error}</p>
+            <Button onClick={loadEvents}>Tentar Novamente</Button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -470,87 +538,78 @@ export function ESocialIntegration() {
                 </Button>
               </div>
 
-              {eventData.length === 0 ? (
-                <div className="text-center py-8">
-                  <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Nenhum evento encontrado</h3>
-                  <p className="text-muted-foreground">
-                    Não há eventos eSocial cadastrados para {selectedCompany.name}
-                  </p>
-                </div>
-              ) : (
+              <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Evento</TableHead>
                       <TableHead>Funcionário</TableHead>
-                      <TableHead>CPF</TableHead>
-                      <TableHead>Data Evento</TableHead>
-                      <TableHead>Data Envio</TableHead>
+                      <TableHead>Data do Evento</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Protocolo</TableHead>
-                      <TableHead>Ações</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {eventData.map((event) => (
+                    {events.map((event) => (
                       <TableRow key={event.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{event.evento}</p>
-                            <p className="text-sm text-muted-foreground">{event.descricao}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">{event.funcionario}</TableCell>
-                        <TableCell>{event.cpf}</TableCell>
-                        <TableCell>{format(new Date(event.dataEvento), "dd/MM/yyyy")}</TableCell>
-                        <TableCell>
-                          {event.dataEnvio ? (
-                            <div>
-                              <p>{format(new Date(event.dataEnvio), "dd/MM/yyyy")}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {format(new Date(event.dataEnvio), "HH:mm")}
-                              </p>
-                            </div>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            {getStatusIcon(event.status)}
-                            <Badge variant={getStatusColor(event.status) as any}>{event.status}</Badge>
+                            <div className="font-medium">{event.evento}</div>
+                            <div className="text-sm text-muted-foreground">{event.descricao}</div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          {event.protocolo ? (
-                            <Badge variant="outline">{event.protocolo}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                          <div>
+                            <div className="font-medium">{event.funcionario_nome}</div>
+                            <div className="text-sm text-muted-foreground">{event.funcionario_cpf}</div>
+                          </div>
                         </TableCell>
+                        <TableCell>{new Date(event.data_evento).toLocaleDateString("pt-BR")}</TableCell>
                         <TableCell>
-                          <div className="flex space-x-2">
-                            <Button variant="ghost" size="sm" onClick={() => setSelectedEvent(event)}>
-                              <FileText className="h-4 w-4" />
-                            </Button>
-                            {event.status === "Pendente" && (
-                              <Button variant="ghost" size="sm">
-                                <Send className="h-4 w-4" />
+                          <Badge
+                            variant={
+                              event.status === "Enviado"
+                                ? "default"
+                                : event.status === "Pendente"
+                                  ? "secondary"
+                                  : "destructive"
+                            }
+                          >
+                            {event.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{event.protocolo || "-"}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
                               </Button>
-                            )}
-                            {event.status === "Erro" && (
-                              <Button variant="ghost" size="sm">
-                                <RefreshCw className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setSelectedEvent(event)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                Visualizar
+                              </DropdownMenuItem>
+                              {event.status === "Erro" && (
+                                <DropdownMenuItem onClick={() => handleResendEvent(event.id)}>
+                                  <RefreshCw className="mr-2 h-4 w-4" />
+                                  Reenviar
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem>
+                                <Download className="mr-2 h-4 w-4" />
+                                Exportar XML
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -562,73 +621,34 @@ export function ESocialIntegration() {
               <CardDescription>Configuração e status dos eventos SST de {selectedCompany.name}</CardDescription>
             </CardHeader>
             <CardContent>
-              {eventTypes.length === 0 ? (
-                <div className="text-center py-8">
-                  <Database className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-muted-foreground">Nenhum tipo de evento disponível para {selectedCompany.name}</p>
-                </div>
-              ) : (
-                <div className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Tipos de Eventos Disponíveis</h3>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {eventTypes.map((eventType) => (
-                    <div key={eventType.codigo} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg flex items-center space-x-2">
-                            <span>{eventType.codigo}</span>
-                            {eventType.obrigatorio && <Badge variant="destructive">Obrigatório</Badge>}
-                          </h3>
-                          <p className="text-lg font-medium">{eventType.nome}</p>
-                          <p className="text-sm text-muted-foreground mb-2">{eventType.descricao}</p>
-                          <p className="text-sm text-muted-foreground">⏰ Prazo: {eventType.prazo}</p>
+                    <Card key={eventType.codigo}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm font-medium">{eventType.codigo}</CardTitle>
+                          <Button size="sm" onClick={() => handleGenerateEvent(eventType.codigo)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Gerar
+                          </Button>
                         </div>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-4">
-                        <div className="text-center p-3 bg-muted rounded-lg">
-                          <div className="text-2xl font-bold">{eventType.total}</div>
-                          <p className="text-sm text-muted-foreground">Total</p>
+                        <CardDescription className="text-xs">{eventType.nome}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-xs text-muted-foreground mb-3">{eventType.descricao}</div>
+                        <div className="flex justify-between text-xs">
+                          <span>Total: {eventType.total}</span>
+                          <span className="text-green-600">Enviados: {eventType.enviados}</span>
+                          <span className="text-yellow-600">Pendentes: {eventType.pendentes}</span>
+                          <span className="text-red-600">Erros: {eventType.erros}</span>
                         </div>
-                        <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-                          <div className="text-2xl font-bold text-green-600">{eventType.enviados}</div>
-                          <p className="text-sm text-muted-foreground">Enviados</p>
-                        </div>
-                        <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
-                          <div className="text-2xl font-bold text-yellow-600">{eventType.pendentes}</div>
-                          <p className="text-sm text-muted-foreground">Pendentes</p>
-                        </div>
-                        <div className="text-center p-3 bg-red-50 dark:bg-red-950 rounded-lg">
-                          <div className="text-2xl font-bold text-red-600">{eventType.erros}</div>
-                          <p className="text-sm text-muted-foreground">Erros</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>Progresso de Envio</span>
-                          <span>
-                            {eventType.total > 0 ? Math.round((eventType.enviados / eventType.total) * 100) : 0}%
-                          </span>
-                        </div>
-                        <Progress
-                          value={eventType.total > 0 ? (eventType.enviados / eventType.total) * 100 : 0}
-                          className="h-2"
-                        />
-                      </div>
-
-                      <div className="flex justify-end space-x-2 mt-4">
-                        <Button variant="outline" size="sm">
-                          <Settings className="h-4 w-4 mr-1" />
-                          Configurar
-                        </Button>
-                        <Button size="sm">
-                          <Send className="h-4 w-4 mr-1" />
-                          Enviar Pendentes
-                        </Button>
-                      </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -941,15 +961,15 @@ export function ESocialIntegration() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Funcionário:</span>
-                      <span>{selectedEvent.funcionario}</span>
+                      <span>{selectedEvent.funcionario_nome}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">CPF:</span>
-                      <span>{selectedEvent.cpf}</span>
+                      <span>{selectedEvent.funcionario_cpf}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Data do Evento:</span>
-                      <span>{format(new Date(selectedEvent.dataEvento), "dd/MM/yyyy")}</span>
+                      <span>{format(new Date(selectedEvent.data_evento), "dd/MM/yyyy")}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Status:</span>
@@ -966,8 +986,8 @@ export function ESocialIntegration() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Data de Envio:</span>
                       <span>
-                        {selectedEvent.dataEnvio
-                          ? format(new Date(selectedEvent.dataEnvio), "dd/MM/yyyy HH:mm")
+                        {selectedEvent.data_envio
+                          ? format(new Date(selectedEvent.data_envio), "dd/MM/yyyy HH:mm")
                           : "Não enviado"}
                       </span>
                     </div>
@@ -1004,7 +1024,7 @@ export function ESocialIntegration() {
       <nrInsc>12345678000190</nrInsc>
     </ideEmpregador>
     <ideTrabalhador>
-      <cpfTrab>${selectedEvent.cpf.replace(/\D/g, "")}</cpfTrab>
+      <cpfTrab>${selectedEvent.funcionario_cpf.replace(/\D/g, "")}</cpfTrab>
     </ideTrabalhador>
     <!-- Dados específicos do evento -->
   </evtMonit>

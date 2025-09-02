@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -35,314 +36,313 @@ import {
   Clock,
   Archive,
   AlertCircle,
+  MoreHorizontal,
 } from "lucide-react"
 import { format } from "date-fns"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-const documentDataByCompany = {
-  "1": [
-    {
-      id: 1,
-      nome: "PGR - Programa de Gerenciamento de Riscos 2024",
-      categoria: "Programa",
-      tipo: "PDF",
-      tamanho: "2.5 MB",
-      versao: "3.1",
-      dataUpload: "2024-01-15",
-      dataVencimento: "2025-01-15",
-      status: "Ativo",
-      responsavel: "João Santos",
-      downloads: 45,
-      visualizacoes: 128,
-      companyId: "1",
-    },
-    {
-      id: 2,
-      nome: "PCMSO - Programa de Controle Médico 2024",
-      categoria: "Programa",
-      tipo: "PDF",
-      tamanho: "1.8 MB",
-      versao: "2.3",
-      dataUpload: "2024-02-10",
-      dataVencimento: "2025-02-10",
-      status: "Ativo",
-      responsavel: "Maria Silva",
-      downloads: 32,
-      visualizacoes: 89,
-      companyId: "1",
-    },
-    {
-      id: 3,
-      nome: "NR-35 - Trabalho em Altura",
-      categoria: "Norma Regulamentadora",
-      tipo: "PDF",
-      tamanho: "850 KB",
-      versao: "1.0",
-      dataUpload: "2024-03-05",
-      dataVencimento: "2025-12-31",
-      status: "Ativo",
-      responsavel: "Carlos Lima",
-      downloads: 67,
-      visualizacoes: 156,
-      companyId: "1",
-    },
-  ],
-  "2": [
-    {
-      id: 4,
-      nome: "Procedimento de Emergência - Incêndio",
-      categoria: "Procedimento",
-      tipo: "DOCX",
-      tamanho: "1.2 MB",
-      versao: "2.0",
-      dataUpload: "2024-01-20",
-      dataVencimento: "2024-12-20",
-      status: "Vencendo",
-      responsavel: "Ana Costa",
-      downloads: 23,
-      visualizacoes: 78,
-      companyId: "2",
-    },
-    {
-      id: 5,
-      nome: "Manual de EPI - Equipamentos de Proteção",
-      categoria: "Manual",
-      tipo: "PDF",
-      tamanho: "3.2 MB",
-      versao: "1.5",
-      dataUpload: "2023-11-15",
-      dataVencimento: "2024-11-15",
-      status: "Vencido",
-      responsavel: "Pedro Oliveira",
-      downloads: 89,
-      visualizacoes: 234,
-      companyId: "2",
-    },
-    {
-      id: 6,
-      nome: "NR-33 - Espaços Confinados",
-      categoria: "Norma Regulamentadora",
-      tipo: "PDF",
-      tamanho: "1.1 MB",
-      versao: "2.1",
-      dataUpload: "2024-04-12",
-      dataVencimento: "2025-04-12",
-      status: "Ativo",
-      responsavel: "Roberto Costa",
-      downloads: 34,
-      visualizacoes: 92,
-      companyId: "2",
-    },
-  ],
-  "3": [
-    {
-      id: 7,
-      nome: "NR-12 - Segurança em Máquinas",
-      categoria: "Norma Regulamentadora",
-      tipo: "PDF",
-      tamanho: "2.1 MB",
-      versao: "1.8",
-      dataUpload: "2024-05-08",
-      dataVencimento: "2025-05-08",
-      status: "Ativo",
-      responsavel: "Ana Ferreira",
-      downloads: 28,
-      visualizacoes: 76,
-      companyId: "3",
-    },
-    {
-      id: 8,
-      nome: "Manual de Operação - Prensas",
-      categoria: "Manual",
-      tipo: "PDF",
-      tamanho: "4.2 MB",
-      versao: "3.0",
-      dataUpload: "2024-03-22",
-      dataVencimento: "2025-03-22",
-      status: "Ativo",
-      responsavel: "Carlos Machado",
-      downloads: 41,
-      visualizacoes: 118,
-      companyId: "3",
-    },
-  ],
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+
+interface Document {
+  id: string
+  titulo: string
+  categoria: string
+  tipo: string
+  tamanho: string
+  versao: string
+  validade?: string
+  arquivo_url?: string
+  responsavel: string
+  downloads: number
+  visualizacoes: number
+  status: "Ativo" | "Vencendo" | "Vencido"
+  criado_em: string
 }
 
-const getCategoryDataForCompany = (documents: any[]) => {
-  const categories = [
-    { nome: "Programas", icone: FolderOpen },
-    { nome: "Normas Regulamentadoras", icone: FileText },
-    { nome: "Procedimentos", icone: File },
-    { nome: "Manuais", icone: FileText },
-    { nome: "Formulários", icone: File },
-    { nome: "Certificados", icone: FileText },
-  ]
-
-  return categories.map((category) => ({
-    ...category,
-    quantidade: documents.filter((doc) => {
-      switch (category.nome) {
-        case "Programas":
-          return doc.categoria === "Programa"
-        case "Normas Regulamentadoras":
-          return doc.categoria === "Norma Regulamentadora"
-        case "Procedimentos":
-          return doc.categoria === "Procedimento"
-        case "Manuais":
-          return doc.categoria === "Manual"
-        case "Formulários":
-          return doc.categoria === "Formulário"
-        case "Certificados":
-          return doc.categoria === "Certificado"
-        default:
-          return false
-      }
-    }).length,
-  }))
-}
-
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "Ativo":
-      return "default"
-    case "Vencendo":
-      return "secondary"
-    case "Vencido":
-      return "destructive"
-    case "Arquivado":
-      return "outline"
-    default:
-      return "secondary"
-  }
-}
-
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case "Ativo":
-      return <CheckCircle className="h-4 w-4 text-green-500" />
-    case "Vencendo":
-      return <Clock className="h-4 w-4 text-yellow-500" />
-    case "Vencido":
-      return <AlertTriangle className="h-4 w-4 text-red-500" />
-    case "Arquivado":
-      return <Archive className="h-4 w-4 text-muted-foreground" />
-    default:
-      return <File className="h-4 w-4" />
-  }
-}
-
-const getFileIcon = (tipo: string) => {
-  switch (tipo.toLowerCase()) {
-    case "pdf":
-      return "📄"
-    case "docx":
-    case "doc":
-      return "📝"
-    case "xlsx":
-    case "xls":
-      return "📊"
-    case "pptx":
-    case "ppt":
-      return "📋"
-    default:
-      return "📁"
-  }
-}
-
-export function DigitalLibrary() {
+export default function DigitalLibraryComponent() {
   const { selectedCompany } = useCompany()
-  const [selectedDocument, setSelectedDocument] = useState<any>(null)
+  const [documents, setDocuments] = useState<Document[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState("Todos")
+  const [isNewDocumentDialogOpen, setIsNewDocumentDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editingDocument, setEditingDocument] = useState<any>(null)
+  const [editingDocument, setEditingDocument] = useState<Document | null>(null)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
   const [editFormData, setEditFormData] = useState({
-    nome: "",
+    titulo: "",
     categoria: "",
     versao: "",
-    dataVencimento: "",
+    validade: "",
     responsavel: "",
-    descricao: "",
-    tags: "",
   })
 
-  const documentData = selectedCompany ? documentDataByCompany[selectedCompany.id] || [] : []
-  const categoryData = getCategoryDataForCompany(documentData)
+  const supabase = createClientComponentClient()
 
-  const filteredDocuments = documentData.filter(
-    (doc) =>
-      doc.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.categoria.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const loadDocuments = async () => {
+    if (!selectedCompany) {
+      setDocuments([])
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from("documentos")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("criado_em", { ascending: false })
+
+      if (error) {
+        console.error("Erro ao carregar documentos:", error)
+        return
+      }
+
+      setDocuments(data || [])
+    } catch (error) {
+      console.error("Erro ao carregar documentos:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDocuments()
+  }, [selectedCompany])
+
+  const handleSaveNewDocument = async (formData: any) => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("documentos")
+        .insert([
+          {
+            empresa_id: selectedCompany.id,
+            titulo: formData.titulo,
+            categoria: formData.categoria,
+            tipo: formData.tipo || "PDF",
+            tamanho: formData.tamanho || "0 KB",
+            versao: formData.versao,
+            validade: formData.validade || null,
+            responsavel: formData.responsavel,
+            downloads: 0,
+            visualizacoes: 0,
+            status: "Ativo",
+          },
+        ])
+        .select()
+
+      if (error) {
+        console.error("Erro ao salvar documento:", error)
+        return
+      }
+
+      await loadDocuments()
+      setIsNewDocumentDialogOpen(false)
+    } catch (error) {
+      console.error("Erro ao salvar documento:", error)
+    }
+  }
+
+  const handleSaveChanges = async () => {
+    if (!editingDocument || !selectedCompany) return
+
+    try {
+      const { error } = await supabase
+        .from("documentos")
+        .update({
+          titulo: editFormData.titulo,
+          categoria: editFormData.categoria,
+          versao: editFormData.versao,
+          validade: editFormData.validade || null,
+          responsavel: editFormData.responsavel,
+        })
+        .eq("id", editingDocument.id)
+        .eq("empresa_id", selectedCompany.id)
+
+      if (error) {
+        console.error("Erro ao atualizar documento:", error)
+        return
+      }
+
+      await loadDocuments()
+      setIsEditDialogOpen(false)
+      setEditingDocument(null)
+    } catch (error) {
+      console.error("Erro ao atualizar documento:", error)
+    }
+  }
+
+  const handleViewDocument = async (document: Document) => {
+    try {
+      await supabase
+        .from("documentos")
+        .update({ visualizacoes: document.visualizacoes + 1 })
+        .eq("id", document.id)
+
+      setSelectedDocument(document)
+      setIsDetailsDialogOpen(true)
+      await loadDocuments()
+    } catch (error) {
+      console.error("Erro ao incrementar visualizações:", error)
+    }
+  }
+
+  const handleDownloadDocument = async (document: Document) => {
+    try {
+      await supabase
+        .from("documentos")
+        .update({ downloads: document.downloads + 1 })
+        .eq("id", document.id)
+
+      // Aqui você implementaria o download real do arquivo
+      console.log("Download do documento:", document.titulo)
+      await loadDocuments()
+    } catch (error) {
+      console.error("Erro ao incrementar downloads:", error)
+    }
+  }
+
+  const getCategoryDataForCompany = (documents: Document[]) => {
+    const categories = [
+      { nome: "Programas", icone: FolderOpen },
+      { nome: "Normas Regulamentadoras", icone: FileText },
+      { nome: "Procedimentos", icone: File },
+      { nome: "Manuais", icone: FileText },
+      { nome: "Formulários", icone: File },
+      { nome: "Certificados", icone: FileText },
+    ]
+
+    return categories.map((category) => ({
+      ...category,
+      quantidade: documents.filter((doc) => {
+        switch (category.nome) {
+          case "Programas":
+            return doc.categoria === "Programa"
+          case "Normas Regulamentadoras":
+            return doc.categoria === "Norma Regulamentadora"
+          case "Procedimentos":
+            return doc.categoria === "Procedimento"
+          case "Manuais":
+            return doc.categoria === "Manual"
+          case "Formulários":
+            return doc.categoria === "Formulário"
+          case "Certificados":
+            return doc.categoria === "Certificado"
+          default:
+            return false
+        }
+      }).length,
+    }))
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "Ativo":
+        return "default"
+      case "Vencendo":
+        return "secondary"
+      case "Vencido":
+        return "destructive"
+      case "Arquivado":
+        return "outline"
+      default:
+        return "secondary"
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "Ativo":
+        return <CheckCircle className="h-4 w-4 text-green-500" />
+      case "Vencendo":
+        return <Clock className="h-4 w-4 text-yellow-500" />
+      case "Vencido":
+        return <AlertTriangle className="h-4 w-4 text-red-500" />
+      case "Arquivado":
+        return <Archive className="h-4 w-4 text-muted-foreground" />
+      default:
+        return <File className="h-4 w-4" />
+    }
+  }
+
+  const getFileIcon = (tipo: string) => {
+    switch (tipo.toLowerCase()) {
+      case "pdf":
+        return "📄"
+      case "docx":
+      case "doc":
+        return "📝"
+      case "xlsx":
+      case "xls":
+        return "📊"
+      case "pptx":
+      case "ppt":
+        return "📋"
+      default:
+        return "📁"
+    }
+  }
+
+  const filteredDocuments = documents.filter((doc) => {
+    const matchesSearch = doc.titulo.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesCategory =
+      selectedCategory === "Todos" ||
+      (selectedCategory === "Programas" && doc.categoria === "Programa") ||
+      (selectedCategory === "Normas Regulamentadoras" && doc.categoria === "Norma Regulamentadora") ||
+      (selectedCategory === "Procedimentos" && doc.categoria === "Procedimento") ||
+      (selectedCategory === "Manuais" && doc.categoria === "Manual") ||
+      (selectedCategory === "Formulários" && doc.categoria === "Formulário") ||
+      (selectedCategory === "Certificados" && doc.categoria === "Certificado")
+
+    return matchesSearch && matchesCategory
+  })
+
+  const categoryData = getCategoryDataForCompany(documents)
 
   const stats = {
-    totalDocuments: documentData.length,
-    totalDownloads: documentData.reduce((acc, doc) => acc + doc.downloads, 0),
-    totalViews: documentData.reduce((acc, doc) => acc + doc.visualizacoes, 0),
-    activeDocuments: documentData.filter((doc) => doc.status === "Ativo").length,
-    expiringSoon: documentData.filter((doc) => doc.status === "Vencendo").length,
-    expired: documentData.filter((doc) => doc.status === "Vencido").length,
-  }
-
-  const handleEditDocument = (document: any) => {
-    setEditingDocument(document)
-    setEditFormData({
-      nome: document.nome,
-      categoria: document.categoria,
-      versao: document.versao,
-      dataVencimento: document.dataVencimento,
-      responsavel: document.responsavel,
-      descricao: "Descrição do documento...", // Placeholder
-      tags: "segurança, procedimento", // Placeholder
-    })
-    setIsEditDialogOpen(true)
-  }
-
-  const handleSaveChanges = () => {
-    console.log("[v0] Saving document changes:", editFormData)
-    // Here you would typically update the document in the database
-    setIsEditDialogOpen(false)
-    setEditingDocument(null)
+    totalDocuments: documents.length,
+    totalDownloads: documents.reduce((acc, doc) => acc + doc.downloads, 0),
+    totalViews: documents.reduce((acc, doc) => acc + doc.visualizacoes, 0),
+    activeDocuments: documents.filter((doc) => doc.status === "Ativo").length,
+    expiringSoon: documents.filter((doc) => doc.status === "Vencendo").length,
+    expired: documents.filter((doc) => doc.status === "Vencido").length,
   }
 
   const handleCancelEdit = () => {
     setIsEditDialogOpen(false)
     setEditingDocument(null)
     setEditFormData({
-      nome: "",
+      titulo: "",
       categoria: "",
       versao: "",
-      dataVencimento: "",
+      validade: "",
       responsavel: "",
-      descricao: "",
-      tags: "",
     })
   }
 
   if (!selectedCompany) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground flex items-center space-x-2">
-              <FileText className="h-8 w-8" />
-              <span>Biblioteca Digital</span>
-            </h1>
-            <p className="text-muted-foreground">Gestão de documentos com versionamento e controle de validade</p>
-          </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-2">Nenhuma empresa selecionada</h3>
+          <p className="text-muted-foreground">Selecione uma empresa para visualizar a biblioteca digital.</p>
         </div>
+      </div>
+    )
+  }
 
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center space-y-4">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto" />
-              <div>
-                <h3 className="text-lg font-semibold">Nenhuma empresa selecionada</h3>
-                <p className="text-muted-foreground">
-                  Selecione uma empresa no menu superior para visualizar a biblioteca de documentos
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando documentos...</p>
+        </div>
       </div>
     )
   }
@@ -479,16 +479,18 @@ export function DigitalLibrary() {
                     />
                   </div>
                 </div>
-                <Select>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger className="w-40">
                     <SelectValue placeholder="Categoria" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todos">Todas</SelectItem>
-                    <SelectItem value="programa">Programas</SelectItem>
-                    <SelectItem value="nr">Normas</SelectItem>
-                    <SelectItem value="procedimento">Procedimentos</SelectItem>
-                    <SelectItem value="manual">Manuais</SelectItem>
+                    <SelectItem value="Todos">Todas</SelectItem>
+                    <SelectItem value="Programa">Programas</SelectItem>
+                    <SelectItem value="Norma Regulamentadora">Normas</SelectItem>
+                    <SelectItem value="Procedimento">Procedimentos</SelectItem>
+                    <SelectItem value="Manual">Manuais</SelectItem>
+                    <SelectItem value="Formulário">Formulários</SelectItem>
+                    <SelectItem value="Certificado">Certificados</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select>
@@ -512,27 +514,22 @@ export function DigitalLibrary() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Biblioteca de Documentos</CardTitle>
-              <CardDescription>
-                Todos os documentos de {selectedCompany.name} organizados com controle de versão
-              </CardDescription>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <CardTitle>Documentos</CardTitle>
+                <Button onClick={() => setIsNewDocumentDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Documento
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              {documentData.length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Nenhum documento encontrado</h3>
-                  <p className="text-muted-foreground">Não há documentos cadastrados para {selectedCompany.name}</p>
-                </div>
-              ) : (
+              <div className="hidden sm:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Documento</TableHead>
+                      <TableHead>Nome</TableHead>
                       <TableHead>Categoria</TableHead>
                       <TableHead>Versão</TableHead>
-                      <TableHead>Upload</TableHead>
-                      <TableHead>Vencimento</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Responsável</TableHead>
                       <TableHead>Ações</TableHead>
@@ -542,47 +539,69 @@ export function DigitalLibrary() {
                     {filteredDocuments.map((doc) => (
                       <TableRow key={doc.id}>
                         <TableCell>
-                          <div className="flex items-center space-x-3">
-                            <span className="text-lg">{getFileIcon(doc.tipo)}</span>
-                            <div>
-                              <p className="font-medium">{doc.nome}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {doc.tipo} • {doc.tamanho}
-                              </p>
+                          <div>
+                            <div className="font-medium">{doc.titulo}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {doc.tipo} • {doc.tamanho}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>{doc.categoria}</TableCell>
+                        <TableCell>{doc.versao}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">v{doc.versao}</Badge>
-                        </TableCell>
-                        <TableCell>{format(new Date(doc.dataUpload), "dd/MM/yyyy")}</TableCell>
-                        <TableCell>{format(new Date(doc.dataVencimento), "dd/MM/yyyy")}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            {getStatusIcon(doc.status)}
-                            <Badge variant={getStatusColor(doc.status) as any}>{doc.status}</Badge>
-                          </div>
+                          <Badge
+                            variant={
+                              doc.status === "Ativo"
+                                ? "default"
+                                : doc.status === "Vencendo"
+                                  ? "secondary"
+                                  : "destructive"
+                            }
+                          >
+                            {doc.status}
+                          </Badge>
                         </TableCell>
                         <TableCell>{doc.responsavel}</TableCell>
                         <TableCell>
-                          <div className="flex space-x-2">
-                            <Button variant="ghost" size="sm" onClick={() => setSelectedDocument(doc)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleEditDocument(doc)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleViewDocument(doc)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                Visualizar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDownloadDocument(doc)}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Download
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setEditingDocument(doc)
+                                  setEditFormData({
+                                    titulo: doc.titulo,
+                                    categoria: doc.categoria,
+                                    versao: doc.versao,
+                                    validade: doc.validade || "",
+                                    responsavel: doc.responsavel,
+                                  })
+                                  setIsEditDialogOpen(true)
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -689,21 +708,22 @@ export function DigitalLibrary() {
                 <CardDescription>Documentos que precisam ser atualizados</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {documentData.filter((doc) => doc.status === "Vencido").length === 0 ? (
+                {documents.filter((doc) => doc.status === "Vencido").length === 0 ? (
                   <div className="text-center py-4">
                     <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Nenhum documento vencido</p>
                   </div>
                 ) : (
-                  documentData
+                  documents
                     .filter((doc) => doc.status === "Vencido")
                     .map((doc) => (
                       <div key={doc.id} className="p-3 border rounded-lg bg-red-50 dark:bg-red-950">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-medium">{doc.nome}</p>
+                            <p className="font-medium">{doc.titulo}</p>
                             <p className="text-sm text-muted-foreground">
-                              Vencido em {format(new Date(doc.dataVencimento), "dd/MM/yyyy")}
+                              Vencido em{" "}
+                              {doc.validade ? format(new Date(doc.validade), "dd/MM/yyyy") : "Data não definida"}
                             </p>
                           </div>
                           <Badge variant="destructive">Vencido</Badge>
@@ -723,21 +743,22 @@ export function DigitalLibrary() {
                 <CardDescription>Documentos que vencem nos próximos 30 dias</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {documentData.filter((doc) => doc.status === "Vencendo").length === 0 ? (
+                {documents.filter((doc) => doc.status === "Vencendo").length === 0 ? (
                   <div className="text-center py-4">
                     <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Nenhum documento vencendo</p>
                   </div>
                 ) : (
-                  documentData
+                  documents
                     .filter((doc) => doc.status === "Vencendo")
                     .map((doc) => (
                       <div key={doc.id} className="p-3 border rounded-lg bg-yellow-50 dark:bg-yellow-950">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-medium">{doc.nome}</p>
+                            <p className="font-medium">{doc.titulo}</p>
                             <p className="text-sm text-muted-foreground">
-                              Vence em {format(new Date(doc.dataVencimento), "dd/MM/yyyy")}
+                              Vence em{" "}
+                              {doc.validade ? format(new Date(doc.validade), "dd/MM/yyyy") : "Data não definida"}
                             </p>
                           </div>
                           <Badge variant="secondary">Vencendo</Badge>
@@ -793,7 +814,7 @@ export function DigitalLibrary() {
               <CardContent>
                 <div className="text-2xl font-bold">
                   {(
-                    documentData.reduce((acc, doc) => {
+                    documents.reduce((acc, doc) => {
                       const size = Number.parseFloat(doc.tamanho.replace(/[^\d.]/g, ""))
                       return acc + (doc.tamanho.includes("GB") ? size * 1024 : size)
                     }, 0) / 1024
@@ -812,13 +833,13 @@ export function DigitalLibrary() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {documentData.length === 0 ? (
+                {documents.length === 0 ? (
                   <div className="text-center py-8">
                     <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                     <p className="text-muted-foreground">Nenhum documento disponível</p>
                   </div>
                 ) : (
-                  documentData
+                  documents
                     .sort((a, b) => b.visualizacoes - a.visualizacoes)
                     .slice(0, 5)
                     .map((doc, index) => (
@@ -828,7 +849,7 @@ export function DigitalLibrary() {
                             {index + 1}
                           </div>
                           <div>
-                            <p className="font-medium">{doc.nome}</p>
+                            <p className="font-medium">{doc.titulo}</p>
                             <p className="text-sm text-muted-foreground">{doc.categoria}</p>
                           </div>
                         </div>
@@ -845,205 +866,242 @@ export function DigitalLibrary() {
         </TabsContent>
       </Tabs>
 
-      {/* Modal de Detalhes do Documento */}
-      {selectedDocument && (
-        <Dialog open={!!selectedDocument} onOpenChange={() => setSelectedDocument(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>{selectedDocument.nome}</DialogTitle>
-              <DialogDescription>Detalhes completos do documento</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-6 py-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Informações do Arquivo</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tipo:</span>
-                      <span>{selectedDocument.tipo}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tamanho:</span>
-                      <span>{selectedDocument.tamanho}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Versão:</span>
-                      <Badge variant="outline">v{selectedDocument.versao}</Badge>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Data de Upload:</span>
-                      <span>{format(new Date(selectedDocument.dataUpload), "dd/MM/yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Vencimento:</span>
-                      <span>{format(new Date(selectedDocument.dataVencimento), "dd/MM/yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge variant={getStatusColor(selectedDocument.status) as any}>{selectedDocument.status}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Estatísticas de Uso</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Responsável:</span>
-                      <span>{selectedDocument.responsavel}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Downloads:</span>
-                      <span className="font-medium">{selectedDocument.downloads}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Visualizações:</span>
-                      <span className="font-medium">{selectedDocument.visualizacoes}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Categoria:</span>
-                      <span>{selectedDocument.categoria}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedDocument(null)
-                    handleEditDocument(selectedDocument)
-                  }}
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Editar
-                </Button>
-                <Button>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Visualizar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {editingDocument && (
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Editar Documento</DialogTitle>
-              <DialogDescription>Atualize as informações do documento "{editingDocument.nome}"</DialogDescription>
-            </DialogHeader>
+      {/* New Document Dialog */}
+      <Dialog open={isNewDocumentDialogOpen} onOpenChange={setIsNewDocumentDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Novo Documento</DialogTitle>
+            <DialogDescription>Adicione um novo documento à biblioteca digital.</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const formData = new FormData(e.currentTarget)
+              handleSaveNewDocument({
+                titulo: formData.get("titulo"),
+                categoria: formData.get("categoria"),
+                tipo: formData.get("tipo"),
+                tamanho: formData.get("tamanho"),
+                versao: formData.get("versao"),
+                validade: formData.get("validade"),
+                responsavel: formData.get("responsavel"),
+              })
+            }}
+          >
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome do Documento</Label>
-                  <Input
-                    value={editFormData.nome}
-                    onChange={(e) => setEditFormData({ ...editFormData, nome: e.target.value })}
-                    placeholder="Ex: PGR 2024"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Select
-                    value={editFormData.categoria}
-                    onValueChange={(value) => setEditFormData({ ...editFormData, categoria: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Programa">Programa</SelectItem>
-                      <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
-                      <SelectItem value="Procedimento">Procedimento</SelectItem>
-                      <SelectItem value="Manual">Manual</SelectItem>
-                      <SelectItem value="Formulário">Formulário</SelectItem>
-                      <SelectItem value="Certificado">Certificado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="titulo" className="text-right">
+                  Título
+                </Label>
+                <Input id="titulo" name="titulo" className="col-span-3" required />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Versão</Label>
-                  <Input
-                    value={editFormData.versao}
-                    onChange={(e) => setEditFormData({ ...editFormData, versao: e.target.value })}
-                    placeholder="Ex: 1.0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data de Vencimento</Label>
-                  <Input
-                    type="date"
-                    value={editFormData.dataVencimento}
-                    onChange={(e) => setEditFormData({ ...editFormData, dataVencimento: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Responsável</Label>
-                <Select
-                  value={editFormData.responsavel}
-                  onValueChange={(value) => setEditFormData({ ...editFormData, responsavel: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o responsável" />
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="categoria" className="text-right">
+                  Categoria
+                </Label>
+                <Select name="categoria" required>
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecione uma categoria" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="João Santos">João Santos</SelectItem>
-                    <SelectItem value="Maria Silva">Maria Silva</SelectItem>
-                    <SelectItem value="Carlos Lima">Carlos Lima</SelectItem>
-                    <SelectItem value="Ana Costa">Ana Costa</SelectItem>
-                    <SelectItem value="Roberto Costa">Roberto Costa</SelectItem>
-                    <SelectItem value="Ana Ferreira">Ana Ferreira</SelectItem>
+                    <SelectItem value="Programa">Programa</SelectItem>
+                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
+                    <SelectItem value="Procedimento">Procedimento</SelectItem>
+                    <SelectItem value="Manual">Manual</SelectItem>
+                    <SelectItem value="Formulário">Formulário</SelectItem>
+                    <SelectItem value="Certificado">Certificado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea
-                  value={editFormData.descricao}
-                  onChange={(e) => setEditFormData({ ...editFormData, descricao: e.target.value })}
-                  placeholder="Descreva o conteúdo do documento"
-                />
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="versao" className="text-right">
+                  Versão
+                </Label>
+                <Input id="versao" name="versao" className="col-span-3" placeholder="Ex: 1.0, 2.3" required />
               </div>
-
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <Input
-                  value={editFormData.tags}
-                  onChange={(e) => setEditFormData({ ...editFormData, tags: e.target.value })}
-                  placeholder="Ex: segurança, procedimento, emergência (separadas por vírgula)"
-                />
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="validade" className="text-right">
+                  Validade
+                </Label>
+                <Input id="validade" name="validade" type="date" className="col-span-3" />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="responsavel" className="text-right">
+                  Responsável
+                </Label>
+                <Input id="responsavel" name="responsavel" className="col-span-3" required />
               </div>
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={handleCancelEdit}>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsNewDocumentDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleSaveChanges}>Salvar Alterações</Button>
+              <Button type="submit">Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Document Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Editar Documento</DialogTitle>
+            <DialogDescription>Edite as informações do documento selecionado.</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleSaveChanges()
+            }}
+          >
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="titulo" className="text-right">
+                  Título
+                </Label>
+                <Input
+                  id="titulo"
+                  name="titulo"
+                  className="col-span-3"
+                  value={editFormData.titulo}
+                  onChange={(e) => setEditFormData({ ...editFormData, titulo: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="categoria" className="text-right">
+                  Categoria
+                </Label>
+                <Select
+                  name="categoria"
+                  value={editFormData.categoria}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, categoria: value })}
+                  required
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecione uma categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Programa">Programa</SelectItem>
+                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
+                    <SelectItem value="Procedimento">Procedimento</SelectItem>
+                    <SelectItem value="Manual">Manual</SelectItem>
+                    <SelectItem value="Formulário">Formulário</SelectItem>
+                    <SelectItem value="Certificado">Certificado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="versao" className="text-right">
+                  Versão
+                </Label>
+                <Input
+                  id="versao"
+                  name="versao"
+                  className="col-span-3"
+                  placeholder="Ex: 1.0, 2.3"
+                  value={editFormData.versao}
+                  onChange={(e) => setEditFormData({ ...editFormData, versao: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="validade" className="text-right">
+                  Validade
+                </Label>
+                <Input
+                  id="validade"
+                  name="validade"
+                  type="date"
+                  className="col-span-3"
+                  value={editFormData.validade}
+                  onChange={(e) => setEditFormData({ ...editFormData, validade: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="responsavel" className="text-right">
+                  Responsável
+                </Label>
+                <Input
+                  id="responsavel"
+                  name="responsavel"
+                  className="col-span-3"
+                  value={editFormData.responsavel}
+                  onChange={(e) => setEditFormData({ ...editFormData, responsavel: e.target.value })}
+                  required
+                />
+              </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                Cancelar
+              </Button>
+              <Button type="submit">Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Details Document Dialog */}
+      <Dialog open={isDetailsDialogOpen} onOpenChange={() => setIsDetailsDialogOpen(false)}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>{selectedDocument?.titulo}</DialogTitle>
+            <DialogDescription>Detalhes do documento.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Categoria</Label>
+                <Input type="text" value={selectedDocument?.categoria} readOnly />
+              </div>
+              <div>
+                <Label>Versão</Label>
+                <Input type="text" value={selectedDocument?.versao} readOnly />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Responsável</Label>
+                <Input type="text" value={selectedDocument?.responsavel} readOnly />
+              </div>
+              <div>
+                <Label>Validade</Label>
+                <Input
+                  type="text"
+                  value={
+                    selectedDocument?.validade
+                      ? format(new Date(selectedDocument?.validade), "dd/MM/yyyy")
+                      : "Não definida"
+                  }
+                  readOnly
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Downloads</Label>
+                <Input type="text" value={selectedDocument?.downloads} readOnly />
+              </div>
+              <div>
+                <Label>Visualizações</Label>
+                <Input type="text" value={selectedDocument?.visualizacoes} readOnly />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsDetailsDialogOpen(false)}>
+              Fechar
+            </Button>
+            <Button type="button" onClick={() => handleDownloadDocument(selectedDocument!)}>
+              Download
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-export { DigitalLibrary as DigitalLibraryComponent }
-export default DigitalLibrary
+export { DigitalLibraryComponent as DigitalLibrary }

@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,36 +12,37 @@ import { Shield, Building2, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { useLoading } from "@/hooks/use-loading"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const { isLoading, withLoading } = useLoading()
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     const supabase = createClient()
-    setIsLoading(true)
-    setError(null)
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-        options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
-        },
-      })
-      if (error) throw error
-      router.push("/")
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Erro ao fazer login")
-    } finally {
-      setIsLoading(false)
-    }
+    await withLoading(async () => {
+      setError(null)
+
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+          options: {
+            emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
+          },
+        })
+        if (error) throw error
+        router.push("/")
+      } catch (error: unknown) {
+        setError(error instanceof Error ? error.message : "Erro ao fazer login")
+      }
+    })
   }
 
   return (
@@ -122,19 +124,17 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                <Button type="submit" className="w-full h-11 font-medium" disabled={isLoading}>
-                  {isLoading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      Entrando...
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      Entrar no Sistema
-                    </div>
-                  )}
-                </Button>
+                <LoadingButton
+                  type="submit"
+                  className="w-full h-11 font-medium"
+                  isLoading={isLoading}
+                  loadingText="Entrando..."
+                >
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    Entrar no Sistema
+                  </div>
+                </LoadingButton>
               </form>
 
               <div className="mt-6 text-center text-sm text-muted-foreground">

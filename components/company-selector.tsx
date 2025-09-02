@@ -22,6 +22,15 @@ export function CompanySelector() {
     )
   }
 
+  if (companies.length === 0) {
+    return (
+      <div className="flex items-center space-x-2 text-muted-foreground">
+        <Building2 className="h-4 w-4" />
+        <span className="text-sm">Nenhuma empresa encontrada</span>
+      </div>
+    )
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>

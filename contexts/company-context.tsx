@@ -70,7 +70,47 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             .eq("user_id", currentUser.id)
 
           if (userCompaniesError) {
-            console.error("Erro ao buscar empresas do usuário:", userCompaniesError)
+            setIsLoading(false)
+            return
+          }
+
+          if (!userCompanies || userCompanies.length === 0) {
+            // Fallback: buscar todas as empresas se o usuário não tem associações
+            const { data: allCompanies, error: allCompaniesError } = await supabase
+              .from("empresas")
+              .select("id, nome, cnpj, endereco, telefone, email, logo_url, status, created_at")
+              .eq("status", true)
+
+            if (allCompaniesError) {
+              setIsLoading(false)
+              return
+            }
+
+            const formattedAllCompanies: Company[] =
+              allCompanies?.map((empresa) => ({
+                id: empresa.id,
+                name: empresa.nome,
+                cnpj: empresa.cnpj || "",
+                address: empresa.endereco || "",
+                phone: empresa.telefone || "",
+                email: empresa.email || "",
+                logo: empresa.logo_url || undefined,
+                isActive: empresa.status,
+                createdAt: new Date(empresa.created_at),
+              })) || []
+
+            setCompanies(formattedAllCompanies)
+
+            if (formattedAllCompanies.length > 0 && !selectedCompany) {
+              const savedCompanyId = localStorage.getItem("selectedCompanyId")
+              const companyToSelect = savedCompanyId
+                ? formattedAllCompanies.find((c) => c.id === savedCompanyId) || formattedAllCompanies[0]
+                : formattedAllCompanies[0]
+
+              setSelectedCompany(companyToSelect)
+              localStorage.setItem("selectedCompanyId", companyToSelect.id)
+            }
+
             setIsLoading(false)
             return
           }
@@ -93,17 +133,28 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
           setCompanies(formattedCompanies)
 
-          // Verificar se há empresa salva no localStorage
-          const savedCompanyId = localStorage.getItem("selectedCompanyId")
-          if (savedCompanyId) {
-            const savedCompany = formattedCompanies.find((c) => c.id === savedCompanyId)
-            if (savedCompany) {
-              setSelectedCompany(savedCompany)
+          if (formattedCompanies.length > 0) {
+            // Verificar se há empresa salva no localStorage
+            const savedCompanyId = localStorage.getItem("selectedCompanyId")
+            let companyToSelect: Company | null = null
+
+            if (savedCompanyId) {
+              companyToSelect = formattedCompanies.find((c) => c.id === savedCompanyId) || null
+            }
+
+            // Se não encontrou empresa salva ou não há empresa salva, selecionar a primeira
+            if (!companyToSelect && formattedCompanies.length > 0) {
+              companyToSelect = formattedCompanies[0]
+            }
+
+            if (companyToSelect) {
+              setSelectedCompany(companyToSelect)
+              localStorage.setItem("selectedCompanyId", companyToSelect.id)
             }
           }
         }
       } catch (error) {
-        console.error("Erro ao carregar dados:", error)
+        // No changes needed here
       } finally {
         setIsLoading(false)
       }
@@ -158,7 +209,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (companyError) {
-        console.error("Erro ao criar empresa:", companyError)
         return null
       }
 
@@ -170,7 +220,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       })
 
       if (relationError) {
-        console.error("Erro ao criar relacionamento:", relationError)
         return null
       }
 
@@ -189,7 +238,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       setCompanies((prev) => [...prev, formattedCompany])
       return formattedCompany
     } catch (error) {
-      console.error("Erro ao adicionar empresa:", error)
       return null
     }
   }
@@ -210,7 +258,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         .eq("id", id)
 
       if (error) {
-        console.error("Erro ao atualizar empresa:", error)
         return false
       }
 
@@ -224,7 +271,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
       return true
     } catch (error) {
-      console.error("Erro ao atualizar empresa:", error)
       return false
     }
   }
@@ -234,7 +280,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.from("empresas").delete().eq("id", id)
 
       if (error) {
-        console.error("Erro ao deletar empresa:", error)
         return false
       }
 
@@ -249,7 +294,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
       return true
     } catch (error) {
-      console.error("Erro ao deletar empresa:", error)
       return false
     }
   }

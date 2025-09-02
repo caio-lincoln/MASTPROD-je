@@ -5,6 +5,7 @@ import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { CompanyProvider } from "@/contexts/company-context"
+import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
   title: "Sistema SST - Segurança e Saúde no Trabalho",
@@ -23,6 +24,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <CompanyProvider>
             <div className="h-full w-full flex flex-col">{children}</div>
+            <Toaster />
           </CompanyProvider>
         </ThemeProvider>
       </body>

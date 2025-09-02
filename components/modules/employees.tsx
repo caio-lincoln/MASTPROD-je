@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { LoadingButton } from "@/components/ui/loading-button"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -20,6 +22,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { AlertCircle, Eye, MoreHorizontal, Plus, UserPlus, Users } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useCompany } from "@/contexts/company-context"
+import { useLoading } from "@/hooks/use-loading"
 import { createClient } from "@/lib/supabase/client"
 
 interface Employee {
@@ -47,7 +50,8 @@ const getStatusText = (status: boolean) => {
 export function Employees() {
   const { selectedCompany } = useCompany()
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { isLoading, withLoading } = useLoading({ initialState: true })
+  const { isLoading: isSaving, withLoading: withSaving } = useLoading()
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isNewEmployeeDialogOpen, setIsNewEmployeeDialogOpen] = useState(false)
@@ -69,32 +73,29 @@ export function Employees() {
       loadEmployees()
     } else {
       setEmployees([])
-      setIsLoading(false)
     }
   }, [selectedCompany])
 
   const loadEmployees = async () => {
     if (!selectedCompany) return
 
-    setIsLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from("funcionarios")
-        .select("*")
-        .eq("empresa_id", selectedCompany.id)
-        .order("nome")
+    await withLoading(async () => {
+      try {
+        const { data, error } = await supabase
+          .from("funcionarios")
+          .select("*")
+          .eq("empresa_id", selectedCompany.id)
+          .order("nome")
 
-      if (error) {
-        console.error("Erro ao carregar funcionários:", error)
-        return
+        if (error) {
+          return
+        }
+
+        setEmployees(data || [])
+      } catch (error) {
+        // Error handling
       }
-
-      setEmployees(data || [])
-    } catch (error) {
-      console.error("Erro ao carregar funcionários:", error)
-    } finally {
-      setIsLoading(false)
-    }
+    })
   }
 
   const validateForm = () => {
@@ -190,12 +191,30 @@ export function Employees() {
   const handleSave = async () => {
     if (!validateForm() || !selectedCompany) return
 
-    try {
-      if (editingEmployee) {
-        // Atualizar funcionário existente
-        const { error } = await supabase
-          .from("funcionarios")
-          .update({
+    await withSaving(async () => {
+      try {
+        if (editingEmployee) {
+          // Atualizar funcionário existente
+          const { error } = await supabase
+            .from("funcionarios")
+            .update({
+              nome: formData.nome,
+              cpf: formData.cpf,
+              matricula_esocial: formData.matricula_esocial || null,
+              data_nascimento: formData.data_nascimento,
+              cargo: formData.cargo,
+              setor: formData.setor,
+              email: formData.email || null,
+            })
+            .eq("id", editingEmployee.id)
+
+          if (error) {
+            return
+          }
+        } else {
+          // Criar novo funcionário
+          const { error } = await supabase.from("funcionarios").insert({
+            empresa_id: selectedCompany.id,
             nome: formData.nome,
             cpf: formData.cpf,
             matricula_esocial: formData.matricula_esocial || null,
@@ -203,39 +222,21 @@ export function Employees() {
             cargo: formData.cargo,
             setor: formData.setor,
             email: formData.email || null,
+            status: true,
           })
-          .eq("id", editingEmployee.id)
 
-        if (error) {
-          console.error("Erro ao atualizar funcionário:", error)
-          return
+          if (error) {
+            return
+          }
         }
-      } else {
-        // Criar novo funcionário
-        const { error } = await supabase.from("funcionarios").insert({
-          empresa_id: selectedCompany.id,
-          nome: formData.nome,
-          cpf: formData.cpf,
-          matricula_esocial: formData.matricula_esocial || null,
-          data_nascimento: formData.data_nascimento,
-          cargo: formData.cargo,
-          setor: formData.setor,
-          email: formData.email || null,
-          status: true,
-        })
 
-        if (error) {
-          console.error("Erro ao criar funcionário:", error)
-          return
-        }
+        // Recarregar lista de funcionários
+        await loadEmployees()
+        handleCancel()
+      } catch (error) {
+        // Error handling
       }
-
-      // Recarregar lista de funcionários
-      await loadEmployees()
-      handleCancel()
-    } catch (error) {
-      console.error("Erro ao salvar funcionário:", error)
-    }
+    })
   }
 
   if (!selectedCompany) {
@@ -257,10 +258,17 @@ export function Employees() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Funcionários</h2>
-          <p className="text-muted-foreground">Carregando funcionários...</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Funcionários</h2>
+            <p className="text-muted-foreground">Carregando funcionários de {selectedCompany.name}...</p>
+          </div>
+          <Button disabled>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Funcionário
+          </Button>
         </div>
+        <LoadingSkeleton variant="table" count={5} />
       </div>
     )
   }
@@ -386,7 +394,7 @@ export function Employees() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <Avatar className="h-10 w-10">
-                            <AvatarFallback>
+                            <AvatarFallback className="text-lg">
                               {employee.nome
                                 .split(" ")
                                 .map((n) => n[0])
@@ -581,10 +589,12 @@ export function Employees() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCancel}>
+            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>Salvar Funcionário</Button>
+            <LoadingButton onClick={handleSave} isLoading={isSaving} loadingText="Salvando...">
+              Salvar Funcionário
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -673,10 +683,12 @@ export function Employees() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCancel}>
+            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>Salvar Alterações</Button>
+            <LoadingButton onClick={handleSave} isLoading={isSaving} loadingText="Salvando...">
+              Salvar Alterações
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

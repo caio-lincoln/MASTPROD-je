@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import {
   Users,
   AlertTriangle,
@@ -17,88 +18,171 @@ import {
 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { useCompany } from "@/contexts/company-context"
+import { useLoading } from "@/hooks/use-loading"
+import { createBrowserClient } from "@/lib/supabase/client"
+import { useEffect, useState } from "react"
 
-const getKpiDataByCompany = (companyId: string | undefined) => {
-  const baseData = {
-    "1": [
-      { title: "Total de Funcionários", value: "1,247", icon: Users, trend: "+5.2%", trendUp: true },
-      { title: "Exames em Dia", value: "1,156", icon: CheckCircle, trend: "+2.1%", trendUp: true },
-      { title: "Não Conformidades Abertas", value: "23", icon: AlertTriangle, trend: "-12.3%", trendUp: false },
-      { title: "Treinamentos Pendentes", value: "89", icon: Clock, trend: "+8.7%", trendUp: false },
-    ],
-    "2": [
-      { title: "Total de Funcionários", value: "856", icon: Users, trend: "+3.1%", trendUp: true },
-      { title: "Exames em Dia", value: "798", icon: CheckCircle, trend: "+1.8%", trendUp: true },
-      { title: "Não Conformidades Abertas", value: "15", icon: AlertTriangle, trend: "-8.5%", trendUp: false },
-      { title: "Treinamentos Pendentes", value: "42", icon: Clock, trend: "+12.3%", trendUp: false },
-    ],
-    "3": [
-      { title: "Total de Funcionários", value: "432", icon: Users, trend: "+2.8%", trendUp: true },
-      { title: "Exames em Dia", value: "401", icon: CheckCircle, trend: "+4.2%", trendUp: true },
-      { title: "Não Conformidades Abertas", value: "8", icon: AlertTriangle, trend: "-15.7%", trendUp: false },
-      { title: "Treinamentos Pendentes", value: "28", icon: Clock, trend: "+6.1%", trendUp: false },
-    ],
-  }
-  return baseData[companyId as keyof typeof baseData] || baseData["1"]
+interface KPIData {
+  title: string
+  value: string
+  icon: any
+  trend: string
+  trendUp: boolean
 }
 
-const getRiskDataByCompany = (companyId: string | undefined) => {
-  const baseData = {
-    "1": [
-      { name: "Jan", baixo: 45, medio: 23, alto: 8 },
-      { name: "Fev", baixo: 52, medio: 19, alto: 6 },
-      { name: "Mar", baixo: 48, medio: 25, alto: 12 },
-      { name: "Apr", baixo: 61, medio: 22, alto: 9 },
-      { name: "Mai", baixo: 55, medio: 28, alto: 7 },
-      { name: "Jun", baixo: 67, medio: 20, alto: 5 },
-    ],
-    "2": [
-      { name: "Jan", baixo: 32, medio: 18, alto: 5 },
-      { name: "Fev", baixo: 38, medio: 15, alto: 4 },
-      { name: "Mar", baixo: 35, medio: 20, alto: 8 },
-      { name: "Apr", baixo: 42, medio: 16, alto: 6 },
-      { name: "Mai", baixo: 39, medio: 22, alto: 5 },
-      { name: "Jun", baixo: 45, medio: 14, alto: 3 },
-    ],
-    "3": [
-      { name: "Jan", baixo: 18, medio: 12, alto: 3 },
-      { name: "Fev", baixo: 22, medio: 10, alto: 2 },
-      { name: "Mar", baixo: 20, medio: 14, alto: 4 },
-      { name: "Apr", baixo: 25, medio: 11, alto: 3 },
-      { name: "Mai", baixo: 23, medio: 16, alto: 2 },
-      { name: "Jun", baixo: 28, medio: 9, alto: 1 },
-    ],
-  }
-  return baseData[companyId as keyof typeof baseData] || baseData["1"]
+interface RiskData {
+  name: string
+  baixo: number
+  medio: number
+  alto: number
 }
 
-const getExamDataByCompany = (companyId: string | undefined) => {
-  const baseData = {
-    "1": [
-      { name: "Em Dia", value: 1156, color: "#22c55e" },
-      { name: "Vencendo (30 dias)", value: 67, color: "#f59e0b" },
-      { name: "Vencidos", value: 24, color: "#ef4444" },
-    ],
-    "2": [
-      { name: "Em Dia", value: 798, color: "#22c55e" },
-      { name: "Vencendo (30 dias)", value: 43, color: "#f59e0b" },
-      { name: "Vencidos", value: 15, color: "#ef4444" },
-    ],
-    "3": [
-      { name: "Em Dia", value: 401, color: "#22c55e" },
-      { name: "Vencendo (30 dias)", value: 23, color: "#f59e0b" },
-      { name: "Vencidos", value: 8, color: "#ef4444" },
-    ],
+interface ExamData {
+  name: string
+  value: number
+  color: string
+}
+
+interface DashboardStats {
+  totalFuncionarios: number
+  examesEmDia: number
+  naoConformidadesAbertas: number
+  treinamentosPendentes: number
+  examData: ExamData[]
+  riskData: RiskData[]
+  complianceData: {
+    nr07: number
+    nr09: number
+    nr06: number
   }
-  return baseData[companyId as keyof typeof baseData] || baseData["1"]
 }
 
 export function Dashboard() {
   const { selectedCompany } = useCompany()
+  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null)
+  const { isLoading, withLoading } = useLoading({ initialState: true })
+  const [error, setError] = useState<string | null>(null)
 
-  const kpiData = getKpiDataByCompany(selectedCompany?.id)
-  const riskData = getRiskDataByCompany(selectedCompany?.id)
-  const examData = getExamDataByCompany(selectedCompany?.id)
+  const fetchDashboardData = async (empresaId: string) => {
+    await withLoading(async () => {
+      try {
+        setError(null)
+        const supabase = createBrowserClient()
+
+        // Total Employees
+        const { count: totalFuncionarios } = await supabase
+          .from("funcionarios")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+
+        // Exams data for multiple calculations
+        const { data: examesData } = await supabase.from("exames_aso").select("*").eq("empresa_id", empresaId)
+
+        const today = new Date()
+        const next30 = new Date()
+        next30.setDate(today.getDate() + 30)
+
+        const emDia = examesData?.filter((e) => new Date(e.validade) > next30) || []
+        const vencendo =
+          examesData?.filter((e) => new Date(e.validade) <= next30 && new Date(e.validade) >= today) || []
+        const vencidos = examesData?.filter((e) => new Date(e.validade) < today) || []
+
+        // Open Non-Conformities
+        const { count: naoConformidadesAbertas } = await supabase
+          .from("nao_conformidades")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "aberta")
+
+        // Pending Trainings
+        const { count: treinamentosPendentes } = await supabase
+          .from("treinamento_funcionarios")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "pendente")
+
+        // Risk Evolution Data (last 6 months)
+        const { data: riscosData } = await supabase
+          .from("gestao_riscos")
+          .select("classificacao, data_identificacao")
+          .eq("empresa_id", empresaId)
+          .gte("data_identificacao", new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString())
+
+        // Process risk data by month
+        const riskByMonth: { [key: string]: { baixo: number; medio: number; alto: number } } = {}
+        const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"]
+
+        months.forEach((month) => {
+          riskByMonth[month] = { baixo: 0, medio: 0, alto: 0 }
+        })
+
+        riscosData?.forEach((risco) => {
+          const month = new Date(risco.data_identificacao).getMonth()
+          const monthName = months[month]
+          if (monthName && riskByMonth[monthName]) {
+            if (risco.classificacao === "baixo") riskByMonth[monthName].baixo++
+            else if (risco.classificacao === "medio") riskByMonth[monthName].medio++
+            else if (risco.classificacao === "alto") riskByMonth[monthName].alto++
+          }
+        })
+
+        const riskData: RiskData[] = months.map((month) => ({
+          name: month,
+          ...riskByMonth[month],
+        }))
+
+        // Compliance calculations
+        const nr07 = totalFuncionarios ? Math.round((emDia.length / totalFuncionarios) * 100) : 0
+
+        const { count: riscosComMitigacao } = await supabase
+          .from("gestao_riscos")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .not("medidas_controle", "is", null)
+
+        const { count: totalRiscos } = await supabase
+          .from("gestao_riscos")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+
+        const nr09 = totalRiscos ? Math.round(((riscosComMitigacao || 0) / totalRiscos) * 100) : 0
+
+        const { count: funcionariosComEpi } = await supabase
+          .from("entregas_epi")
+          .select("funcionario_id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "ativo")
+
+        const nr06 = totalFuncionarios ? Math.round(((funcionariosComEpi || 0) / totalFuncionarios) * 100) : 0
+
+        setDashboardData({
+          totalFuncionarios: totalFuncionarios || 0,
+          examesEmDia: emDia.length,
+          naoConformidadesAbertas: naoConformidadesAbertas || 0,
+          treinamentosPendentes: treinamentosPendentes || 0,
+          examData: [
+            { name: "Em Dia", value: emDia.length, color: "#22c55e" },
+            { name: "Vencendo (30 dias)", value: vencendo.length, color: "#f59e0b" },
+            { name: "Vencidos", value: vencidos.length, color: "#ef4444" },
+          ],
+          riskData,
+          complianceData: {
+            nr07,
+            nr09,
+            nr06,
+          },
+        })
+      } catch (err) {
+        setError("Erro ao carregar dados do dashboard")
+      }
+    })
+  }
+
+  useEffect(() => {
+    if (selectedCompany?.id) {
+      fetchDashboardData(selectedCompany.id)
+    }
+  }, [selectedCompany?.id])
 
   if (!selectedCompany) {
     return (
@@ -119,6 +203,69 @@ export function Dashboard() {
       </div>
     )
   }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="px-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Dashboard SST</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Carregando dados de {selectedCompany.name}...
+          </p>
+        </div>
+        <LoadingSkeleton variant="dashboard" />
+      </div>
+    )
+  }
+
+  if (error || !dashboardData) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="px-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Dashboard SST</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Visão geral do sistema de Segurança e Saúde no Trabalho - {selectedCompany.name}
+          </p>
+        </div>
+
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error || "Erro ao carregar dados do dashboard"}</AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
+  const kpiData: KPIData[] = [
+    {
+      title: "Total de Funcionários",
+      value: dashboardData.totalFuncionarios.toString(),
+      icon: Users,
+      trend: "+5.2%",
+      trendUp: true,
+    },
+    {
+      title: "Exames em Dia",
+      value: dashboardData.examesEmDia.toString(),
+      icon: CheckCircle,
+      trend: "+2.1%",
+      trendUp: true,
+    },
+    {
+      title: "Não Conformidades Abertas",
+      value: dashboardData.naoConformidadesAbertas.toString(),
+      icon: AlertTriangle,
+      trend: "-12.3%",
+      trendUp: false,
+    },
+    {
+      title: "Treinamentos Pendentes",
+      value: dashboardData.treinamentosPendentes.toString(),
+      icon: Clock,
+      trend: "+8.7%",
+      trendUp: false,
+    },
+  ]
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -169,7 +316,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
-              <BarChart data={riskData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <BarChart data={dashboardData.riskData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} />
                 <YAxis tick={{ fontSize: 12 }} />
@@ -201,7 +348,7 @@ export function Dashboard() {
             <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
               <PieChart>
                 <Pie
-                  data={examData}
+                  data={dashboardData.examData}
                   cx="50%"
                   cy="50%"
                   innerRadius={40}
@@ -210,7 +357,7 @@ export function Dashboard() {
                   dataKey="value"
                   className="sm:inner-radius-[60px] sm:outer-radius-[120px]"
                 >
-                  {examData.map((entry, index) => (
+                  {dashboardData.examData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -224,7 +371,7 @@ export function Dashboard() {
               </PieChart>
             </ResponsiveContainer>
             <div className="mt-3 sm:mt-4 space-y-2">
-              {examData.map((item, index) => (
+              {dashboardData.examData.map((item, index) => (
                 <div key={index} className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
@@ -246,33 +393,41 @@ export function Dashboard() {
             <CardDescription className="text-sm">Itens que requerem atenção imediata</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4">
-            <div className="flex items-start sm:items-center justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg gap-3">
-              <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
-                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500 shrink-0 mt-0.5 sm:mt-0" />
-                <div className="min-w-0">
-                  <p className="font-medium text-red-700 dark:text-red-300 text-sm sm:text-base">Exames Vencidos</p>
-                  <p className="text-xs sm:text-sm text-red-600 dark:text-red-400">24 funcionários com ASO vencido</p>
+            {dashboardData.examData.find((e) => e.name === "Vencidos")?.value > 0 && (
+              <div className="flex items-start sm:items-center justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg gap-3">
+                <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
+                  <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500 shrink-0 mt-0.5 sm:mt-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-red-700 dark:text-red-300 text-sm sm:text-base">Exames Vencidos</p>
+                    <p className="text-xs sm:text-sm text-red-600 dark:text-red-400">
+                      {dashboardData.examData.find((e) => e.name === "Vencidos")?.value} funcionários com ASO vencido
+                    </p>
+                  </div>
                 </div>
+                <Badge variant="destructive" className="text-xs shrink-0">
+                  Crítico
+                </Badge>
               </div>
-              <Badge variant="destructive" className="text-xs shrink-0">
-                Crítico
-              </Badge>
-            </div>
+            )}
 
-            <div className="flex items-start sm:items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg gap-3">
-              <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
-                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-500 shrink-0 mt-0.5 sm:mt-0" />
-                <div className="min-w-0">
-                  <p className="font-medium text-yellow-700 dark:text-yellow-300 text-sm sm:text-base">
-                    Treinamento NR-35
-                  </p>
-                  <p className="text-xs sm:text-sm text-yellow-600 dark:text-yellow-400">89 funcionários pendentes</p>
+            {dashboardData.treinamentosPendentes > 0 && (
+              <div className="flex items-start sm:items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg gap-3">
+                <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-500 shrink-0 mt-0.5 sm:mt-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-yellow-700 dark:text-yellow-300 text-sm sm:text-base">
+                      Treinamentos Pendentes
+                    </p>
+                    <p className="text-xs sm:text-sm text-yellow-600 dark:text-yellow-400">
+                      {dashboardData.treinamentosPendentes} funcionários pendentes
+                    </p>
+                  </div>
                 </div>
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  Atenção
+                </Badge>
               </div>
-              <Badge variant="secondary" className="text-xs shrink-0">
-                Atenção
-              </Badge>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -320,25 +475,25 @@ export function Dashboard() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>NR-07 (PCMSO)</span>
-                <span className="font-medium">92%</span>
+                <span className="font-medium">{dashboardData.complianceData.nr07}%</span>
               </div>
-              <Progress value={92} className="h-2" />
+              <Progress value={dashboardData.complianceData.nr07} className="h-2" />
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>NR-09 (PGR)</span>
-                <span className="font-medium">88%</span>
+                <span className="font-medium">{dashboardData.complianceData.nr09}%</span>
               </div>
-              <Progress value={88} className="h-2" />
+              <Progress value={dashboardData.complianceData.nr09} className="h-2" />
             </div>
 
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span>NR-06 (EPI)</span>
-                <span className="font-medium">95%</span>
+                <span className="font-medium">{dashboardData.complianceData.nr06}%</span>
               </div>
-              <Progress value={95} className="h-2" />
+              <Progress value={dashboardData.complianceData.nr06} className="h-2" />
             </div>
           </div>
         </CardContent>

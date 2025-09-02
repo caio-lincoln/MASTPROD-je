@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { toast } from "@/components/ui/use-toast"
 import {
   BarChart3,
   Plus,
@@ -46,7 +47,7 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { useEffect } from "react"
+import JSZip from "jszip"
 
 const reportTemplatesByCompany = {
   1: [
@@ -172,6 +173,18 @@ const reportHistoryByCompany = {
   ],
 }
 
+const availableModules = [
+  "Dashboard",
+  "Funcionários",
+  "Exames",
+  "Treinamentos",
+  "Saúde Ocupacional",
+  "Gestão de Riscos",
+  "Treinamentos",
+  "Não Conformidades",
+  "Segurança do Trabalho",
+]
+
 export function ReportsComponent() {
   const { selectedCompany } = useCompany()
   const [activeTab, setActiveTab] = useState("configurar")
@@ -196,6 +209,13 @@ export function ReportsComponent() {
     frequency: "manual",
     companies: [] as string[],
   })
+
+  const [totalTemplates, setTotalTemplates] = useState(0)
+  const [totalReports, setTotalReports] = useState(0)
+  const [totalDownloads, setTotalDownloads] = useState(0)
+  const [activeSchedules, setActiveSchedules] = useState(0)
+  const [reportTemplates, setReportTemplates] = useState<any[]>([])
+  const [reportHistory, setReportHistory] = useState<any[]>([])
 
   const supabase = createClientComponentClient()
 
@@ -241,10 +261,32 @@ export function ReportsComponent() {
     }
   }
 
+  const loadReportTemplates = () => {
+    if (selectedCompany) {
+      setReportTemplates(reportTemplatesByCompany[selectedCompany.id] || [])
+      setTotalTemplates(reportTemplatesByCompany[selectedCompany.id]?.length || 0)
+    }
+  }
+
+  const loadReportHistory = () => {
+    if (selectedCompany) {
+      setReportHistory(reportHistoryByCompany[selectedCompany.id] || [])
+      setTotalReports(reportHistoryByCompany[selectedCompany.id]?.length || 0)
+      setTotalDownloads(
+        reportHistoryByCompany[selectedCompany.id]?.reduce((acc, report) => acc + report.downloads, 0) || 0,
+      )
+      setActiveSchedules(0) // Placeholder for active schedules
+    }
+  }
+
   useEffect(() => {
     if (selectedCompany && activeTab === "esocial") {
       loadEsocialEvents()
       loadFatoresRisco()
+    }
+    if (selectedCompany) {
+      loadReportTemplates()
+      loadReportHistory()
     }
   }, [selectedCompany, activeTab])
 
@@ -306,34 +348,28 @@ export function ReportsComponent() {
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
+
+        toast({
+          title: "XML exportado",
+          description: "Arquivo XML baixado com sucesso.",
+          variant: "default",
+        })
       } else {
-        alert("XML não disponível para este evento")
+        toast({
+          title: "XML não disponível",
+          description: "Este evento ainda não possui XML gerado.",
+          variant: "warning",
+        })
       }
     } catch (error) {
-      console.error("[v0] Erro ao exportar XML:", error)
-      alert("Erro ao exportar XML")
+      console.error("Erro ao exportar XML:", error)
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível exportar o XML. Tente novamente.",
+        variant: "destructive",
+      })
     }
   }
-
-  const reportTemplates = selectedCompany ? reportTemplatesByCompany[selectedCompany.id] || [] : []
-  const reportHistory = selectedCompany ? reportHistoryByCompany[selectedCompany.id] || [] : []
-  // const esocialReports = selectedCompany ? esocialReportsByCompany[selectedCompany.id] || [] : []
-
-  const totalTemplates = reportTemplates.length
-  const totalReports = reportHistory.length
-  const totalDownloads = reportTemplates.reduce((sum, template) => sum + template.downloads, 0)
-  const activeSchedules = selectedCompany ? Math.floor(totalTemplates * 0.6) : 0
-
-  const availableModules = [
-    "Dashboard",
-    "Gestão de Riscos",
-    "Saúde Ocupacional",
-    "Funcionários",
-    "Treinamentos",
-    "Biblioteca Digital",
-    "Não Conformidades",
-    "Segurança do Trabalho",
-  ]
 
   const handleGenerateReport = async (template: any) => {
     setIsGenerating(true)
@@ -426,25 +462,107 @@ export function ReportsComponent() {
   const handleExportEsocial = async (format: string) => {
     try {
       if (format === "xml") {
-        // Exportar todos os XMLs da empresa
         const { data, error } = await supabase
           .from("eventos_esocial")
-          .select("id, tipo_evento, xml_gerado")
+          .select("id, tipo_evento, xml_gerado, data_evento")
           .eq("empresa_id", selectedCompany?.id)
           .not("xml_gerado", "is", null)
 
         if (error) throw error
 
         if (data && data.length > 0) {
-          // Criar ZIP com todos os XMLs (simulado)
-          alert(`Exportação de ${data.length} eventos XML iniciada!`)
+          // Criar ZIP com todos os XMLs usando JSZip
+          const zip = new JSZip()
+
+          // Adicionar cada XML ao ZIP
+          data.forEach((event) => {
+            const fileName = `${event.tipo_evento}_${event.id}_${format(new Date(event.data_evento), "yyyyMMdd")}.xml`
+            zip.file(fileName, event.xml_gerado)
+          })
+
+          // Gerar o arquivo ZIP
+          const zipBlob = await zip.generateAsync({ type: "blob" })
+
+          // Download do ZIP
+          const url = URL.createObjectURL(zipBlob)
+          const a = document.createElement("a")
+          a.href = url
+          a.download = `esocial_xmls_${selectedCompany.name}_${format(new Date(), "yyyyMMdd")}.zip`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+
+          toast({
+            title: "Exportação concluída",
+            description: `${data.length} arquivos XML exportados em ZIP.`,
+            variant: "default",
+          })
         } else {
-          alert("Nenhum XML disponível para exportação")
+          toast({
+            title: "Nenhum XML disponível",
+            description: "Não há eventos com XML gerado para exportação.",
+            variant: "warning",
+          })
+        }
+      } else if (format === "csv") {
+        const { data, error } = await supabase
+          .from("eventos_esocial")
+          .select("*")
+          .eq("empresa_id", selectedCompany?.id)
+          .order("data_evento", { ascending: false })
+
+        if (error) throw error
+
+        if (data && data.length > 0) {
+          // Converter para CSV
+          const headers = ["ID", "Tipo Evento", "Data Evento", "Status", "Funcionário", "Data Envio", "Protocolo"]
+          const csvContent = [
+            headers.join(","),
+            ...data.map((event) =>
+              [
+                event.id,
+                event.tipo_evento,
+                format(new Date(event.data_evento), "dd/MM/yyyy"),
+                event.status,
+                event.funcionario_nome || "",
+                event.data_envio ? format(new Date(event.data_envio), "dd/MM/yyyy HH:mm") : "",
+                event.protocolo_recepcao || "",
+              ].join(","),
+            ),
+          ].join("\n")
+
+          // Download do CSV
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement("a")
+          a.href = url
+          a.download = `esocial_eventos_${selectedCompany.name}_${format(new Date(), "yyyyMMdd")}.csv`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+
+          toast({
+            title: "CSV exportado",
+            description: `${data.length} eventos exportados em CSV.`,
+            variant: "default",
+          })
+        } else {
+          toast({
+            title: "Nenhum evento disponível",
+            description: "Não há eventos para exportação.",
+            variant: "warning",
+          })
         }
       }
     } catch (error) {
-      console.error("[v0] Erro na exportação:", error)
-      alert("Erro na exportação.")
+      console.error("Erro na exportação:", error)
+      toast({
+        title: "Erro na exportação",
+        description: "Não foi possível completar a exportação. Tente novamente.",
+        variant: "destructive",
+      })
     }
   }
 

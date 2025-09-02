@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
+import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -10,8 +11,16 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,187 +33,97 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   GraduationCap,
   Plus,
   CalendarIcon,
-  FileText,
   Users,
   Clock,
-  CheckCircle,
-  Download,
-  BookOpen,
   Award,
-  AlertCircle,
-  MoreHorizontal,
-  Eye,
+  BookOpen,
   Edit,
+  Eye,
   Trash2,
+  Download,
+  AlertCircle,
+  CheckCircle,
+  MoreHorizontal,
+  FileText,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import { cn } from "@/lib/utils"
+import { createBrowserClient } from "@/lib/supabase/client"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 
-const trainingDataByCompany = {
-  "1": [
-    {
-      id: 1,
-      nome: "NR-35 - Trabalho em Altura",
-      categoria: "Norma Regulamentadora",
-      cargaHoraria: 8,
-      validade: 24,
-      instrutor: "João Santos",
-      status: "Ativo",
-      participantes: 45,
-      concluidos: 38,
-      pendentes: 7,
-      proximaTurma: "2025-01-15",
-      companyId: "1",
-      descricao: "Treinamento obrigatório para trabalhos realizados acima de 2 metros de altura, conforme NR-35.",
-    },
-    {
-      id: 2,
-      nome: "NR-10 - Segurança em Instalações Elétricas",
-      categoria: "Norma Regulamentadora",
-      cargaHoraria: 40,
-      validade: 24,
-      instrutor: "Maria Silva",
-      status: "Ativo",
-      participantes: 23,
-      concluidos: 23,
-      pendentes: 0,
-      proximaTurma: "2025-02-10",
-      companyId: "1",
-      descricao: "Capacitação em segurança para trabalhos com instalações elétricas energizadas.",
-    },
-  ],
-  "2": [
-    {
-      id: 3,
-      nome: "Primeiros Socorros",
-      categoria: "Capacitação Geral",
-      cargaHoraria: 16,
-      validade: 12,
-      instrutor: "Dr. Carlos Lima",
-      status: "Planejado",
-      participantes: 0,
-      concluidos: 0,
-      pendentes: 30,
-      proximaTurma: "2025-01-20",
-      companyId: "2",
-      descricao: "Treinamento básico de primeiros socorros para situações de emergência.",
-    },
-    {
-      id: 4,
-      nome: "NR-33 - Espaços Confinados",
-      categoria: "Norma Regulamentadora",
-      cargaHoraria: 16,
-      validade: 12,
-      instrutor: "Roberto Costa",
-      status: "Ativo",
-      participantes: 18,
-      concluidos: 12,
-      pendentes: 6,
-      proximaTurma: "2025-01-25",
-      companyId: "2",
-      descricao: "Capacitação para trabalhos em espaços confinados com atmosfera controlada.",
-    },
-  ],
-  "3": [
-    {
-      id: 5,
-      nome: "NR-12 - Segurança em Máquinas",
-      categoria: "Norma Regulamentadora",
-      cargaHoraria: 8,
-      validade: 24,
-      instrutor: "Ana Ferreira",
-      status: "Ativo",
-      participantes: 32,
-      concluidos: 28,
-      pendentes: 4,
-      proximaTurma: "2025-02-05",
-      companyId: "3",
-      descricao: "Treinamento sobre segurança na operação de máquinas e equipamentos.",
-    },
-  ],
+interface Training {
+  id: number
+  nome: string
+  categoria: string
+  carga_horaria: number
+  validade_meses: number
+  instrutor: string
+  status: string
+  descricao?: string
+  proxima_turma?: string
+  empresa_id: string
+  created_at: string
+  updated_at: string
 }
 
-const participantDataByCompany = {
-  "1": [
-    {
-      id: 1,
-      nome: "Pedro Oliveira",
-      cargo: "Eletricista",
-      treinamento: "NR-10",
-      dataInicio: "2024-11-01",
-      dataConclusao: "2024-11-05",
-      status: "Concluído",
-      nota: 8.5,
-      certificado: true,
-      companyId: "1",
-    },
-    {
-      id: 2,
-      nome: "Ana Costa",
-      cargo: "Técnica de Segurança",
-      treinamento: "NR-35",
-      dataInicio: "2024-12-01",
-      dataConclusao: null,
-      status: "Em Andamento",
-      nota: null,
-      certificado: false,
-      companyId: "1",
-    },
-  ],
-  "2": [
-    {
-      id: 3,
-      nome: "Carlos Santos",
-      cargo: "Soldador",
-      treinamento: "NR-33",
-      dataInicio: null,
-      dataConclusao: null,
-      status: "Pendente",
-      nota: null,
-      certificado: false,
-      companyId: "2",
-    },
-  ],
-  "3": [
-    {
-      id: 4,
-      nome: "Lucia Mendes",
-      cargo: "Operadora de Máquinas",
-      treinamento: "NR-12",
-      dataInicio: "2024-12-10",
-      dataConclusao: "2024-12-12",
-      status: "Concluído",
-      nota: 9.2,
-      certificado: true,
-      companyId: "3",
-    },
-  ],
+interface TrainingParticipant {
+  id: number
+  treinamento_id: number
+  funcionario_id: number
+  data_inicio?: string
+  data_conclusao?: string
+  status: string
+  nota?: number
+  certificado_url?: string
+  funcionario: {
+    nome: string
+    cargo: string
+  }
+  treinamento: {
+    nome: string
+  }
 }
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Ativo":
       return "default"
-    case "Concluído":
-      return "default"
-    case "Em Andamento":
-      return "secondary"
-    case "Pendente":
-      return "destructive"
     case "Planejado":
+      return "secondary"
+    case "Concluído":
       return "outline"
+    case "Cancelado":
+      return "destructive"
     default:
       return "secondary"
   }
 }
 
-export function Training() {
+const getParticipantStatusColor = (status: string) => {
+  switch (status) {
+    case "Concluído":
+      return "default"
+    case "Em Andamento":
+      return "secondary"
+    case "Pendente":
+      return "outline"
+    case "Reprovado":
+      return "destructive"
+    default:
+      return "secondary"
+  }
+}
+
+export { TrainingComponent as Training }
+export default function TrainingComponent() {
+  const [trainings, setTrainings] = useState<Training[]>([])
+  const [participants, setParticipants] = useState<TrainingParticipant[]>([])
+  const [loading, setLoading] = useState(true)
   const { selectedCompany } = useCompany()
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTraining, setSelectedTraining] = useState<any>(null)
@@ -226,41 +145,54 @@ export function Training() {
     proximaTurma: null as Date | null,
   })
 
-  const trainingData = selectedCompany ? trainingDataByCompany[selectedCompany.id] || [] : []
-  const participantData = selectedCompany ? participantDataByCompany[selectedCompany.id] || [] : []
+  const supabase = createBrowserClient()
+  const { toast } = useToast()
+
+  const loadTrainings = async () => {
+    if (!selectedCompany) return
+
+    try {
+      setLoading(true)
+
+      // Load trainings
+      const { data: trainingsData, error: trainingsError } = await supabase
+        .from("treinamentos")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("created_at", { ascending: false })
+
+      if (trainingsError) throw trainingsError
+
+      // Load participants with related data
+      const { data: participantsData, error: participantsError } = await supabase
+        .from("treinamento_funcionarios")
+        .select(`
+          *,
+          funcionario:funcionarios(nome, cargo),
+          treinamento:treinamentos(nome)
+        `)
+        .eq("treinamentos.empresa_id", selectedCompany.id)
+
+      if (participantsError) throw participantsError
+
+      setTrainings(trainingsData || [])
+      setParticipants(participantsData || [])
+    } catch (error) {
+      console.error("Erro ao carregar treinamentos:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadTrainings()
+  }, [selectedCompany])
 
   const stats = {
-    totalTreinamentos: trainingData.length,
-    totalParticipantes: trainingData.reduce((acc, t) => acc + t.participantes, 0),
-    totalConcluidos: trainingData.reduce((acc, t) => acc + t.concluidos, 0),
-    totalPendentes: trainingData.reduce((acc, t) => acc + t.pendentes, 0),
-  }
-
-  const handleNewTraining = () => {
-    setFormData({
-      nome: "",
-      categoria: "",
-      cargaHoraria: "",
-      validade: "",
-      instrutor: "",
-      descricao: "",
-      proximaTurma: null,
-    })
-    setIsNewTrainingOpen(true)
-  }
-
-  const handleEditTraining = (training: any) => {
-    setEditingTraining(training)
-    setFormData({
-      nome: training.nome,
-      categoria: training.categoria,
-      cargaHoraria: training.cargaHoraria.toString(),
-      validade: training.validade.toString(),
-      instrutor: training.instrutor,
-      descricao: training.descricao || "",
-      proximaTurma: new Date(training.proximaTurma),
-    })
-    setIsEditTrainingOpen(true)
+    totalTreinamentos: trainings.length,
+    totalParticipantes: participants.length,
+    totalConcluidos: participants.filter((p) => p.status === "Concluído").length,
+    totalPendentes: participants.filter((p) => p.status === "Pendente").length,
   }
 
   const handleViewTraining = (training: any) => {
@@ -268,29 +200,74 @@ export function Training() {
     setIsViewTrainingOpen(true)
   }
 
+  const handleEditTraining = (training: any) => {
+    setEditingTraining(training)
+    setFormData({
+      nome: training.nome,
+      categoria: training.categoria,
+      cargaHoraria: training.carga_horaria.toString(),
+      validade: training.validade_meses.toString(),
+      instrutor: training.instrutor,
+      descricao: training.descricao || "",
+      proximaTurma: training.proxima_turma ? new Date(training.proxima_turma) : null,
+    })
+    setIsEditTrainingOpen(true)
+  }
+
   const handleDeleteTraining = (training: any) => {
     setDeletingTraining(training)
     setIsDeleteDialogOpen(true)
   }
 
-  const handleSaveTraining = () => {
+  const handleSaveTraining = async () => {
     // Validate required fields
     if (!formData.nome || !formData.categoria || !formData.cargaHoraria || !formData.validade || !formData.instrutor) {
-      alert("Por favor, preencha todos os campos obrigatórios.")
+      toast({
+        title: "Campos obrigatórios",
+        description: "Por favor, preencha todos os campos obrigatórios.",
+        variant: "warning",
+      })
       return
     }
 
-    console.log("[v0] Saving training:", formData)
+    if (!selectedCompany) return
 
-    if (editingTraining) {
-      // Update existing training
-      console.log("[v0] Updating training:", editingTraining.id)
-      setIsEditTrainingOpen(false)
-      setEditingTraining(null)
-    } else {
-      // Create new training
-      console.log("[v0] Creating new training")
-      setIsNewTrainingOpen(false)
+    try {
+      const trainingData = {
+        nome: formData.nome,
+        categoria: formData.categoria,
+        carga_horaria: Number.parseInt(formData.cargaHoraria),
+        validade_meses: Number.parseInt(formData.validade),
+        instrutor: formData.instrutor,
+        descricao: formData.descricao,
+        proxima_turma: formData.proximaTurma?.toISOString(),
+        empresa_id: selectedCompany.id,
+        status: "Planejado",
+      }
+
+      if (editingTraining) {
+        // Update existing training
+        const { error } = await supabase.from("treinamentos").update(trainingData).eq("id", editingTraining.id)
+
+        if (error) throw error
+        setIsEditTrainingOpen(false)
+        setEditingTraining(null)
+      } else {
+        // Create new training
+        const { error } = await supabase.from("treinamentos").insert([trainingData])
+
+        if (error) throw error
+        setIsNewTrainingOpen(false)
+      }
+
+      await loadTrainings() // Reload data
+    } catch (error) {
+      console.error("Erro ao salvar treinamento:", error)
+      toast({
+        title: "Erro ao salvar",
+        description: "Erro ao salvar treinamento. Tente novamente.",
+        variant: "destructive",
+      })
     }
 
     // Reset form
@@ -320,26 +297,38 @@ export function Training() {
     })
   }
 
-  const confirmDelete = () => {
-    if (deletingTraining) {
-      console.log("[v0] Deleting training:", deletingTraining.id)
-      // Here you would delete from the actual data source
+  const confirmDelete = async () => {
+    if (!deletingTraining) return
+
+    try {
+      const { error } = await supabase.from("treinamentos").delete().eq("id", deletingTraining.id)
+
+      if (error) throw error
+
+      await loadTrainings() // Reload data
       setIsDeleteDialogOpen(false)
       setDeletingTraining(null)
+    } catch (error) {
+      console.error("Erro ao excluir treinamento:", error)
+      toast({
+        title: "Erro ao excluir",
+        description: "Erro ao excluir treinamento. Tente novamente.",
+        variant: "destructive",
+      })
     }
   }
 
   if (!selectedCompany) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground flex items-center space-x-2">
-              <GraduationCap className="h-8 w-8" />
-              <span>Treinamentos</span>
-            </h1>
-            <p className="text-muted-foreground">Gestão de treinamentos e certificações digitais</p>
-          </div>
+      <div className="space-y-4 sm:space-y-6">
+        <div className="px-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center space-x-2">
+            <GraduationCap className="h-6 w-6 sm:h-8 sm:w-8" />
+            <span>Treinamentos</span>
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Gestão de capacitações e certificações obrigatórias
+          </p>
         </div>
 
         <Card>
@@ -359,22 +348,167 @@ export function Training() {
     )
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center space-x-2">
-            <GraduationCap className="h-8 w-8" />
+  if (loading) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="px-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center space-x-2">
+            <GraduationCap className="h-6 w-6 sm:h-8 sm:w-8" />
             <span>Treinamentos</span>
           </h1>
-          <p className="text-muted-foreground">
-            Gestão de treinamentos e certificações digitais - {selectedCompany.name}
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Gestão de capacitações e certificações obrigatórias - {selectedCompany.name}
           </p>
         </div>
-        <Button onClick={handleNewTraining}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Treinamento
-        </Button>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Carregando treinamentos...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="px-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center space-x-2">
+            <GraduationCap className="h-6 w-6 sm:h-8 sm:w-8" />
+            <span className="leading-tight">Treinamentos</span>
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Gestão de capacitações e certificações obrigatórias - {selectedCompany.name}
+          </p>
+        </div>
+        <Dialog open={isNewTrainingOpen} onOpenChange={setIsNewTrainingOpen}>
+          <DialogTrigger asChild>
+            <Button className="w-full sm:w-auto">
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Treinamento
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Cadastrar Novo Treinamento</DialogTitle>
+              <DialogDescription>
+                Adicione um novo treinamento ao programa de capacitação de {selectedCompany.name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nome">Nome do Treinamento *</Label>
+                  <Input
+                    id="nome"
+                    value={formData.nome}
+                    onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                    placeholder="Ex: NR-35 - Trabalho em Altura"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="categoria">Categoria *</Label>
+                  <Select
+                    value={formData.categoria}
+                    onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
+                      <SelectItem value="Capacitação Geral">Capacitação Geral</SelectItem>
+                      <SelectItem value="Técnico Especializado">Técnico Especializado</SelectItem>
+                      <SelectItem value="Integração">Integração</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cargaHoraria">Carga Horária (h) *</Label>
+                  <Input
+                    id="cargaHoraria"
+                    type="number"
+                    value={formData.cargaHoraria}
+                    onChange={(e) => setFormData({ ...formData, cargaHoraria: e.target.value })}
+                    placeholder="8"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="validade">Validade (meses) *</Label>
+                  <Input
+                    id="validade"
+                    type="number"
+                    value={formData.validade}
+                    onChange={(e) => setFormData({ ...formData, validade: e.target.value })}
+                    placeholder="24"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="instrutor">Instrutor *</Label>
+                  <Input
+                    id="instrutor"
+                    value={formData.instrutor}
+                    onChange={(e) => setFormData({ ...formData, instrutor: e.target.value })}
+                    placeholder="Nome do instrutor"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="proximaTurma">Próxima Turma</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal bg-transparent",
+                        !formData.proximaTurma && "text-muted-foreground",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {formData.proximaTurma ? (
+                        format(formData.proximaTurma, "PPP", { locale: ptBR })
+                      ) : (
+                        <span>Selecione uma data</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={formData.proximaTurma || undefined}
+                      onSelect={(date) => setFormData({ ...formData, proximaTurma: date || null })}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="descricao">Descrição</Label>
+                <Textarea
+                  id="descricao"
+                  value={formData.descricao}
+                  onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+                  placeholder="Descreva o conteúdo e objetivos do treinamento"
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+              <Button variant="outline" onClick={handleCancelForm} className="w-full sm:w-auto bg-transparent">
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveTraining} className="w-full sm:w-auto">
+                Salvar Treinamento
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <Tabs defaultValue="treinamentos" className="space-y-4">
@@ -448,7 +582,7 @@ export function Training() {
               <CardDescription>Todos os programas de treinamento de {selectedCompany.name}</CardDescription>
             </CardHeader>
             <CardContent>
-              {trainingData.length === 0 ? (
+              {trainings.length === 0 ? (
                 <div className="text-center py-8">
                   <GraduationCap className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Nenhum treinamento encontrado</h3>
@@ -456,15 +590,15 @@ export function Training() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {trainingData.map((training) => (
+                  {trainings.map((training) => (
                     <div key={training.id} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg">{training.nome}</h3>
                           <p className="text-sm text-muted-foreground">{training.categoria}</p>
                           <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
-                            <span>⏱️ {training.cargaHoraria}h</span>
-                            <span>📅 Validade: {training.validade} meses</span>
+                            <span>⏱️ {training.carga_horaria}h</span>
+                            <span>📅 Validade: {training.validade_meses} meses</span>
                             <span>👨‍🏫 {training.instrutor}</span>
                           </div>
                         </div>
@@ -529,7 +663,7 @@ export function Training() {
                         <div className="flex justify-between items-center">
                           <div>
                             <p className="text-sm text-muted-foreground">Próxima Turma</p>
-                            <p className="font-medium">{format(new Date(training.proximaTurma), "dd/MM/yyyy")}</p>
+                            <p className="font-medium">{format(new Date(training.proxima_turma), "dd/MM/yyyy")}</p>
                           </div>
                           <div className="flex space-x-2">
                             <Button variant="outline" size="sm">
@@ -609,7 +743,7 @@ export function Training() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {participantData.length === 0 ? (
+                  {participants.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8">
                         <div className="space-y-2">
@@ -621,23 +755,27 @@ export function Training() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    participantData.map((participant) => (
+                    participants.map((participant) => (
                       <TableRow key={participant.id}>
-                        <TableCell className="font-medium">{participant.nome}</TableCell>
-                        <TableCell>{participant.cargo}</TableCell>
-                        <TableCell>{participant.treinamento}</TableCell>
+                        <TableCell className="font-medium">{participant.funcionario.nome}</TableCell>
+                        <TableCell>{participant.funcionario.cargo}</TableCell>
+                        <TableCell>{participant.treinamento.nome}</TableCell>
                         <TableCell>
-                          {participant.dataInicio ? format(new Date(participant.dataInicio), "dd/MM/yyyy") : "-"}
+                          {participant.data_inicio ? format(new Date(participant.data_inicio), "dd/MM/yyyy") : "-"}
                         </TableCell>
                         <TableCell>
-                          {participant.dataConclusao ? format(new Date(participant.dataConclusao), "dd/MM/yyyy") : "-"}
+                          {participant.data_conclusao
+                            ? format(new Date(participant.data_conclusao), "dd/MM/yyyy")
+                            : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getStatusColor(participant.status) as any}>{participant.status}</Badge>
+                          <Badge variant={getParticipantStatusColor(participant.status) as any}>
+                            {participant.status}
+                          </Badge>
                         </TableCell>
                         <TableCell>{participant.nota || "-"}</TableCell>
                         <TableCell>
-                          {participant.certificado ? (
+                          {participant.certificado_url ? (
                             <CheckCircle className="h-4 w-4 text-green-500" />
                           ) : (
                             <Clock className="h-4 w-4 text-muted-foreground" />
@@ -645,7 +783,7 @@ export function Training() {
                         </TableCell>
                         <TableCell>
                           <div className="flex space-x-2">
-                            {participant.certificado && (
+                            {participant.certificado_url && (
                               <Button variant="ghost" size="sm">
                                 <Download className="h-4 w-4" />
                               </Button>
@@ -687,7 +825,7 @@ export function Training() {
                 </div>
 
                 <div className="space-y-3">
-                  {trainingData.map((training) => (
+                  {trainings.map((training) => (
                     <div key={training.id} className="flex justify-between items-center p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">{training.nome}</p>
@@ -765,20 +903,20 @@ export function Training() {
                 <div className="space-y-4">
                   <h3 className="font-semibold">Próximos Treinamentos</h3>
                   <div className="space-y-3">
-                    {trainingData.map((training) => (
+                    {trainings.map((training) => (
                       <div key={training.id} className="p-3 border rounded-lg">
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-medium">{training.nome}</p>
                             <p className="text-sm text-muted-foreground">
-                              {training.instrutor} • {training.cargaHoraria}h
+                              {training.instrutor} • {training.carga_horaria}h
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {training.participantes} participantes inscritos
                             </p>
                           </div>
                           <Badge variant={training.status === "Planejado" ? "outline" : undefined}>
-                            {format(new Date(training.proximaTurma), "dd/MM")}
+                            {format(new Date(training.proxima_turma), "dd/MM")}
                           </Badge>
                         </div>
                       </div>
@@ -790,120 +928,6 @@ export function Training() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <Dialog open={isNewTrainingOpen} onOpenChange={setIsNewTrainingOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Criar Novo Treinamento</DialogTitle>
-            <DialogDescription>Configure um novo programa de treinamento para {selectedCompany.name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Nome do Treinamento *</Label>
-                <Input
-                  placeholder="Ex: NR-35 - Trabalho em Altura"
-                  value={formData.nome}
-                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Categoria *</Label>
-                <Select
-                  value={formData.categoria}
-                  onValueChange={(value) => setFormData({ ...formData, categoria: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
-                    <SelectItem value="Capacitação Geral">Capacitação Geral</SelectItem>
-                    <SelectItem value="Treinamento Técnico">Treinamento Técnico</SelectItem>
-                    <SelectItem value="Comportamental">Comportamental</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Carga Horária *</Label>
-                <Input
-                  type="number"
-                  placeholder="8"
-                  value={formData.cargaHoraria}
-                  onChange={(e) => setFormData({ ...formData, cargaHoraria: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Validade (meses) *</Label>
-                <Input
-                  type="number"
-                  placeholder="24"
-                  value={formData.validade}
-                  onChange={(e) => setFormData({ ...formData, validade: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Instrutor *</Label>
-                <Select
-                  value={formData.instrutor}
-                  onValueChange={(value) => setFormData({ ...formData, instrutor: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="João Santos">João Santos</SelectItem>
-                    <SelectItem value="Maria Silva">Maria Silva</SelectItem>
-                    <SelectItem value="Dr. Carlos Lima">Dr. Carlos Lima</SelectItem>
-                    <SelectItem value="Roberto Costa">Roberto Costa</SelectItem>
-                    <SelectItem value="Ana Ferreira">Ana Ferreira</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Descrição</Label>
-              <Textarea
-                placeholder="Descreva o conteúdo e objetivos do treinamento"
-                value={formData.descricao}
-                onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Data da Próxima Turma</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.proximaTurma
-                      ? format(formData.proximaTurma, "PPP", { locale: ptBR })
-                      : "Selecione a data"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={formData.proximaTurma}
-                    onSelect={(date) => setFormData({ ...formData, proximaTurma: date })}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={handleCancelForm}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSaveTraining}>Criar Treinamento</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={isEditTrainingOpen} onOpenChange={setIsEditTrainingOpen}>
         <DialogContent className="max-w-2xl">
@@ -1039,11 +1063,11 @@ export function Training() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Carga Horária:</span>
-                      <span>{selectedTraining.cargaHoraria}h</span>
+                      <span>{selectedTraining.carga_horaria}h</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Validade:</span>
-                      <span>{selectedTraining.validade} meses</span>
+                      <span>{selectedTraining.validade_meses} meses</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Instrutor:</span>
@@ -1063,29 +1087,52 @@ export function Training() {
                   <CardContent className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total de Participantes:</span>
-                      <span className="font-medium">{selectedTraining.participantes}</span>
+                      <span className="font-medium">
+                        {participants.filter((p) => p.treinamento_id === selectedTraining.id).length}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Concluídos:</span>
-                      <span className="font-medium text-green-600">{selectedTraining.concluidos}</span>
+                      <span className="font-medium text-green-600">
+                        {
+                          participants.filter(
+                            (p) => p.treinamento_id === selectedTraining.id && p.status === "Concluído",
+                          ).length
+                        }
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Pendentes:</span>
-                      <span className="font-medium text-yellow-600">{selectedTraining.pendentes}</span>
+                      <span className="font-medium text-yellow-600">
+                        {
+                          participants.filter(
+                            (p) => p.treinamento_id === selectedTraining.id && p.status === "Pendente",
+                          ).length
+                        }
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Taxa de Aprovação:</span>
                       <span className="font-medium">
-                        {selectedTraining.participantes > 0
-                          ? Math.round((selectedTraining.concluidos / selectedTraining.participantes) * 100)
-                          : 0}
-                        %
+                        {(() => {
+                          const totalParticipants = participants.filter(
+                            (p) => p.treinamento_id === selectedTraining.id,
+                          ).length
+                          const completedParticipants = participants.filter(
+                            (p) => p.treinamento_id === selectedTraining.id && p.status === "Concluído",
+                          ).length
+                          return totalParticipants > 0
+                            ? Math.round((completedParticipants / totalParticipants) * 100)
+                            : 0
+                        })()}%
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Próxima Turma:</span>
                       <span className="font-medium">
-                        {format(new Date(selectedTraining.proximaTurma), "dd/MM/yyyy")}
+                        {selectedTraining.proxima_turma
+                          ? format(new Date(selectedTraining.proxima_turma), "dd/MM/yyyy")
+                          : "-"}
                       </span>
                     </div>
                   </CardContent>
@@ -1133,6 +1180,3 @@ export function Training() {
     </div>
   )
 }
-
-export { Training as TrainingComponent }
-export default Training

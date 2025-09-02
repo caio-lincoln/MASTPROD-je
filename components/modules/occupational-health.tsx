@@ -1,7 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
+import { createBrowserClient } from "@/lib/supabase/client"
+import { uploadFile } from "@/lib/supabase/storage"
+import { FileUpload } from "@/components/ui/file-upload"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,12 +23,10 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Heart,
   Plus,
-  CalendarIcon,
   FileText,
   AlertCircle,
   CheckCircle,
@@ -33,109 +34,32 @@ import {
   Eye,
   MoreHorizontal,
   Download,
-  Edit,
+  Upload,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
-const examDataByCompany = {
-  "1": [
-    {
-      id: 1,
-      funcionario: "João Silva",
-      cargo: "Operador",
-      tipoExame: "Periódico",
-      dataExame: "2024-11-15",
-      proximoExame: "2025-11-15",
-      status: "Em Dia",
-      medico: "Dr. Carlos Santos",
-    },
-    {
-      id: 2,
-      funcionario: "Maria Santos",
-      cargo: "Soldadora",
-      tipoExame: "Periódico",
-      dataExame: "2024-10-20",
-      proximoExame: "2025-04-20",
-      status: "Vencendo",
-      medico: "Dra. Ana Costa",
-    },
-  ],
-  "2": [
-    {
-      id: 3,
-      funcionario: "Pedro Oliveira",
-      cargo: "Mecânico",
-      tipoExame: "Admissional",
-      dataExame: "2024-12-01",
-      proximoExame: "2025-12-01",
-      status: "Em Dia",
-      medico: "Dr. Carlos Santos",
-    },
-    {
-      id: 4,
-      funcionario: "Ana Costa",
-      cargo: "Técnica",
-      tipoExame: "Periódico",
-      dataExame: "2024-09-15",
-      proximoExame: "2025-03-15",
-      status: "Vencendo",
-      medico: "Dr. Roberto Lima",
-    },
-  ],
-  "3": [
-    {
-      id: 5,
-      funcionario: "Carlos Lima",
-      cargo: "Químico",
-      tipoExame: "Periódico",
-      dataExame: "2024-11-01",
-      proximoExame: "2025-05-01",
-      status: "Em Dia",
-      medico: "Dra. Fernanda Silva",
-    },
-  ],
+interface ExameAso {
+  id: string
+  funcionario_id: string
+  funcionario_nome: string
+  funcionario_cargo: string
+  tipo_exame: string
+  data_exame: string
+  data_proximo_exame: string
+  medico_responsavel: string
+  resultado: string
+  status: string
+  observacoes?: string
+  arquivo_url?: string
+  created_at: string
+  updated_at: string
 }
 
-const asoDataByCompany = {
-  "1": { pendentes: 8, emitidos: 45 },
-  "2": { pendentes: 12, emitidos: 89 },
-  "3": { pendentes: 3, emitidos: 23 },
-}
-
-const medicalHistoryByCompany = {
-  "1": [
-    {
-      funcionario: "João Silva",
-      cargo: "Operador de Máquina",
-      historico: [
-        { tipo: "Admissional", data: "15/01/2023", medico: "Dr. Carlos Santos", resultado: "Apto" },
-        { tipo: "Periódico", data: "15/01/2024", medico: "Dr. Carlos Santos", resultado: "Apto" },
-        { tipo: "Periódico", data: "15/11/2024", medico: "Dr. Carlos Santos", resultado: "Apto" },
-      ],
-    },
-  ],
-  "2": [
-    {
-      funcionario: "Pedro Oliveira",
-      cargo: "Mecânico Industrial",
-      historico: [
-        { tipo: "Admissional", data: "10/03/2023", medico: "Dr. Roberto Lima", resultado: "Apto" },
-        { tipo: "Periódico", data: "10/09/2024", medico: "Dr. Roberto Lima", resultado: "Apto" },
-      ],
-    },
-  ],
-  "3": [
-    {
-      funcionario: "Carlos Lima",
-      cargo: "Químico Analista",
-      historico: [
-        { tipo: "Admissional", data: "05/06/2023", medico: "Dra. Fernanda Silva", resultado: "Apto" },
-        { tipo: "Periódico", data: "05/12/2024", medico: "Dra. Fernanda Silva", resultado: "Apto" },
-      ],
-    },
-  ],
+interface Funcionario {
+  id: string
+  nome: string
+  cargo: string
 }
 
 const getStatusColor = (status: string) => {
@@ -164,41 +88,230 @@ const getStatusIcon = (status: string) => {
   }
 }
 
+const calculateExamStatus = (proximoExame: string): string => {
+  const today = new Date()
+  const nextExamDate = new Date(proximoExame)
+  const diffTime = nextExamDate.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 0) return "Vencido"
+  if (diffDays <= 30) return "Vencendo"
+  return "Em Dia"
+}
+
 export function OccupationalHealth() {
+  const [exames, setExames] = useState<ExameAso[]>([])
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<Date>()
-  const [selectedExam, setSelectedExam] = useState<any>(null)
+  const [selectedExam, setSelectedExam] = useState<ExameAso | null>(null)
   const [showExamDetails, setShowExamDetails] = useState(false)
   const [showAsoDialog, setShowAsoDialog] = useState(false)
-  const [selectedEmployee, setSelectedEmployee] = useState<any>(null)
+  const [showNewExamDialog, setShowNewExamDialog] = useState(false)
+  const [selectedEmployee, setSelectedEmployee] = useState<ExameAso | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const [newExamData, setNewExamData] = useState({
+    funcionario_id: "",
+    tipo_exame: "",
+    data_exame: "",
+    medico_responsavel: "",
+    observacoes: "",
+  })
+
+  const [asoData, setAsoData] = useState({
+    funcionario_id: "",
+    tipo_exame: "",
+    data_exame: "",
+    medico_responsavel: "",
+    resultado: "apto",
+    data_proximo_exame: "",
+    observacoes: "",
+    riscos_ocupacionais: "",
+  })
+
   const { selectedCompany } = useCompany()
+  const supabase = createBrowserClient()
 
-  const companyExams = selectedCompany ? examDataByCompany[selectedCompany.id] || [] : []
-  const companyAsos = selectedCompany
-    ? asoDataByCompany[selectedCompany.id] || { pendentes: 0, emitidos: 0 }
-    : { pendentes: 0, emitidos: 0 }
-  const companyMedicalHistory = selectedCompany ? medicalHistoryByCompany[selectedCompany.id] || [] : []
+  useEffect(() => {
+    if (selectedCompany) {
+      loadExames()
+      loadFuncionarios()
+    }
+  }, [selectedCompany])
 
-  const examStats = {
-    total: companyExams.length,
-    emDia: companyExams.filter((e) => e.status === "Em Dia").length,
-    vencendo: companyExams.filter((e) => e.status === "Vencendo").length,
-    vencidos: companyExams.filter((e) => e.status === "Vencido").length,
+  const loadExames = async () => {
+    if (!selectedCompany) return
+
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from("exames_aso")
+        .select(`
+          *,
+          funcionarios!inner(nome, cargo)
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .order("data_exame", { ascending: false })
+
+      if (error) throw error
+
+      const transformedExames: ExameAso[] = data.map((exam) => ({
+        id: exam.id,
+        funcionario_id: exam.funcionario_id,
+        funcionario_nome: exam.funcionarios.nome,
+        funcionario_cargo: exam.funcionarios.cargo,
+        tipo_exame: exam.tipo_exame,
+        data_exame: exam.data_exame,
+        data_proximo_exame: exam.data_proximo_exame,
+        medico_responsavel: exam.medico_responsavel,
+        resultado: exam.resultado,
+        status: calculateExamStatus(exam.data_proximo_exame),
+        observacoes: exam.observacoes,
+        arquivo_url: exam.arquivo_url,
+        created_at: exam.created_at,
+        updated_at: exam.updated_at,
+      }))
+
+      setExames(transformedExames)
+    } catch (error) {
+      console.error("Erro ao carregar exames:", error)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleViewExam = (exam: any) => {
+  const loadFuncionarios = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("funcionarios")
+        .select("id, nome, cargo")
+        .eq("empresa_id", selectedCompany.id)
+        .eq("ativo", true)
+        .order("nome")
+
+      if (error) throw error
+      setFuncionarios(data || [])
+    } catch (error) {
+      console.error("Erro ao carregar funcionários:", error)
+    }
+  }
+
+  const examStats = {
+    total: exames.length,
+    emDia: exames.filter((e) => e.status === "Em Dia").length,
+    vencendo: exames.filter((e) => e.status === "Vencendo").length,
+    vencidos: exames.filter((e) => e.status === "Vencido").length,
+  }
+
+  const asoStats = {
+    pendentes: exames.filter((e) => !e.arquivo_url).length,
+    emitidos: exames.filter((e) => e.arquivo_url).length,
+  }
+
+  const handleViewExam = (exam: ExameAso) => {
     setSelectedExam(exam)
     setShowExamDetails(true)
   }
 
-  const handleGenerateAso = (employee?: any) => {
-    setSelectedEmployee(employee)
+  const handleGenerateAso = (exam?: ExameAso) => {
+    if (exam) {
+      setAsoData({
+        funcionario_id: exam.funcionario_id,
+        tipo_exame: exam.tipo_exame,
+        data_exame: exam.data_exame,
+        medico_responsavel: exam.medico_responsavel,
+        resultado: exam.resultado || "apto",
+        data_proximo_exame: exam.data_proximo_exame,
+        observacoes: exam.observacoes || "",
+        riscos_ocupacionais: "",
+      })
+    }
+    setSelectedEmployee(exam || null)
     setShowAsoDialog(true)
   }
 
-  const handleAsoSubmit = () => {
-    console.log("[v0] Generating ASO for:", selectedEmployee)
-    setShowAsoDialog(false)
-    setSelectedEmployee(null)
+  const handleCreateExam = async () => {
+    if (!selectedCompany || !newExamData.funcionario_id || !newExamData.tipo_exame) return
+
+    try {
+      setLoading(true)
+
+      // Calculate next exam date (1 year from exam date)
+      const examDate = new Date(newExamData.data_exame)
+      const nextExamDate = new Date(examDate)
+      nextExamDate.setFullYear(nextExamDate.getFullYear() + 1)
+
+      const { error } = await supabase.from("exames_aso").insert({
+        empresa_id: selectedCompany.id,
+        funcionario_id: newExamData.funcionario_id,
+        tipo_exame: newExamData.tipo_exame,
+        data_exame: newExamData.data_exame,
+        data_proximo_exame: nextExamDate.toISOString().split("T")[0],
+        medico_responsavel: newExamData.medico_responsavel,
+        resultado: "Agendado",
+        observacoes: newExamData.observacoes,
+      })
+
+      if (error) throw error
+
+      // Reset form and reload data
+      setNewExamData({
+        funcionario_id: "",
+        tipo_exame: "",
+        data_exame: "",
+        medico_responsavel: "",
+        observacoes: "",
+      })
+      setShowNewExamDialog(false)
+      await loadExames()
+    } catch (error) {
+      console.error("Erro ao criar exame:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAsoSubmit = async (file?: File) => {
+    if (!selectedCompany || !asoData.funcionario_id) return
+
+    try {
+      setUploading(true)
+      let arquivo_url = ""
+
+      // Upload file if provided
+      if (file) {
+        const uploadResult = await uploadFile(file, "asos", selectedCompany.id)
+        if (uploadResult.success && uploadResult.url) {
+          arquivo_url = uploadResult.url
+        }
+      }
+
+      // Update or create ASO record
+      const { error } = await supabase.from("exames_aso").upsert({
+        empresa_id: selectedCompany.id,
+        funcionario_id: asoData.funcionario_id,
+        tipo_exame: asoData.tipo_exame,
+        data_exame: asoData.data_exame,
+        data_proximo_exame: asoData.data_proximo_exame,
+        medico_responsavel: asoData.medico_responsavel,
+        resultado: asoData.resultado,
+        observacoes: asoData.observacoes,
+        arquivo_url: arquivo_url || undefined,
+      })
+
+      if (error) throw error
+
+      setShowAsoDialog(false)
+      setSelectedEmployee(null)
+      await loadExames()
+    } catch (error) {
+      console.error("Erro ao gerar ASO:", error)
+    } finally {
+      setUploading(false)
+    }
   }
 
   if (!selectedCompany) {
@@ -222,6 +335,34 @@ export function OccupationalHealth() {
     )
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground flex items-center space-x-2">
+              <Heart className="h-8 w-8" />
+              <span>Saúde Ocupacional</span>
+            </h1>
+            <p className="text-muted-foreground">Carregando dados de saúde ocupacional - {selectedCompany.name}</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-muted rounded w-1/2"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -234,7 +375,7 @@ export function OccupationalHealth() {
             Gestão de exames médicos e ASO - NR-07 (PCMSO) | {selectedCompany.name}
           </p>
         </div>
-        <Dialog>
+        <Dialog open={showNewExamDialog} onOpenChange={setShowNewExamDialog}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
@@ -251,32 +392,38 @@ export function OccupationalHealth() {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Funcionário</Label>
-                  <Select>
+                  <Label>Funcionário *</Label>
+                  <Select
+                    value={newExamData.funcionario_id}
+                    onValueChange={(value) => setNewExamData((prev) => ({ ...prev, funcionario_id: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o funcionário" />
                     </SelectTrigger>
                     <SelectContent>
-                      {companyExams.map((exam) => (
-                        <SelectItem key={exam.id} value={exam.funcionario.toLowerCase()}>
-                          {exam.funcionario}
+                      {funcionarios.map((funcionario) => (
+                        <SelectItem key={funcionario.id} value={funcionario.id}>
+                          {funcionario.nome} - {funcionario.cargo}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Tipo de Exame</Label>
-                  <Select>
+                  <Label>Tipo de Exame *</Label>
+                  <Select
+                    value={newExamData.tipo_exame}
+                    onValueChange={(value) => setNewExamData((prev) => ({ ...prev, tipo_exame: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admissional">Admissional</SelectItem>
-                      <SelectItem value="periodico">Periódico</SelectItem>
-                      <SelectItem value="retorno">Retorno ao Trabalho</SelectItem>
-                      <SelectItem value="mudanca">Mudança de Função</SelectItem>
-                      <SelectItem value="demissional">Demissional</SelectItem>
+                      <SelectItem value="Admissional">Admissional</SelectItem>
+                      <SelectItem value="Periódico">Periódico</SelectItem>
+                      <SelectItem value="Retorno ao Trabalho">Retorno ao Trabalho</SelectItem>
+                      <SelectItem value="Mudança de Função">Mudança de Função</SelectItem>
+                      <SelectItem value="Demissional">Demissional</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -284,30 +431,27 @@ export function OccupationalHealth() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Data do Exame</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {selectedDate ? format(selectedDate, "PPP", { locale: ptBR }) : "Selecione a data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
-                    </PopoverContent>
-                  </Popover>
+                  <Label>Data do Exame *</Label>
+                  <Input
+                    type="date"
+                    value={newExamData.data_exame}
+                    onChange={(e) => setNewExamData((prev) => ({ ...prev, data_exame: e.target.value }))}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Médico Responsável</Label>
-                  <Select>
+                  <Label>Médico Responsável *</Label>
+                  <Select
+                    value={newExamData.medico_responsavel}
+                    onValueChange={(value) => setNewExamData((prev) => ({ ...prev, medico_responsavel: value }))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o médico" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="carlos">Dr. Carlos Santos</SelectItem>
-                      <SelectItem value="ana">Dra. Ana Costa</SelectItem>
-                      <SelectItem value="roberto">Dr. Roberto Lima</SelectItem>
-                      <SelectItem value="fernanda">Dra. Fernanda Silva</SelectItem>
+                      <SelectItem value="Dr. Carlos Santos">Dr. Carlos Santos</SelectItem>
+                      <SelectItem value="Dra. Ana Costa">Dra. Ana Costa</SelectItem>
+                      <SelectItem value="Dr. Roberto Lima">Dr. Roberto Lima</SelectItem>
+                      <SelectItem value="Dra. Fernanda Silva">Dra. Fernanda Silva</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -315,12 +459,20 @@ export function OccupationalHealth() {
 
               <div className="space-y-2">
                 <Label>Observações</Label>
-                <Input placeholder="Observações adicionais sobre o exame" />
+                <Textarea
+                  placeholder="Observações adicionais sobre o exame"
+                  value={newExamData.observacoes}
+                  onChange={(e) => setNewExamData((prev) => ({ ...prev, observacoes: e.target.value }))}
+                />
               </div>
             </div>
             <div className="flex justify-end space-x-2">
-              <Button variant="outline">Cancelar</Button>
-              <Button>Agendar Exame</Button>
+              <Button variant="outline" onClick={() => setShowNewExamDialog(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateExam} disabled={loading}>
+                {loading ? "Agendando..." : "Agendar Exame"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -331,7 +483,6 @@ export function OccupationalHealth() {
           <TabsTrigger value="exames">Controle de Exames</TabsTrigger>
           <TabsTrigger value="calendario">Calendário</TabsTrigger>
           <TabsTrigger value="asos">ASOs</TabsTrigger>
-          <TabsTrigger value="historico">Histórico Médico</TabsTrigger>
         </TabsList>
 
         <TabsContent value="exames" className="space-y-4">
@@ -428,14 +579,14 @@ export function OccupationalHealth() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {companyExams.map((exam) => (
+                  {exames.map((exam) => (
                     <TableRow key={exam.id}>
-                      <TableCell className="font-medium">{exam.funcionario}</TableCell>
-                      <TableCell>{exam.cargo}</TableCell>
-                      <TableCell>{exam.tipoExame}</TableCell>
-                      <TableCell>{format(new Date(exam.dataExame), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{format(new Date(exam.proximoExame), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{exam.medico}</TableCell>
+                      <TableCell className="font-medium">{exam.funcionario_nome}</TableCell>
+                      <TableCell>{exam.funcionario_cargo}</TableCell>
+                      <TableCell>{exam.tipo_exame}</TableCell>
+                      <TableCell>{format(new Date(exam.data_exame), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>{format(new Date(exam.data_proximo_exame), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>{exam.medico_responsavel}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           {getStatusIcon(exam.status)}
@@ -458,14 +609,12 @@ export function OccupationalHealth() {
                               <FileText className="h-4 w-4 mr-2" />
                               Gerar ASO
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <CalendarIcon className="h-4 w-4 mr-2" />
-                              Reagendar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Editar
-                            </DropdownMenuItem>
+                            {exam.arquivo_url && (
+                              <DropdownMenuItem onClick={() => window.open(exam.arquivo_url, "_blank")}>
+                                <Download className="h-4 w-4 mr-2" />
+                                Baixar ASO
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -473,7 +622,7 @@ export function OccupationalHealth() {
                   ))}
                 </TableBody>
               </Table>
-              {companyExams.length === 0 && (
+              {exames.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   Nenhum exame cadastrado para {selectedCompany.name}
                 </div>
@@ -499,24 +648,24 @@ export function OccupationalHealth() {
                   />
                 </div>
                 <div className="space-y-4">
-                  <h3 className="font-semibold">Exames Agendados</h3>
+                  <h3 className="font-semibold">Próximos Exames</h3>
                   <div className="space-y-3">
-                    {companyExams.slice(0, 3).map((exam, index) => (
+                    {exames.slice(0, 5).map((exam) => (
                       <div key={exam.id} className="p-3 border rounded-lg">
                         <div className="flex justify-between items-start">
                           <div>
                             <p className="font-medium">
-                              {exam.funcionario} - {exam.tipoExame}
+                              {exam.funcionario_nome} - {exam.tipo_exame}
                             </p>
-                            <p className="text-sm text-muted-foreground">{exam.medico}</p>
+                            <p className="text-sm text-muted-foreground">{exam.medico_responsavel}</p>
                           </div>
-                          <Badge variant={index === 0 ? "default" : "outline"}>
-                            {index === 0 ? "Hoje" : index === 1 ? "Amanhã" : format(new Date(exam.dataExame), "dd/MM")}
+                          <Badge variant={getStatusColor(exam.status) as any}>
+                            {format(new Date(exam.data_proximo_exame), "dd/MM")}
                           </Badge>
                         </div>
                       </div>
                     ))}
-                    {companyExams.length === 0 && (
+                    {exames.length === 0 && (
                       <div className="text-center py-4 text-muted-foreground">
                         Nenhum exame agendado para {selectedCompany.name}
                       </div>
@@ -555,68 +704,21 @@ export function OccupationalHealth() {
                     <CardDescription>Atestados aguardando emissão</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-yellow-600">{companyAsos.pendentes}</div>
-                    <p className="text-sm text-muted-foreground">Pendentes de assinatura</p>
+                    <div className="text-2xl font-bold text-yellow-600">{asoStats.pendentes}</div>
+                    <p className="text-sm text-muted-foreground">Sem arquivo anexado</p>
                   </CardContent>
                 </Card>
 
                 <Card className="cursor-pointer hover:shadow-md transition-shadow">
                   <CardHeader>
                     <CardTitle className="text-lg">ASOs Emitidos</CardTitle>
-                    <CardDescription>Total de atestados no mês</CardDescription>
+                    <CardDescription>Total de atestados com arquivo</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{companyAsos.emitidos}</div>
-                    <p className="text-sm text-muted-foreground">Este mês</p>
+                    <div className="text-2xl font-bold text-green-600">{asoStats.emitidos}</div>
+                    <p className="text-sm text-muted-foreground">Com arquivo anexado</p>
                   </CardContent>
                 </Card>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="historico" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Histórico Médico dos Funcionários</CardTitle>
-              <CardDescription>
-                Registro completo do histórico de saúde ocupacional - {selectedCompany.name}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex space-x-2">
-                  <Input placeholder="Buscar funcionário..." className="flex-1" />
-                  <Button variant="outline">Buscar</Button>
-                </div>
-
-                {companyMedicalHistory.map((employee, index) => (
-                  <div key={index} className="border rounded-lg p-4">
-                    <h4 className="font-semibold mb-3">
-                      {employee.funcionario} - {employee.cargo}
-                    </h4>
-                    <div className="space-y-3">
-                      {employee.historico.map((record, recordIndex) => (
-                        <div key={recordIndex} className="flex justify-between items-center p-2 bg-muted rounded">
-                          <div>
-                            <p className="font-medium">{record.tipo}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {record.data} - {record.medico}
-                            </p>
-                          </div>
-                          <Badge variant={record.resultado === "Apto" ? "default" : "destructive"}>
-                            {record.resultado}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                {companyMedicalHistory.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Nenhum histórico médico encontrado para {selectedCompany.name}
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -634,17 +736,17 @@ export function OccupationalHealth() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Funcionário</Label>
-                  <p className="font-medium">{selectedExam.funcionario}</p>
+                  <p className="font-medium">{selectedExam.funcionario_nome}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Cargo</Label>
-                  <p>{selectedExam.cargo}</p>
+                  <p>{selectedExam.funcionario_cargo}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Tipo de Exame</Label>
-                  <p>{selectedExam.tipoExame}</p>
+                  <p>{selectedExam.tipo_exame}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Status</Label>
@@ -657,26 +759,45 @@ export function OccupationalHealth() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Data do Exame</Label>
-                  <p>{format(new Date(selectedExam.dataExame), "dd/MM/yyyy")}</p>
+                  <p>{format(new Date(selectedExam.data_exame), "dd/MM/yyyy")}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Próximo Exame</Label>
-                  <p>{format(new Date(selectedExam.proximoExame), "dd/MM/yyyy")}</p>
+                  <p>{format(new Date(selectedExam.data_proximo_exame), "dd/MM/yyyy")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Médico Responsável</Label>
-                  <p>{selectedExam.medico}</p>
+                  <p>{selectedExam.medico_responsavel}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Resultado</Label>
+                  <p>{selectedExam.resultado}</p>
                 </div>
               </div>
+              {selectedExam.observacoes && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Observações</Label>
+                  <p className="text-sm">{selectedExam.observacoes}</p>
+                </div>
+              )}
+              {selectedExam.arquivo_url && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-muted-foreground">ASO</Label>
+                  <Button variant="outline" size="sm" onClick={() => window.open(selectedExam.arquivo_url, "_blank")}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Baixar ASO
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => setShowExamDetails(false)}>
               Fechar
             </Button>
-            <Button onClick={() => handleGenerateAso(selectedExam)}>
+            <Button onClick={() => handleGenerateAso(selectedExam!)}>
               <FileText className="h-4 w-4 mr-2" />
               Gerar ASO
             </Button>
@@ -690,21 +811,24 @@ export function OccupationalHealth() {
             <DialogTitle>Gerar Atestado de Saúde Ocupacional (ASO)</DialogTitle>
             <DialogDescription>
               Preencha os dados para emissão do ASO
-              {selectedEmployee && ` para ${selectedEmployee.funcionario}`}
+              {selectedEmployee && ` para ${selectedEmployee.funcionario_nome}`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Funcionário *</Label>
-                <Select defaultValue={selectedEmployee?.funcionario?.toLowerCase()}>
+                <Select
+                  value={asoData.funcionario_id}
+                  onValueChange={(value) => setAsoData((prev) => ({ ...prev, funcionario_id: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o funcionário" />
                   </SelectTrigger>
                   <SelectContent>
-                    {companyExams.map((exam) => (
-                      <SelectItem key={exam.id} value={exam.funcionario.toLowerCase()}>
-                        {exam.funcionario}
+                    {funcionarios.map((funcionario) => (
+                      <SelectItem key={funcionario.id} value={funcionario.id}>
+                        {funcionario.nome} - {funcionario.cargo}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -712,16 +836,19 @@ export function OccupationalHealth() {
               </div>
               <div className="space-y-2">
                 <Label>Tipo de ASO *</Label>
-                <Select defaultValue={selectedEmployee?.tipoExame?.toLowerCase()}>
+                <Select
+                  value={asoData.tipo_exame}
+                  onValueChange={(value) => setAsoData((prev) => ({ ...prev, tipo_exame: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admissional">Admissional</SelectItem>
-                    <SelectItem value="periodico">Periódico</SelectItem>
-                    <SelectItem value="retorno">Retorno ao Trabalho</SelectItem>
-                    <SelectItem value="mudanca">Mudança de Função</SelectItem>
-                    <SelectItem value="demissional">Demissional</SelectItem>
+                    <SelectItem value="Admissional">Admissional</SelectItem>
+                    <SelectItem value="Periódico">Periódico</SelectItem>
+                    <SelectItem value="Retorno ao Trabalho">Retorno ao Trabalho</SelectItem>
+                    <SelectItem value="Mudança de Função">Mudança de Função</SelectItem>
+                    <SelectItem value="Demissional">Demissional</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -730,19 +857,26 @@ export function OccupationalHealth() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Data do Exame *</Label>
-                <Input type="date" defaultValue={selectedEmployee?.dataExame || format(new Date(), "yyyy-MM-dd")} />
+                <Input
+                  type="date"
+                  value={asoData.data_exame}
+                  onChange={(e) => setAsoData((prev) => ({ ...prev, data_exame: e.target.value }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Médico Responsável *</Label>
-                <Select defaultValue={selectedEmployee?.medico?.toLowerCase().replace(/\s+/g, "-")}>
+                <Select
+                  value={asoData.medico_responsavel}
+                  onValueChange={(value) => setAsoData((prev) => ({ ...prev, medico_responsavel: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o médico" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="dr-carlos-santos">Dr. Carlos Santos</SelectItem>
-                    <SelectItem value="dra-ana-costa">Dra. Ana Costa</SelectItem>
-                    <SelectItem value="dr-roberto-lima">Dr. Roberto Lima</SelectItem>
-                    <SelectItem value="dra-fernanda-silva">Dra. Fernanda Silva</SelectItem>
+                    <SelectItem value="Dr. Carlos Santos">Dr. Carlos Santos</SelectItem>
+                    <SelectItem value="Dra. Ana Costa">Dra. Ana Costa</SelectItem>
+                    <SelectItem value="Dr. Roberto Lima">Dr. Roberto Lima</SelectItem>
+                    <SelectItem value="Dra. Fernanda Silva">Dra. Fernanda Silva</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -751,14 +885,17 @@ export function OccupationalHealth() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Resultado do Exame *</Label>
-                <Select defaultValue="apto">
+                <Select
+                  value={asoData.resultado}
+                  onValueChange={(value) => setAsoData((prev) => ({ ...prev, resultado: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o resultado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="apto">Apto</SelectItem>
-                    <SelectItem value="apto-com-restricoes">Apto com Restrições</SelectItem>
-                    <SelectItem value="inapto">Inapto</SelectItem>
+                    <SelectItem value="Apto">Apto</SelectItem>
+                    <SelectItem value="Apto com Restrições">Apto com Restrições</SelectItem>
+                    <SelectItem value="Inapto">Inapto</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -766,10 +903,8 @@ export function OccupationalHealth() {
                 <Label>Próximo Exame</Label>
                 <Input
                   type="date"
-                  defaultValue={
-                    selectedEmployee?.proximoExame ||
-                    format(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), "yyyy-MM-dd")
-                  }
+                  value={asoData.data_proximo_exame}
+                  onChange={(e) => setAsoData((prev) => ({ ...prev, data_proximo_exame: e.target.value }))}
                 />
               </div>
             </div>
@@ -779,21 +914,47 @@ export function OccupationalHealth() {
               <Textarea
                 placeholder="Observações sobre o estado de saúde do funcionário, restrições ou recomendações..."
                 rows={3}
+                value={asoData.observacoes}
+                onChange={(e) => setAsoData((prev) => ({ ...prev, observacoes: e.target.value }))}
               />
             </div>
 
             <div className="space-y-2">
               <Label>Riscos Ocupacionais Identificados</Label>
-              <Textarea placeholder="Liste os riscos ocupacionais aos quais o funcionário está exposto..." rows={2} />
+              <Textarea
+                placeholder="Liste os riscos ocupacionais aos quais o funcionário está exposto..."
+                rows={2}
+                value={asoData.riscos_ocupacionais}
+                onChange={(e) => setAsoData((prev) => ({ ...prev, riscos_ocupacionais: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Upload do ASO (PDF)</Label>
+              <FileUpload
+                accept=".pdf"
+                maxSize={10 * 1024 * 1024} // 10MB
+                onFileSelect={(file) => handleAsoSubmit(file)}
+                disabled={uploading}
+              />
             </div>
           </div>
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => setShowAsoDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleAsoSubmit}>
-              <Download className="h-4 w-4 mr-2" />
-              Gerar e Baixar ASO
+            <Button onClick={() => handleAsoSubmit()} disabled={uploading}>
+              {uploading ? (
+                <>
+                  <Upload className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  Salvar ASO
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

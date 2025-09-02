@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,135 +20,63 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Plus, Edit, Eye, AlertTriangle, CheckCircle, AlertCircle } from "lucide-react"
+import {
+  Shield,
+  Plus,
+  Edit,
+  Eye,
+  AlertTriangle,
+  CheckCircle,
+  AlertCircle,
+  Upload,
+  Download,
+  FileText,
+} from "lucide-react"
+import { createBrowserClient } from "@/lib/supabase/client"
+import { FileUpload } from "@/components/ui/file-upload"
+import { uploadPGR, getSignedUrl } from "@/lib/supabase/storage"
 
-const riskDataByCompany = {
-  "1": [
-    {
-      id: 1,
-      setor: "Produção",
-      risco: "Ruído excessivo",
-      probabilidade: "Alta",
-      severidade: "Média",
-      nivel: "Alto",
-      status: "Ativo",
-      descricao: "Exposição a ruído acima de 85 dB durante operação de máquinas industriais",
-      medidasControle: "Uso obrigatório de protetor auricular, manutenção preventiva de equipamentos",
-      responsavel: "João Silva",
-      dataIdentificacao: "2024-01-15",
-    },
-    {
-      id: 2,
-      setor: "Manutenção",
-      risco: "Trabalho em altura",
-      probabilidade: "Média",
-      severidade: "Alta",
-      nivel: "Alto",
-      status: "Ativo",
-      descricao: "Atividades de manutenção realizadas em estruturas acima de 2 metros",
-      medidasControle: "Treinamento NR-35, uso de EPI específico, inspeção de equipamentos",
-      responsavel: "Maria Santos",
-      dataIdentificacao: "2024-02-10",
-    },
-  ],
-  "2": [
-    {
-      id: 3,
-      setor: "Almoxarifado",
-      risco: "Movimentação manual",
-      probabilidade: "Alta",
-      severidade: "Baixa",
-      nivel: "Médio",
-      status: "Controlado",
-      descricao: "Levantamento e transporte manual de cargas pesadas",
-      medidasControle: "Treinamento em ergonomia, uso de equipamentos auxiliares",
-      responsavel: "Carlos Lima",
-      dataIdentificacao: "2024-03-05",
-    },
-    {
-      id: 4,
-      setor: "Escritório",
-      risco: "Ergonômico",
-      probabilidade: "Média",
-      severidade: "Baixa",
-      nivel: "Baixo",
-      status: "Controlado",
-      descricao: "Posturas inadequadas durante trabalho em computador",
-      medidasControle: "Mobiliário ergonômico, pausas regulares, ginástica laboral",
-      responsavel: "Ana Costa",
-      dataIdentificacao: "2024-04-12",
-    },
-  ],
-  "3": [
-    {
-      id: 5,
-      setor: "Laboratório",
-      risco: "Exposição química",
-      probabilidade: "Média",
-      severidade: "Alta",
-      nivel: "Alto",
-      status: "Ativo",
-      descricao: "Manuseio de substâncias químicas perigosas durante análises",
-      medidasControle: "Capela de exaustão, EPI específico, procedimentos de emergência",
-      responsavel: "Roberto Costa",
-      dataIdentificacao: "2024-05-08",
-    },
-  ],
+interface Risk {
+  id: number
+  setor: string
+  risco: string
+  probabilidade: string
+  severidade: string
+  nivel_risco: number
+  status: string
+  descricao?: string
+  medidas_controle?: string
+  responsavel?: string
+  created_at: string
+  empresa_id: string
 }
 
-const actionPlansByCompany = {
-  "1": [
-    {
-      id: 1,
-      title: "Controle de Ruído - Produção",
-      description: "Implementar cabine acústica para operador",
-      deadline: "15/12/2024",
-      responsible: "João Silva",
-      status: "Vencido",
-    },
-  ],
-  "2": [
-    {
-      id: 2,
-      title: "Treinamento Altura - Manutenção",
-      description: "Capacitar equipe em NR-35",
-      deadline: "30/01/2025",
-      responsible: "Maria Santos",
-      status: "Em Andamento",
-    },
-  ],
-  "3": [
-    {
-      id: 3,
-      title: "EPI Laboratório",
-      description: "Fornecimento de equipamentos químicos",
-      deadline: "20/01/2025",
-      responsible: "Carlos Lima",
-      status: "Pendente",
-    },
-  ],
+interface ActionPlan {
+  id: number
+  titulo: string
+  descricao: string
+  prazo_implementacao: string
+  responsavel: string
+  status: string
+  empresa_id: string
 }
 
-const getRiskColor = (nivel: string) => {
-  switch (nivel) {
-    case "Alto":
-      return "bg-red-500"
-    case "Médio":
-      return "bg-yellow-500"
-    case "Baixo":
-      return "bg-green-500"
-    default:
-      return "bg-gray-500"
+const getRiskColor = (nivel_risco: number) => {
+  if (nivel_risco >= 15) {
+    return "bg-red-500"
+  } else if (nivel_risco >= 6) {
+    return "bg-yellow-500"
+  } else {
+    return "bg-green-500"
   }
 }
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "Ativo":
+    case "pendente":
+    case "em_andamento":
       return "destructive"
-    case "Controlado":
-      return "secondary"
-    case "Eliminado":
+    case "concluido":
       return "default"
     default:
       return "secondary"
@@ -156,10 +84,16 @@ const getStatusColor = (status: string) => {
 }
 
 export function RiskManagement() {
+  const [risks, setRisks] = useState<Risk[]>([])
+  const [actionPlans, setActionPlans] = useState<ActionPlan[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedRisk, setSelectedRisk] = useState<any>(null)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingRisk, setEditingRisk] = useState<any>(null)
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
+  const [uploadingPGR, setUploadingPGR] = useState(false)
+  const [pgrFiles, setPgrFiles] = useState<any[]>([])
   const [editFormData, setEditFormData] = useState({
     setor: "",
     risco: "",
@@ -170,17 +104,98 @@ export function RiskManagement() {
     responsavel: "",
   })
   const { selectedCompany } = useCompany()
+  const supabase = createBrowserClient()
 
-  const companyRisks = selectedCompany ? riskDataByCompany[selectedCompany.id] || [] : []
-  const companyActionPlans = selectedCompany ? actionPlansByCompany[selectedCompany.id] || [] : []
+  const loadRisks = async () => {
+    if (!selectedCompany) return
+
+    try {
+      setLoading(true)
+      const { data: risksData, error: risksError } = await supabase
+        .from("gestao_riscos")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("created_at", { ascending: false })
+
+      if (risksError) throw risksError
+
+      const { data: plansData, error: plansError } = await supabase
+        .from("planos_acao")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("prazo_implementacao", { ascending: true })
+
+      if (plansError) throw plansError
+
+      const { data: filesData, error: filesError } = await supabase.storage.from("pgr").list(selectedCompany.id)
+
+      if (!filesError && filesData) {
+        setPgrFiles(filesData)
+      }
+
+      setRisks(risksData || [])
+      setActionPlans(plansData || [])
+    } catch (error) {
+      console.error("Erro ao carregar riscos:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadRisks()
+  }, [selectedCompany])
 
   const riskStats = {
-    total: companyRisks.length,
-    alto: companyRisks.filter((r) => r.nivel === "Alto").length,
-    medio: companyRisks.filter((r) => r.nivel === "Médio").length,
-    baixo: companyRisks.filter((r) => r.nivel === "Baixo").length,
-    ativo: companyRisks.filter((r) => r.status === "Ativo").length,
-    controlado: companyRisks.filter((r) => r.status === "Controlado").length,
+    total: risks.length,
+    alto: risks.filter((r) => r.nivel_risco >= 15).length,
+    medio: risks.filter((r) => r.nivel_risco >= 6 && r.nivel_risco < 15).length,
+    baixo: risks.filter((r) => r.nivel_risco < 6).length,
+    ativo: risks.filter((r) => r.status === "pendente" || r.status === "em_andamento").length,
+    controlado: risks.filter((r) => r.status === "concluido").length,
+  }
+
+  const handleUploadPGR = async (files: File[]) => {
+    if (!selectedCompany || files.length === 0) return
+
+    try {
+      setUploadingPGR(true)
+      const file = files[0]
+      const timestamp = new Date().toISOString().split("T")[0]
+      const fileName = `PGR_${selectedCompany.name}_${timestamp}.pdf`
+
+      const result = await uploadPGR(file, selectedCompany.id, fileName)
+
+      if (result && !result.error) {
+        await supabase.from("logs_gerais").insert({
+          empresa_id: selectedCompany.id,
+          modulo: "gestao_riscos",
+          acao: "upload_pgr",
+          descricao: `Upload de documento PGR: ${fileName}`,
+          arquivo_url: result.publicUrl,
+        })
+
+        await loadRisks()
+        setIsUploadDialogOpen(false)
+      }
+    } catch (error) {
+      console.error("Erro no upload do PGR:", error)
+    } finally {
+      setUploadingPGR(false)
+    }
+  }
+
+  const handleDownloadPGR = async (fileName: string) => {
+    if (!selectedCompany) return
+
+    try {
+      const signedUrl = await getSignedUrl(`${selectedCompany.id}/${fileName}`, "pgr", 3600)
+      if (signedUrl) {
+        window.open(signedUrl, "_blank")
+      }
+    } catch (error) {
+      console.error("Erro ao baixar PGR:", error)
+    }
   }
 
   const handleViewRisk = (risk: any) => {
@@ -196,17 +211,44 @@ export function RiskManagement() {
       probabilidade: risk.probabilidade,
       severidade: risk.severidade,
       descricao: risk.descricao || "",
-      medidasControle: risk.medidasControle || "",
+      medidasControle: risk.medidas_controle || "",
       responsavel: risk.responsavel || "",
     })
     setIsEditDialogOpen(true)
   }
 
-  const handleSaveRisk = () => {
-    console.log("[v0] Saving risk changes:", editFormData)
-    // Here you would typically update the risk in the database
-    setIsEditDialogOpen(false)
-    setEditingRisk(null)
+  const handleSaveRisk = async () => {
+    if (!editingRisk || !selectedCompany) return
+
+    try {
+      const { error } = await supabase
+        .from("gestao_riscos")
+        .update({
+          setor: editFormData.setor,
+          risco: editFormData.risco,
+          probabilidade: editFormData.probabilidade,
+          severidade: editFormData.severidade,
+          descricao: editFormData.descricao,
+          medidas_controle: editFormData.medidasControle,
+          responsavel: editFormData.responsavel,
+          nivel_risco: calculateRiskLevel(editFormData.probabilidade, editFormData.severidade),
+        })
+        .eq("id", editingRisk.id)
+
+      if (error) throw error
+
+      await loadRisks()
+      setIsEditDialogOpen(false)
+      setEditingRisk(null)
+    } catch (error) {
+      console.error("Erro ao salvar risco:", error)
+    }
+  }
+
+  const calculateRiskLevel = (probabilidade: string, severidade: string): number => {
+    const probValue = probabilidade === "Alta" ? 3 : probabilidade === "Média" ? 2 : 1
+    const sevValue = severidade === "Alta" ? 3 : severidade === "Média" ? 2 : 1
+    return probValue * sevValue
   }
 
   const handleCancelEdit = () => {
@@ -238,6 +280,28 @@ export function RiskManagement() {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>Selecione uma empresa para visualizar e gerenciar os riscos ocupacionais.</AlertDescription>
         </Alert>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4 sm:space-y-6">
+        <div className="px-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center space-x-2">
+            <Shield className="h-6 w-6 sm:h-8 sm:w-8" />
+            <span>Gestão de Riscos (PGR)</span>
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Programa de Gerenciamento de Riscos - NR-01 | {selectedCompany.name}
+          </p>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Carregando riscos...</p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -420,21 +484,21 @@ export function RiskManagement() {
                     Médio
                   </div>
                   <div className="h-16 sm:h-20 bg-red-100 dark:bg-red-900 border-2 border-red-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Alto ({companyRisks.filter((r) => r.probabilidade === "Alta" && r.severidade === "Média").length})
+                    Alto ({risks.filter((r) => r.probabilidade === "Alta" && r.severidade === "Média").length})
                   </div>
                   <div className="h-16 sm:h-20 bg-red-100 dark:bg-red-900 border-2 border-red-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Alto ({companyRisks.filter((r) => r.probabilidade === "Alta" && r.severidade === "Alta").length})
+                    Alto ({risks.filter((r) => r.probabilidade === "Alta" && r.severidade === "Alta").length})
                   </div>
 
                   <div className="font-medium text-xs sm:text-sm">Média</div>
                   <div className="h-16 sm:h-20 bg-green-100 dark:bg-green-900 border-2 border-green-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Baixo ({companyRisks.filter((r) => r.probabilidade === "Média" && r.severidade === "Baixa").length})
+                    Baixo ({risks.filter((r) => r.probabilidade === "Média" && r.severidade === "Baixa").length})
                   </div>
                   <div className="h-16 sm:h-20 bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
                     Médio
                   </div>
                   <div className="h-16 sm:h-20 bg-red-100 dark:bg-red-900 border-2 border-red-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Alto ({companyRisks.filter((r) => r.probabilidade === "Média" && r.severidade === "Alta").length})
+                    Alto ({risks.filter((r) => r.probabilidade === "Média" && r.severidade === "Alta").length})
                   </div>
 
                   <div className="font-medium text-xs sm:text-sm">Baixa</div>
@@ -445,7 +509,7 @@ export function RiskManagement() {
                     Baixo
                   </div>
                   <div className="h-16 sm:h-20 bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Médio ({companyRisks.filter((r) => r.probabilidade === "Baixa" && r.severidade === "Alta").length})
+                    Médio ({risks.filter((r) => r.probabilidade === "Baixa" && r.severidade === "Alta").length})
                   </div>
                 </div>
               </div>
@@ -480,7 +544,7 @@ export function RiskManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {companyRisks.map((risk) => (
+                    {risks.map((risk) => (
                       <TableRow key={risk.id}>
                         <TableCell className="font-medium">{risk.setor}</TableCell>
                         <TableCell>{risk.risco}</TableCell>
@@ -488,8 +552,8 @@ export function RiskManagement() {
                         <TableCell>{risk.severidade}</TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
-                            <div className={`w-3 h-3 rounded-full ${getRiskColor(risk.nivel)}`} />
-                            <span>{risk.nivel}</span>
+                            <div className={`w-3 h-3 rounded-full ${getRiskColor(risk.nivel_risco)}`} />
+                            <span>{risk.nivel_risco}</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -512,11 +576,11 @@ export function RiskManagement() {
               </div>
 
               <div className="sm:hidden space-y-3">
-                {companyRisks.map((risk) => (
+                {risks.map((risk) => (
                   <Card key={risk.id} className="p-4">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full ${getRiskColor(risk.nivel)}`} />
+                        <div className={`w-3 h-3 rounded-full ${getRiskColor(risk.nivel_risco)}`} />
                         <span className="font-medium text-sm">{risk.setor}</span>
                       </div>
                       <Badge variant={getStatusColor(risk.status) as any} className="text-xs">
@@ -527,7 +591,7 @@ export function RiskManagement() {
                     <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mb-3">
                       <div>Prob: {risk.probabilidade}</div>
                       <div>Sev: {risk.severidade}</div>
-                      <div>Nível: {risk.nivel}</div>
+                      <div>Nível: {risk.nivel_risco}</div>
                     </div>
                     <div className="flex space-x-2">
                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleViewRisk(risk)}>
@@ -543,7 +607,7 @@ export function RiskManagement() {
                 ))}
               </div>
 
-              {companyRisks.length === 0 && (
+              {risks.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
                   Nenhum risco cadastrado para {selectedCompany.name}
                 </div>
@@ -562,12 +626,12 @@ export function RiskManagement() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 sm:space-y-4">
-                {companyActionPlans
+                {actionPlans
                   .filter((plan) => plan.status !== "Concluído")
                   .map((plan) => (
                     <div key={plan.id} className="p-3 sm:p-4 border rounded-lg">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
-                        <h4 className="font-medium text-sm sm:text-base">{plan.title}</h4>
+                        <h4 className="font-medium text-sm sm:text-base">{plan.titulo}</h4>
                         <Badge
                           variant={plan.status === "Vencido" ? "destructive" : "secondary"}
                           className="text-xs w-fit"
@@ -575,13 +639,13 @@ export function RiskManagement() {
                           {plan.status}
                         </Badge>
                       </div>
-                      <p className="text-xs sm:text-sm text-muted-foreground mb-2">{plan.description}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground mb-2">{plan.descricao}</p>
                       <div className="text-xs text-muted-foreground">
-                        Prazo: {plan.deadline} | Responsável: {plan.responsible}
+                        Prazo: {plan.prazo_implementacao} | Responsável: {plan.responsavel}
                       </div>
                     </div>
                   ))}
-                {companyActionPlans.filter((plan) => plan.status !== "Concluído").length === 0 && (
+                {actionPlans.filter((plan) => plan.status !== "Concluído").length === 0 && (
                   <div className="text-center py-4 text-muted-foreground text-sm">Nenhum plano de ação pendente</div>
                 )}
               </CardContent>
@@ -595,19 +659,19 @@ export function RiskManagement() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 sm:space-y-4">
-                {companyActionPlans
+                {actionPlans
                   .filter((plan) => plan.status === "Concluído")
                   .map((plan) => (
                     <div key={plan.id} className="p-3 sm:p-4 border rounded-lg bg-green-50 dark:bg-green-950">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
-                        <h4 className="font-medium text-sm sm:text-base">{plan.title}</h4>
+                        <h4 className="font-medium text-sm sm:text-base">{plan.titulo}</h4>
                         <Badge className="text-xs w-fit">Concluído</Badge>
                       </div>
-                      <p className="text-xs sm:text-sm text-muted-foreground mb-2">{plan.description}</p>
-                      <div className="text-xs text-muted-foreground">Concluído em: {plan.deadline}</div>
+                      <p className="text-xs sm:text-sm text-muted-foreground mb-2">{plan.descricao}</p>
+                      <div className="text-xs text-muted-foreground">Concluído em: {plan.prazo_implementacao}</div>
                     </div>
                   ))}
-                {companyActionPlans.filter((plan) => plan.status === "Concluído").length === 0 && (
+                {actionPlans.filter((plan) => plan.status === "Concluído").length === 0 && (
                   <div className="text-center py-4 text-muted-foreground text-sm">Nenhum plano concluído ainda</div>
                 )}
               </CardContent>
@@ -616,6 +680,84 @@ export function RiskManagement() {
         </TabsContent>
 
         <TabsContent value="relatorios" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base sm:text-lg flex items-center space-x-2">
+                <FileText className="h-5 w-5" />
+                <span>Documentos PGR - {selectedCompany.name}</span>
+              </CardTitle>
+              <CardDescription className="text-sm">
+                Gerencie os documentos do Programa de Gerenciamento de Riscos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="w-full sm:w-auto">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload PGR
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Upload de Documento PGR</DialogTitle>
+                      <DialogDescription>
+                        Faça upload do documento PGR em formato PDF para {selectedCompany.name}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <FileUpload
+                        onFilesSelected={handleUploadPGR}
+                        acceptedTypes={["application/pdf"]}
+                        maxFiles={1}
+                        maxSizeMB={50}
+                        disabled={uploadingPGR}
+                      />
+                      {uploadingPGR && (
+                        <div className="mt-4 text-center">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto mb-2"></div>
+                          <p className="text-sm text-muted-foreground">Fazendo upload...</p>
+                        </div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Button variant="outline" className="w-full sm:w-auto bg-transparent">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Gerar PGR Automático
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {pgrFiles.map((file) => (
+                  <div key={file.name} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <FileText className="h-5 w-5 text-red-500" />
+                      <div>
+                        <p className="font-medium text-sm">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(file.created_at).toLocaleDateString("pt-BR")} •{" "}
+                          {Math.round(file.metadata?.size / 1024 / 1024 || 0)} MB
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => handleDownloadPGR(file.name)}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                {pgrFiles.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    Nenhum documento PGR encontrado. Faça upload do primeiro documento.
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardHeader>
@@ -687,8 +829,8 @@ export function RiskManagement() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Nível de Risco:</span>
                       <div className="flex items-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full ${getRiskColor(selectedRisk.nivel)}`} />
-                        <span className="font-medium">{selectedRisk.nivel}</span>
+                        <div className={`w-3 h-3 rounded-full ${getRiskColor(selectedRisk.nivel_risco)}`} />
+                        <span className="font-medium">{selectedRisk.nivel_risco}</span>
                       </div>
                     </div>
                     <div className="flex justify-between">
