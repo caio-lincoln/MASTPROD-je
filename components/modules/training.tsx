@@ -89,6 +89,16 @@ interface TrainingParticipant {
   }
 }
 
+interface Certificate {
+  id: string
+  treinamento_nome: string
+  data_treinamento: string
+  certificado_url: string
+  funcionario: {
+    nome: string
+  }
+}
+
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Ativo":
@@ -121,20 +131,19 @@ const getParticipantStatusColor = (status: string) => {
 
 export { TrainingComponent as Training }
 export default function TrainingComponent() {
+  const { selectedCompany } = useCompany()
+  const [loading, setLoading] = useState(false)
   const [trainings, setTrainings] = useState<Training[]>([])
   const [participants, setParticipants] = useState<TrainingParticipant[]>([])
-  const [loading, setLoading] = useState(true)
-  const { selectedCompany } = useCompany()
-  const [selectedDate, setSelectedDate] = useState<Date>()
-  const [selectedTraining, setSelectedTraining] = useState<any>(null)
-
+  const [certificates, setCertificates] = useState<Certificate[]>([])
+  const [certificatesThisMonth, setCertificatesThisMonth] = useState(0)
   const [isNewTrainingOpen, setIsNewTrainingOpen] = useState(false)
   const [isEditTrainingOpen, setIsEditTrainingOpen] = useState(false)
   const [isViewTrainingOpen, setIsViewTrainingOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [editingTraining, setEditingTraining] = useState<any>(null)
-  const [deletingTraining, setDeletingTraining] = useState<any>(null)
-
+  const [selectedTraining, setSelectedTraining] = useState<Training | null>(null)
+  const [editingTraining, setEditingTraining] = useState<Training | null>(null)
+  const [deletingTraining, setDeletingTraining] = useState<Training | null>(null)
   const [formData, setFormData] = useState({
     nome: "",
     categoria: "",
@@ -144,9 +153,67 @@ export default function TrainingComponent() {
     descricao: "",
     proximaTurma: null as Date | null,
   })
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
 
   const supabase = createBrowserClient()
   const { toast } = useToast()
+
+  const loadCertificates = async () => {
+    if (!selectedCompany) return
+
+    try {
+      // Get certificates issued this month
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+
+      const { data: monthlyData, error: monthlyError } = await supabase
+        .from("treinamento_funcionarios")
+        .select("id")
+        .eq("status", "concluido")
+        .gte("created_at", startOfMonth.toISOString())
+        .inner("treinamentos", "treinamento_id", "id")
+        .eq("treinamentos.empresa_id", selectedCompany.id)
+
+      if (monthlyError) throw monthlyError
+      setCertificatesThisMonth(monthlyData?.length || 0)
+
+      // Get all certificates with details
+      const { data: certificatesData, error: certificatesError } = await supabase
+        .from("treinamento_funcionarios")
+        .select(`
+          id,
+          certificado_url,
+          created_at,
+          funcionarios (
+            nome
+          ),
+          treinamentos (
+            nome,
+            empresa_id
+          )
+        `)
+        .eq("status", "concluido")
+        .not("certificado_url", "is", null)
+        .eq("treinamentos.empresa_id", selectedCompany.id)
+        .order("created_at", { ascending: false })
+
+      if (certificatesError) throw certificatesError
+
+      const formattedCertificates =
+        certificatesData?.map((cert) => ({
+          id: cert.id,
+          treinamento_nome: cert.treinamentos?.nome || "",
+          data_treinamento: cert.created_at,
+          certificado_url: cert.certificado_url || "",
+          funcionario: {
+            nome: cert.funcionarios?.nome || "",
+          },
+        })) || []
+
+      setCertificates(formattedCertificates)
+    } catch (error) {
+      console.error("Erro ao carregar certificados:", error)
+    }
+  }
 
   const loadTrainings = async () => {
     if (!selectedCompany) return
@@ -177,6 +244,8 @@ export default function TrainingComponent() {
 
       setTrainings(trainingsData || [])
       setParticipants(participantsData || [])
+
+      await loadCertificates()
     } catch (error) {
       console.error("Erro ao carregar treinamentos:", error)
     } finally {
@@ -187,6 +256,31 @@ export default function TrainingComponent() {
   useEffect(() => {
     loadTrainings()
   }, [selectedCompany])
+
+  const handleDownloadCertificate = async (certificateUrl: string) => {
+    try {
+      if (certificateUrl.startsWith("http")) {
+        // Direct URL - open in new tab
+        window.open(certificateUrl, "_blank")
+      } else {
+        // Storage path - create signed URL
+        const { data, error } = await supabase.storage.from("certificados").createSignedUrl(certificateUrl, 3600) // 1 hour access
+
+        if (error) throw error
+
+        if (data?.signedUrl) {
+          window.open(data.signedUrl, "_blank")
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao baixar certificado:", error)
+      toast({
+        title: "Erro ao baixar",
+        description: "Não foi possível baixar o certificado.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const stats = {
     totalTreinamentos: trainings.length,
@@ -819,24 +913,53 @@ export default function TrainingComponent() {
                     <p className="text-sm text-muted-foreground">Certificados Emitidos</p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">156</div>
+                    <div className="text-2xl font-bold text-blue-600">{certificatesThisMonth}</div>
                     <p className="text-sm text-muted-foreground">Este Mês</p>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  {trainings.map((training) => (
-                    <div key={training.id} className="flex justify-between items-center p-3 border rounded-lg">
-                      <div>
-                        <p className="font-medium">{training.nome}</p>
-                        <p className="text-sm text-muted-foreground">{training.concluidos} certificados emitidos</p>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
-                        Baixar Lote
-                      </Button>
-                    </div>
-                  ))}
+                <div className="space-y-4">
+                  <h4 className="font-medium">Certificados Recentes</h4>
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Funcionário</TableHead>
+                          <TableHead>Treinamento</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {certificates.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground">
+                              Nenhum certificado encontrado
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          certificates.slice(0, 5).map((certificate) => (
+                            <TableRow key={certificate.id}>
+                              <TableCell className="font-medium">{certificate.funcionario.nome}</TableCell>
+                              <TableCell>{certificate.treinamento_nome}</TableCell>
+                              <TableCell>
+                                {format(new Date(certificate.data_treinamento), "dd/MM/yyyy", { locale: ptBR })}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDownloadCertificate(certificate.certificado_url)}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </CardContent>
             </Card>

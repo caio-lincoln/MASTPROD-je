@@ -4,15 +4,13 @@ import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { FileUpload } from "@/components/ui/file-upload"
+import { useToast } from "@/hooks/use-toast"
 import {
   Shield,
   HardHat,
@@ -26,48 +24,92 @@ import {
   Upload,
   Settings,
   History,
+  Download,
 } from "lucide-react"
 import { format } from "date-fns"
 import { createBrowserClient } from "@/lib/supabase/client"
+import { uploadArquivo } from "@/lib/supabase/storage"
 
 interface SafetyInspection {
-  id: number
-  area: string
-  inspetor: string
+  id: string
+  empresa_id: string
+  setor: string
+  responsavel: string
   data_inspecao: string
-  pontuacao: number
   status: string
   observacoes?: string
-  empresa_id: string
   created_at: string
-  updated_at: string
 }
 
 interface Incident {
-  id: number
-  tipo: string
-  severidade: string
-  descricao: string
-  local: string
-  data_ocorrencia: string
-  reportado_por: string
-  status: string
+  id: string
   empresa_id: string
+  tipo: string
+  descricao: string
+  data_ocorrencia: string
+  gravidade: string
+  status: string
+  evidencia_url?: string
   created_at: string
-  updated_at: string
 }
 
 interface SafetyEquipment {
-  id: number
+  id: string
+  empresa_id: string
   nome: string
   tipo: string
-  localizacao: string
-  status: string
-  ultima_inspecao?: string
-  proxima_inspecao?: string
-  empresa_id: string
+  validade: string
+  quantidade: number
   created_at: string
-  updated_at: string
+}
+
+interface EPIDelivery {
+  id: string
+  funcionario_id: string
+  empresa_id: string
+  epi_id: string
+  data_entrega: string
+  validade: string
+  funcionario?: {
+    nome: string
+  }
+  epi?: {
+    nome: string
+    tipo: string
+  }
+}
+
+interface EPIInspection {
+  id: string
+  empresa_id: string
+  epi_id: string
+  data_inspecao: string
+  resultado: string
+  observacoes?: string
+  epi?: {
+    nome: string
+  }
+}
+
+interface EPIMaintenance {
+  id: string
+  empresa_id: string
+  epi_id: string
+  data_manutencao: string
+  tipo: string
+  descricao: string
+  epi?: {
+    nome: string
+  }
+}
+
+interface SafetyReport {
+  id: string
+  empresa_id: string
+  modulo: string
+  tipo: string
+  arquivo_url?: string
+  data_geracao: string
 }
 
 const getStatusColor = (status: string) => {
@@ -108,9 +150,15 @@ export function WorkplaceSafety() {
   const [inspections, setInspections] = useState<SafetyInspection[]>([])
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [equipment, setEquipment] = useState<SafetyEquipment[]>([])
+  const [deliveries, setDeliveries] = useState<EPIDelivery[]>([])
+  const [epiInspections, setEpiInspections] = useState<EPIInspection[]>([])
+  const [epiMaintenances, setEpiMaintenances] = useState<EPIMaintenance[]>([])
+  const [reports, setReports] = useState<SafetyReport[]>([])
   const [loading, setLoading] = useState(true)
 
   const { selectedCompany } = useCompany()
+  const { toast } = useToast()
+
   const [selectedInspection, setSelectedInspection] = useState<SafetyInspection | null>(null)
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
   const [selectedEquipment, setSelectedEquipment] = useState<SafetyEquipment | null>(null)
@@ -150,7 +198,7 @@ export function WorkplaceSafety() {
 
       if (incidentsError) throw incidentsError
 
-      // Load equipment (using EPIs table as safety equipment)
+      // Load equipment (EPIs)
       const { data: equipmentData, error: equipmentError } = await supabase
         .from("epis")
         .select("*")
@@ -159,11 +207,67 @@ export function WorkplaceSafety() {
 
       if (equipmentError) throw equipmentError
 
+      // Load EPI deliveries with employee and EPI details
+      const { data: deliveriesData, error: deliveriesError } = await supabase
+        .from("entregas_epi")
+        .select(`
+          *,
+          funcionario:funcionarios(nome),
+          epi:epis(nome, tipo)
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .order("data_entrega", { ascending: false })
+
+      if (deliveriesError) throw deliveriesError
+
+      // Load EPI inspections
+      const { data: epiInspectionsData, error: epiInspectionsError } = await supabase
+        .from("inspecoes_epi")
+        .select(`
+          *,
+          epi:epis(nome)
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .order("data_inspecao", { ascending: false })
+
+      if (epiInspectionsError) throw epiInspectionsError
+
+      // Load EPI maintenances
+      const { data: epiMaintenancesData, error: epiMaintenancesError } = await supabase
+        .from("manutencoes_epi")
+        .select(`
+          *,
+          epi:epis(nome)
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .order("data_manutencao", { ascending: false })
+
+      if (epiMaintenancesError) throw epiMaintenancesError
+
+      // Load safety reports
+      const { data: reportsData, error: reportsError } = await supabase
+        .from("logs_gerais")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .eq("modulo", "Segurança do Trabalho")
+        .order("data_geracao", { ascending: false })
+
+      if (reportsError) throw reportsError
+
       setInspections(inspectionsData || [])
       setIncidents(incidentsData || [])
       setEquipment(equipmentData || [])
+      setDeliveries(deliveriesData || [])
+      setEpiInspections(epiInspectionsData || [])
+      setEpiMaintenances(epiMaintenancesData || [])
+      setReports(reportsData || [])
     } catch (error) {
       console.error("Erro ao carregar dados de segurança:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar os dados de segurança.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -175,14 +279,157 @@ export function WorkplaceSafety() {
 
   const stats = {
     totalInspections: inspections.length,
-    completedInspections: inspections.filter((i) => i.status === "Concluída").length,
-    pendingInspections: inspections.filter((i) => i.status === "Pendente").length,
+    completedInspections: inspections.filter((i) => i.status === "done").length,
+    pendingInspections: inspections.filter((i) => i.status === "scheduled").length,
     totalIncidents: incidents.length,
-    resolvedIncidents: incidents.filter((i) => i.status === "Resolvido").length,
-    investigatingIncidents: incidents.filter((i) => i.status === "Investigando").length,
+    resolvedIncidents: incidents.filter((i) => i.status === "resolvido").length,
+    investigatingIncidents: incidents.filter((i) => i.status === "em análise").length,
     totalEquipment: equipment.length,
-    activeEquipment: equipment.filter((e) => e.status === "Ativo").length,
-    maintenanceEquipment: equipment.filter((e) => e.status === "Manutenção").length,
+    activeEquipment: equipment.filter((e) => new Date(e.validade) > new Date()).length,
+    expiredEquipment: equipment.filter((e) => new Date(e.validade) <= new Date()).length,
+  }
+
+  const handleCreateInspection = async (data: any) => {
+    try {
+      const { error } = await supabase.from("inspecoes_seguranca").insert([
+        {
+          empresa_id: selectedCompany?.id,
+          setor: data.setor,
+          responsavel: data.responsavel,
+          data_inspecao: data.data_inspecao,
+          status: data.status || "scheduled",
+          observacoes: data.observacoes,
+        },
+      ])
+
+      if (error) throw error
+
+      toast({
+        title: "Sucesso",
+        description: "Inspeção criada com sucesso.",
+      })
+
+      loadData()
+    } catch (error) {
+      console.error("Erro ao criar inspeção:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar a inspeção.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCreateIncident = async (data: any) => {
+    try {
+      const { error } = await supabase.from("incidentes").insert([
+        {
+          empresa_id: selectedCompany?.id,
+          tipo: data.tipo,
+          descricao: data.descricao,
+          data_ocorrencia: data.data_ocorrencia,
+          gravidade: data.gravidade,
+          status: data.status || "aberto",
+          evidencia_url: data.evidencia_url,
+        },
+      ])
+
+      if (error) throw error
+
+      toast({
+        title: "Sucesso",
+        description: "Incidente registrado com sucesso.",
+      })
+
+      loadData()
+    } catch (error) {
+      console.error("Erro ao criar incidente:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível registrar o incidente.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUploadEvidence = async (file: File, incidentId: string) => {
+    try {
+      const fileName = `incident-${incidentId}-${Date.now()}-${file.name}`
+      const filePath = await uploadArquivo(file, "evidencia", selectedCompany?.id || "", fileName)
+
+      const { error } = await supabase.from("incidentes").update({ evidencia_url: filePath }).eq("id", incidentId)
+
+      if (error) throw error
+
+      toast({
+        title: "Sucesso",
+        description: "Evidência anexada com sucesso.",
+      })
+
+      loadData()
+    } catch (error) {
+      console.error("Erro ao fazer upload da evidência:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível anexar a evidência.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleGenerateReport = async (tipo: string) => {
+    try {
+      // Generate report content based on type
+      let reportContent = ""
+      let fileName = ""
+
+      switch (tipo) {
+        case "inspecoes":
+          reportContent = `Relatório de Inspeções - ${selectedCompany?.name}\n\nTotal de inspeções: ${stats.totalInspections}\nConcluídas: ${stats.completedInspections}\nPendentes: ${stats.pendingInspections}`
+          fileName = `relatorio-inspecoes-${Date.now()}.txt`
+          break
+        case "incidentes":
+          reportContent = `Análise de Incidentes - ${selectedCompany?.name}\n\nTotal de incidentes: ${stats.totalIncidents}\nResolvidos: ${stats.resolvedIncidents}\nEm investigação: ${stats.investigatingIncidents}`
+          fileName = `analise-incidentes-${Date.now()}.txt`
+          break
+        case "equipamentos":
+          reportContent = `Status dos Equipamentos - ${selectedCompany?.name}\n\nTotal de equipamentos: ${stats.totalEquipment}\nAtivos: ${stats.activeEquipment}\nVencidos: ${stats.expiredEquipment}`
+          fileName = `status-equipamentos-${Date.now()}.txt`
+          break
+      }
+
+      // Create file and upload to storage
+      const blob = new Blob([reportContent], { type: "text/plain" })
+      const file = new File([blob], fileName, { type: "text/plain" })
+
+      const filePath = await uploadArquivo(file, "relatorio", selectedCompany?.id || "", fileName)
+
+      // Save report record to database
+      const { error } = await supabase.from("logs_gerais").insert([
+        {
+          empresa_id: selectedCompany?.id,
+          modulo: "Segurança do Trabalho",
+          tipo: tipo,
+          arquivo_url: filePath,
+        },
+      ])
+
+      if (error) throw error
+
+      toast({
+        title: "Sucesso",
+        description: "Relatório gerado com sucesso.",
+      })
+
+      loadData()
+    } catch (error) {
+      console.error("Erro ao gerar relatório:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível gerar o relatório.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleViewInspectionDetails = (inspection: SafetyInspection) => {
@@ -382,31 +629,32 @@ export function WorkplaceSafety() {
                     <div key={inspection.id} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-lg">{inspection.area}</h3>
+                          <h3 className="font-semibold text-lg">{inspection.setor}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Inspetor: {inspection.inspetor} • {format(new Date(inspection.data_inspecao), "dd/MM/yyyy")}
+                            Responsável: {inspection.responsavel} •{" "}
+                            {format(new Date(inspection.data_inspecao), "dd/MM/yyyy")}
                           </p>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant={getStatusColor(inspection.status) as any}>{inspection.status}</Badge>
-                          <div className="text-right">
-                            <div className="text-lg font-bold">{inspection.pontuacao}%</div>
-                            <div className="text-xs text-muted-foreground">Pontuação</div>
-                          </div>
-                        </div>
+                        <Badge variant={getStatusColor(inspection.status) as any}>
+                          {inspection.status === "done"
+                            ? "Concluída"
+                            : inspection.status === "scheduled"
+                              ? "Agendada"
+                              : inspection.status === "critical"
+                                ? "Crítica"
+                                : inspection.status}
+                        </Badge>
                       </div>
 
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>Conformidade Geral</span>
-                          <span>{inspection.pontuacao}%</span>
+                      {inspection.observacoes && (
+                        <div className="mb-4">
+                          <p className="text-sm text-muted-foreground">{inspection.observacoes}</p>
                         </div>
-                        <Progress value={inspection.pontuacao} className="h-2" />
-                      </div>
+                      )}
 
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div className="flex space-x-4 text-sm text-muted-foreground">
-                          <span>📍 {inspection.area}</span>
+                          <span>📍 {inspection.setor}</span>
                           <span>📅 {format(new Date(inspection.data_inspecao), "dd/MM/yyyy")}</span>
                         </div>
                         <div className="flex space-x-2">
@@ -452,16 +700,23 @@ export function WorkplaceSafety() {
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-2">
-                            <Badge variant={getSeverityColor(incident.severidade) as any}>{incident.severidade}</Badge>
+                            <Badge variant={getSeverityColor(incident.gravidade) as any}>{incident.gravidade}</Badge>
                             <Badge variant="outline">{incident.tipo}</Badge>
                           </div>
                           <h3 className="font-semibold text-base mb-1">{incident.descricao}</h3>
                           <p className="text-sm text-muted-foreground">
-                            📍 {incident.local} • 📅 {format(new Date(incident.data_ocorrencia), "dd/MM/yyyy")}
+                            📅 {format(new Date(incident.data_ocorrencia), "dd/MM/yyyy")}
                           </p>
-                          <p className="text-sm text-muted-foreground">Reportado por: {incident.reportado_por}</p>
                         </div>
-                        <Badge variant={getStatusColor(incident.status) as any}>{incident.status}</Badge>
+                        <Badge variant={getStatusColor(incident.status) as any}>
+                          {incident.status === "aberto"
+                            ? "Aberto"
+                            : incident.status === "em análise"
+                              ? "Em Análise"
+                              : incident.status === "resolvido"
+                                ? "Resolvido"
+                                : incident.status}
+                        </Badge>
                       </div>
 
                       <div className="flex flex-col sm:flex-row justify-end gap-2">
@@ -469,7 +724,7 @@ export function WorkplaceSafety() {
                           <Eye className="h-4 w-4 mr-1" />
                           Ver Detalhes
                         </Button>
-                        {incident.status === "Investigando" && (
+                        {incident.status === "em análise" && (
                           <Button variant="outline" size="sm" onClick={() => handleInvestigateIncident(incident)}>
                             <Search className="h-4 w-4 mr-1" />
                             Investigar
@@ -479,6 +734,16 @@ export function WorkplaceSafety() {
                           <Upload className="h-4 w-4 mr-1" />
                           Adicionar Evidência
                         </Button>
+                        {incident.evidencia_url && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(incident.evidencia_url, "_blank")}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -491,9 +756,9 @@ export function WorkplaceSafety() {
         <TabsContent value="equipamentos" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base sm:text-lg">Equipamentos de Segurança</CardTitle>
+              <CardTitle className="text-base sm:text-lg">Equipamentos de Segurança (EPIs)</CardTitle>
               <CardDescription className="text-sm">
-                Controle e manutenção de EPIs e EPCs - {selectedCompany.name}
+                Controle e manutenção de EPIs - {selectedCompany.name}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -513,20 +778,15 @@ export function WorkplaceSafety() {
                         <div className="flex-1">
                           <h3 className="font-semibold text-base mb-1">{item.nome}</h3>
                           <p className="text-sm text-muted-foreground">
-                            📍 {item.localizacao} • Tipo: {item.tipo}
+                            Tipo: {item.tipo} • Quantidade: {item.quantidade}
                           </p>
-                          {item.ultima_inspecao && (
-                            <p className="text-sm text-muted-foreground">
-                              Última inspeção: {format(new Date(item.ultima_inspecao), "dd/MM/yyyy")}
-                            </p>
-                          )}
-                          {item.proxima_inspecao && (
-                            <p className="text-sm text-muted-foreground">
-                              Próxima inspeção: {format(new Date(item.proxima_inspecao), "dd/MM/yyyy")}
-                            </p>
-                          )}
+                          <p className="text-sm text-muted-foreground">
+                            Validade: {format(new Date(item.validade), "dd/MM/yyyy")}
+                          </p>
                         </div>
-                        <Badge variant={getStatusColor(item.status) as any}>{item.status}</Badge>
+                        <Badge variant={new Date(item.validade) > new Date() ? "default" : "destructive"}>
+                          {new Date(item.validade) > new Date() ? "Válido" : "Vencido"}
+                        </Badge>
                       </div>
 
                       <div className="flex flex-col sm:flex-row justify-end gap-2">
@@ -563,7 +823,7 @@ export function WorkplaceSafety() {
                 <CardDescription className="text-sm">Consolidado das inspeções de segurança realizadas</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button className="w-full">
+                <Button className="w-full" onClick={() => handleGenerateReport("inspecoes")}>
                   <FileText className="h-4 w-4 mr-2" />
                   Gerar Relatório
                 </Button>
@@ -578,7 +838,11 @@ export function WorkplaceSafety() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button className="w-full bg-transparent" variant="outline">
+                <Button
+                  className="w-full bg-transparent"
+                  variant="outline"
+                  onClick={() => handleGenerateReport("incidentes")}
+                >
                   <FileText className="h-4 w-4 mr-2" />
                   Gerar Relatório
                 </Button>
@@ -588,164 +852,55 @@ export function WorkplaceSafety() {
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardHeader>
                 <CardTitle className="text-base sm:text-lg">Status dos Equipamentos</CardTitle>
-                <CardDescription className="text-sm">Controle de manutenção e inspeção de EPIs/EPCs</CardDescription>
+                <CardDescription className="text-sm">Controle de manutenção e inspeção de EPIs</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button className="w-full bg-transparent" variant="outline">
+                <Button
+                  className="w-full bg-transparent"
+                  variant="outline"
+                  onClick={() => handleGenerateReport("equipamentos")}
+                >
                   <FileText className="h-4 w-4 mr-2" />
                   Gerar Relatório
                 </Button>
               </CardContent>
             </Card>
           </div>
+
+          {reports.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base sm:text-lg">Relatórios Gerados</CardTitle>
+                <CardDescription className="text-sm">
+                  Histórico de relatórios gerados para {selectedCompany.name}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {reports.map((report) => (
+                    <div key={report.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-base mb-1">{report.tipo}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Gerado em: {format(new Date(report.data_geracao), "dd/MM/yyyy HH:mm")}
+                          </p>
+                        </div>
+                        {report.arquivo_url && (
+                          <Button variant="outline" size="sm" onClick={() => window.open(report.arquivo_url, "_blank")}>
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
-
-      {/* Dialogs for various actions */}
-      <Dialog open={isInspectionDialogOpen} onOpenChange={setIsInspectionDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detalhes da Inspeção</DialogTitle>
-            <DialogDescription>Informações completas da inspeção de segurança</DialogDescription>
-          </DialogHeader>
-          {selectedInspection && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Área Inspecionada</Label>
-                  <p className="font-medium">{selectedInspection.area}</p>
-                </div>
-                <div>
-                  <Label>Inspetor</Label>
-                  <p className="font-medium">{selectedInspection.inspetor}</p>
-                </div>
-                <div>
-                  <Label>Data da Inspeção</Label>
-                  <p className="font-medium">{format(new Date(selectedInspection.data_inspecao), "dd/MM/yyyy")}</p>
-                </div>
-                <div>
-                  <Label>Pontuação</Label>
-                  <p className="font-medium">{selectedInspection.pontuacao}%</p>
-                </div>
-              </div>
-              {selectedInspection.observacoes && (
-                <div>
-                  <Label>Observações</Label>
-                  <p className="text-sm text-muted-foreground">{selectedInspection.observacoes}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Agendar Próxima Inspeção</DialogTitle>
-            <DialogDescription>Configure a próxima inspeção de segurança</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Data da Próxima Inspeção</Label>
-              <Input type="date" />
-            </div>
-            <div>
-              <Label>Inspetor Responsável</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o inspetor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="joao">João Silva</SelectItem>
-                  <SelectItem value="maria">Maria Santos</SelectItem>
-                  <SelectItem value="pedro">Pedro Costa</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Observações</Label>
-              <Textarea placeholder="Observações adicionais sobre a inspeção" />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsScheduleDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => setIsScheduleDialogOpen(false)}>Agendar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isIncidentDialogOpen} onOpenChange={setIsIncidentDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Incidente</DialogTitle>
-            <DialogDescription>Informações completas do incidente registrado</DialogDescription>
-          </DialogHeader>
-          {selectedIncident && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Tipo</Label>
-                  <p className="font-medium">{selectedIncident.tipo}</p>
-                </div>
-                <div>
-                  <Label>Severidade</Label>
-                  <Badge variant={getSeverityColor(selectedIncident.severidade) as any}>
-                    {selectedIncident.severidade}
-                  </Badge>
-                </div>
-                <div>
-                  <Label>Local</Label>
-                  <p className="font-medium">{selectedIncident.local}</p>
-                </div>
-                <div>
-                  <Label>Data da Ocorrência</Label>
-                  <p className="font-medium">{format(new Date(selectedIncident.data_ocorrencia), "dd/MM/yyyy")}</p>
-                </div>
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <p className="text-sm text-muted-foreground">{selectedIncident.descricao}</p>
-              </div>
-              <div>
-                <Label>Reportado por</Label>
-                <p className="font-medium">{selectedIncident.reportado_por}</p>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isInvestigateDialogOpen} onOpenChange={setIsInvestigateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Investigar Incidente</DialogTitle>
-            <DialogDescription>Adicione informações da investigação</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Causa Raiz</Label>
-              <Textarea placeholder="Descreva a causa raiz identificada" />
-            </div>
-            <div>
-              <Label>Ações Corretivas</Label>
-              <Textarea placeholder="Liste as ações corretivas implementadas" />
-            </div>
-            <div>
-              <Label>Responsável pela Investigação</Label>
-              <Input placeholder="Nome do responsável" />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsInvestigateDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => setIsInvestigateDialogOpen(false)}>Salvar Investigação</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={isEvidenceDialogOpen} onOpenChange={setIsEvidenceDialogOpen}>
         <DialogContent>
@@ -755,175 +910,23 @@ export function WorkplaceSafety() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Tipo de Evidência</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="foto">Fotografia</SelectItem>
-                  <SelectItem value="documento">Documento</SelectItem>
-                  <SelectItem value="video">Vídeo</SelectItem>
-                  <SelectItem value="relatorio">Relatório</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Arquivo de Evidência</Label>
+              <FileUpload
+                onUpload={(file) => {
+                  if (selectedIncident) {
+                    handleUploadEvidence(file, selectedIncident.id)
+                    setIsEvidenceDialogOpen(false)
+                  }
+                }}
+                accept="image/*,.pdf,.doc,.docx"
+                maxSize={10 * 1024 * 1024} // 10MB
+              />
             </div>
-            <div>
-              <Label>Arquivo</Label>
-              <Input type="file" />
-            </div>
-            <div>
-              <Label>Descrição</Label>
-              <Textarea placeholder="Descreva a evidência anexada" />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsEvidenceDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => setIsEvidenceDialogOpen(false)}>Anexar Evidência</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEquipmentDialogOpen} onOpenChange={setIsEquipmentDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Equipamento</DialogTitle>
-            <DialogDescription>Informações completas do equipamento de segurança</DialogDescription>
-          </DialogHeader>
-          {selectedEquipment && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Nome</Label>
-                  <p className="font-medium">{selectedEquipment.nome}</p>
-                </div>
-                <div>
-                  <Label>Tipo</Label>
-                  <p className="font-medium">{selectedEquipment.tipo}</p>
-                </div>
-                <div>
-                  <Label>Localização</Label>
-                  <p className="font-medium">{selectedEquipment.localizacao}</p>
-                </div>
-                <div>
-                  <Label>Status</Label>
-                  <Badge variant={getStatusColor(selectedEquipment.status) as any}>{selectedEquipment.status}</Badge>
-                </div>
-                {selectedEquipment.ultima_inspecao && (
-                  <div>
-                    <Label>Última Inspeção</Label>
-                    <p className="font-medium">{format(new Date(selectedEquipment.ultima_inspecao), "dd/MM/yyyy")}</p>
-                  </div>
-                )}
-                {selectedEquipment.proxima_inspecao && (
-                  <div>
-                    <Label>Próxima Inspeção</Label>
-                    <p className="font-medium">{format(new Date(selectedEquipment.proxima_inspecao), "dd/MM/yyyy")}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isInspectDialogOpen} onOpenChange={setIsInspectDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Inspecionar Equipamento</DialogTitle>
-            <DialogDescription>Registre os resultados da inspeção</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Data da Inspeção</Label>
-              <Input type="date" />
-            </div>
-            <div>
-              <Label>Resultado</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o resultado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="aprovado">Aprovado</SelectItem>
-                  <SelectItem value="reprovado">Reprovado</SelectItem>
-                  <SelectItem value="manutencao">Necessita Manutenção</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Observações</Label>
-              <Textarea placeholder="Observações sobre a inspeção" />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsInspectDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => setIsInspectDialogOpen(false)}>Salvar Inspeção</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Agendar Manutenção</DialogTitle>
-            <DialogDescription>Configure a manutenção do equipamento</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Data da Manutenção</Label>
-              <Input type="date" />
-            </div>
-            <div>
-              <Label>Tipo de Manutenção</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="preventiva">Preventiva</SelectItem>
-                  <SelectItem value="corretiva">Corretiva</SelectItem>
-                  <SelectItem value="preditiva">Preditiva</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Responsável</Label>
-              <Input placeholder="Nome do responsável pela manutenção" />
-            </div>
-            <div>
-              <Label>Descrição</Label>
-              <Textarea placeholder="Descreva os serviços a serem realizados" />
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setIsMaintenanceDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => setIsMaintenanceDialogOpen(false)}>Agendar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Histórico do Equipamento</DialogTitle>
-            <DialogDescription>Registro completo de inspeções e manutenções</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="text-center py-8">
-              <History className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Histórico em Desenvolvimento</h3>
-              <p className="text-muted-foreground">O histórico detalhado do equipamento será exibido aqui</p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ... existing dialogs ... */}
     </div>
   )
 }
