@@ -26,7 +26,7 @@ import {
   History,
   Download,
 } from "lucide-react"
-import { format } from "date-fns"
+import { formatDateSafe } from "@/lib/utils/date-utils"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { uploadArquivo } from "@/lib/supabase/storage"
 
@@ -506,7 +506,7 @@ export function WorkplaceSafety() {
         <div className="px-1">
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center space-x-2">
             <Shield className="h-6 w-6 sm:h-8 sm:w-8" />
-            <span>Segurança do Trabalho</span>
+            <span className="leading-tight">Segurança do Trabalho</span>
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground mt-1">
             Gestão de inspeções, incidentes e equipamentos de segurança - {selectedCompany.name}
@@ -631,8 +631,7 @@ export function WorkplaceSafety() {
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg">{inspection.setor}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Responsável: {inspection.responsavel} •{" "}
-                            {format(new Date(inspection.data_inspecao), "dd/MM/yyyy")}
+                            Responsável: {inspection.responsavel} • {formatDateSafe(inspection.data_inspecao)}
                           </p>
                         </div>
                         <Badge variant={getStatusColor(inspection.status) as any}>
@@ -655,7 +654,7 @@ export function WorkplaceSafety() {
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div className="flex space-x-4 text-sm text-muted-foreground">
                           <span>📍 {inspection.setor}</span>
-                          <span>📅 {format(new Date(inspection.data_inspecao), "dd/MM/yyyy")}</span>
+                          <span>📅 {formatDateSafe(inspection.data_inspecao)}</span>
                         </div>
                         <div className="flex space-x-2">
                           <Button variant="outline" size="sm" onClick={() => handleViewInspectionDetails(inspection)}>
@@ -704,9 +703,7 @@ export function WorkplaceSafety() {
                             <Badge variant="outline">{incident.tipo}</Badge>
                           </div>
                           <h3 className="font-semibold text-base mb-1">{incident.descricao}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            📅 {format(new Date(incident.data_ocorrencia), "dd/MM/yyyy")}
-                          </p>
+                          <p className="text-sm text-muted-foreground">📅 {formatDateSafe(incident.data_ocorrencia)}</p>
                         </div>
                         <Badge variant={getStatusColor(incident.status) as any}>
                           {incident.status === "aberto"
@@ -780,9 +777,7 @@ export function WorkplaceSafety() {
                           <p className="text-sm text-muted-foreground">
                             Tipo: {item.tipo} • Quantidade: {item.quantidade}
                           </p>
-                          <p className="text-sm text-muted-foreground">
-                            Validade: {format(new Date(item.validade), "dd/MM/yyyy")}
-                          </p>
+                          <p className="text-sm text-muted-foreground">Validade: {formatDateSafe(item.validade)}</p>
                         </div>
                         <Badge variant={new Date(item.validade) > new Date() ? "default" : "destructive"}>
                           {new Date(item.validade) > new Date() ? "Válido" : "Vencido"}
@@ -883,7 +878,7 @@ export function WorkplaceSafety() {
                         <div className="flex-1">
                           <h3 className="font-semibold text-base mb-1">{report.tipo}</h3>
                           <p className="text-sm text-muted-foreground">
-                            Gerado em: {format(new Date(report.data_geracao), "dd/MM/yyyy HH:mm")}
+                            Gerado em: {formatDateSafe(report.data_geracao, "dd/MM/yyyy HH:mm")}
                           </p>
                         </div>
                         {report.arquivo_url && (

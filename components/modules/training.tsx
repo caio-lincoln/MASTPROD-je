@@ -167,10 +167,15 @@ export default function TrainingComponent() {
 
       const { data: monthlyData, error: monthlyError } = await supabase
         .from("treinamento_funcionarios")
-        .select("id")
+        .select(`
+          id,
+          treinamentos!inner(
+            id,
+            empresa_id
+          )
+        `)
         .eq("status", "concluido")
         .gte("created_at", startOfMonth.toISOString())
-        .inner("treinamentos", "treinamento_id", "id")
         .eq("treinamentos.empresa_id", selectedCompany.id)
 
       if (monthlyError) throw monthlyError

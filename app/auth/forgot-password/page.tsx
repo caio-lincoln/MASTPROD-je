@@ -1,46 +1,40 @@
 "use client"
 
 import type React from "react"
-
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Shield, Building2, Eye, EyeOff } from "lucide-react"
+import { Shield, Mail, ArrowLeft } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
+  const [message, setMessage] = useState("")
   const [error, setError] = useState<string | null>(null)
   const { isLoading, withLoading } = useLoading()
-  const router = useRouter()
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
     const supabase = createClient()
 
     await withLoading(async () => {
       setError(null)
+      setMessage("")
 
       try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-          options: {
-            emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
-          },
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
         })
+
         if (error) throw error
-        router.push("/")
+
+        setMessage("Um link de redefinição de senha foi enviado para o seu e-mail.")
       } catch (error: unknown) {
-        setError(error instanceof Error ? error.message : "Erro ao fazer login")
+        setError(error instanceof Error ? error.message : "Erro ao enviar e-mail de recuperação")
       }
     })
   }
@@ -62,14 +56,16 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Card de Login */}
+          {/* Card de Recuperação */}
           <Card className="shadow-lg border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-2xl font-semibold text-center">Fazer Login</CardTitle>
-              <CardDescription className="text-center">Digite suas credenciais para acessar o sistema</CardDescription>
+              <CardTitle className="text-2xl font-semibold text-center">Esqueceu sua senha?</CardTitle>
+              <CardDescription className="text-center">
+                Digite seu e-mail para receber um link de redefinição de senha
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleReset} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm font-medium">
                     E-mail
@@ -86,41 +82,15 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">
-                    Senha
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Digite sua senha"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="h-11 pr-10"
-                      disabled={isLoading}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={isLoading}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
                 {error && (
                   <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3">
                     <p className="text-sm text-destructive">{error}</p>
+                  </div>
+                )}
+
+                {message && (
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                    <p className="text-sm text-green-700">{message}</p>
                   </div>
                 )}
 
@@ -128,18 +98,22 @@ export default function LoginPage() {
                   type="submit"
                   className="w-full h-11 font-medium"
                   isLoading={isLoading}
-                  loadingText="Entrando..."
+                  loadingText="Enviando..."
                 >
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    Entrar no Sistema
+                    <Mail className="h-4 w-4" />
+                    Enviar link de redefinição
                   </div>
                 </LoadingButton>
               </form>
 
-              <div className="mt-6 text-center text-sm text-muted-foreground">
-                <Link href="/auth/forgot-password" className="font-medium text-primary hover:underline">
-                  Esqueceu sua senha?
+              <div className="mt-6 text-center">
+                <Link
+                  href="/auth/login"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Voltar para o login
                 </Link>
               </div>
             </CardContent>
