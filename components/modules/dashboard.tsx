@@ -28,6 +28,7 @@ interface KPIData {
   icon: any
   trend: string
   trendUp: boolean
+  variation: number
 }
 
 interface RiskData {
@@ -48,6 +49,12 @@ interface DashboardStats {
   examesEmDia: number
   naoConformidadesAbertas: number
   treinamentosPendentes: number
+  kpiVariations: {
+    funcionarios: number
+    exames: number
+    naoConformidades: number
+    treinamentos: number
+  }
   examData: ExamData[]
   riskData: RiskData[]
   complianceData: {
@@ -69,16 +76,81 @@ export function Dashboard() {
         setError(null)
         const supabase = createBrowserClient()
 
-        // Total Employees
+        const today = new Date()
+        const startOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
+        const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString()
+        const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0).toISOString()
+
         const { count: totalFuncionarios } = await supabase
           .from("funcionarios")
           .select("id", { count: "exact", head: true })
           .eq("empresa_id", empresaId)
+          .eq("ativo", true)
 
-        // Exams data for multiple calculations
+        const { count: lastMonthFuncionarios } = await supabase
+          .from("funcionarios")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("ativo", true)
+          .gte("data_admissao", startOfLastMonth)
+          .lte("data_admissao", endOfLastMonth)
+
+        const todayISO = new Date().toISOString()
+        const { count: examesEmDia } = await supabase
+          .from("exames_aso")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .gte("validade", todayISO)
+
+        const { count: lastMonthExams } = await supabase
+          .from("exames_aso")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .gte("validade", startOfLastMonth)
+          .lte("validade", endOfLastMonth)
+
+        const { count: naoConformidadesAbertas } = await supabase
+          .from("nao_conformidades")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "aberta")
+
+        const { count: lastMonthNCs } = await supabase
+          .from("nao_conformidades")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "aberta")
+          .gte("created_at", startOfLastMonth)
+          .lte("created_at", endOfLastMonth)
+
+        const { count: treinamentosPendentes } = await supabase
+          .from("treinamento_funcionarios")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "pendente")
+
+        const { count: lastMonthPending } = await supabase
+          .from("treinamento_funcionarios")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId)
+          .eq("status", "pendente")
+          .gte("created_at", startOfLastMonth)
+          .lte("created_at", endOfLastMonth)
+
+        const calculateVariation = (current: number, previous: number): number => {
+          if (previous === 0) return current > 0 ? 100 : 0
+          return ((current - previous) / previous) * 100
+        }
+
+        const kpiVariations = {
+          funcionarios: calculateVariation(totalFuncionarios || 0, lastMonthFuncionarios || 0),
+          exames: calculateVariation(examesEmDia || 0, lastMonthExams || 0),
+          naoConformidades: calculateVariation(naoConformidadesAbertas || 0, lastMonthNCs || 0),
+          treinamentos: calculateVariation(treinamentosPendentes || 0, lastMonthPending || 0),
+        }
+
         const { data: examesData } = await supabase.from("exames_aso").select("*").eq("empresa_id", empresaId)
 
-        const today = new Date()
         const next30 = new Date()
         next30.setDate(today.getDate() + 30)
 
@@ -87,28 +159,12 @@ export function Dashboard() {
           examesData?.filter((e) => new Date(e.validade) <= next30 && new Date(e.validade) >= today) || []
         const vencidos = examesData?.filter((e) => new Date(e.validade) < today) || []
 
-        // Open Non-Conformities
-        const { count: naoConformidadesAbertas } = await supabase
-          .from("nao_conformidades")
-          .select("id", { count: "exact", head: true })
-          .eq("empresa_id", empresaId)
-          .eq("status", "aberta")
-
-        // Pending Trainings
-        const { count: treinamentosPendentes } = await supabase
-          .from("treinamento_funcionarios")
-          .select("id", { count: "exact", head: true })
-          .eq("empresa_id", empresaId)
-          .eq("status", "pendente")
-
-        // Risk Evolution Data (last 6 months)
         const { data: riscosData } = await supabase
           .from("gestao_riscos")
           .select("classificacao, data_identificacao")
           .eq("empresa_id", empresaId)
           .gte("data_identificacao", new Date(Date.now() - 6 * 30 * 24 * 60 * 60 * 1000).toISOString())
 
-        // Process risk data by month
         const riskByMonth: { [key: string]: { baixo: number; medio: number; alto: number } } = {}
         const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"]
 
@@ -131,7 +187,6 @@ export function Dashboard() {
           ...riskByMonth[month],
         }))
 
-        // Compliance calculations
         const nr07 = totalFuncionarios ? Math.round((emDia.length / totalFuncionarios) * 100) : 0
 
         const { count: riscosComMitigacao } = await supabase
@@ -157,9 +212,10 @@ export function Dashboard() {
 
         setDashboardData({
           totalFuncionarios: totalFuncionarios || 0,
-          examesEmDia: emDia.length,
+          examesEmDia: examesEmDia || 0,
           naoConformidadesAbertas: naoConformidadesAbertas || 0,
           treinamentosPendentes: treinamentosPendentes || 0,
+          kpiVariations,
           examData: [
             { name: "Em Dia", value: emDia.length, color: "#22c55e" },
             { name: "Vencendo (30 dias)", value: vencendo.length, color: "#f59e0b" },
@@ -238,32 +294,36 @@ export function Dashboard() {
 
   const kpiData: KPIData[] = [
     {
-      title: "Total de Funcionários",
+      title: "Total de Funcionários Ativos",
       value: dashboardData.totalFuncionarios.toString(),
       icon: Users,
-      trend: "+5.2%",
-      trendUp: true,
+      trend: `${dashboardData.kpiVariations.funcionarios >= 0 ? "+" : ""}${dashboardData.kpiVariations.funcionarios.toFixed(1)}%`,
+      trendUp: dashboardData.kpiVariations.funcionarios >= 0,
+      variation: dashboardData.kpiVariations.funcionarios,
     },
     {
       title: "Exames em Dia",
       value: dashboardData.examesEmDia.toString(),
       icon: CheckCircle,
-      trend: "+2.1%",
-      trendUp: true,
+      trend: `${dashboardData.kpiVariations.exames >= 0 ? "+" : ""}${dashboardData.kpiVariations.exames.toFixed(1)}%`,
+      trendUp: dashboardData.kpiVariations.exames >= 0,
+      variation: dashboardData.kpiVariations.exames,
     },
     {
       title: "Não Conformidades Abertas",
       value: dashboardData.naoConformidadesAbertas.toString(),
       icon: AlertTriangle,
-      trend: "-12.3%",
-      trendUp: false,
+      trend: `${dashboardData.kpiVariations.naoConformidades >= 0 ? "+" : ""}${dashboardData.kpiVariations.naoConformidades.toFixed(1)}%`,
+      trendUp: dashboardData.kpiVariations.naoConformidades < 0,
+      variation: dashboardData.kpiVariations.naoConformidades,
     },
     {
       title: "Treinamentos Pendentes",
       value: dashboardData.treinamentosPendentes.toString(),
       icon: Clock,
-      trend: "+8.7%",
-      trendUp: false,
+      trend: `${dashboardData.kpiVariations.treinamentos >= 0 ? "+" : ""}${dashboardData.kpiVariations.treinamentos.toFixed(1)}%`,
+      trendUp: dashboardData.kpiVariations.treinamentos < 0,
+      variation: dashboardData.kpiVariations.treinamentos,
     },
   ]
 
@@ -276,10 +336,17 @@ export function Dashboard() {
         </p>
       </div>
 
-      {/* KPIs */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {kpiData.map((kpi, index) => {
           const Icon = kpi.icon
+          const getTrendColor = () => {
+            if (kpi.title.includes("Não Conformidades") || kpi.title.includes("Pendentes")) {
+              return kpi.variation < 0 ? "text-green-500" : "text-red-500"
+            } else {
+              return kpi.variation >= 0 ? "text-green-500" : "text-red-500"
+            }
+          }
+
           return (
             <Card key={index} className="min-h-[100px] sm:min-h-[120px]">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
@@ -290,11 +357,11 @@ export function Dashboard() {
                 <div className="text-lg sm:text-xl lg:text-2xl font-bold">{kpi.value}</div>
                 <div className="flex items-center space-x-1 text-xs text-muted-foreground mt-1">
                   {kpi.trendUp ? (
-                    <TrendingUp className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-green-500 shrink-0" />
+                    <TrendingUp className={`h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0 ${getTrendColor()}`} />
                   ) : (
-                    <TrendingDown className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-red-500 shrink-0" />
+                    <TrendingDown className={`h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0 ${getTrendColor()}`} />
                   )}
-                  <span className={`text-xs ${kpi.trendUp ? "text-green-500" : "text-red-500"}`}>{kpi.trend}</span>
+                  <span className={`text-xs ${getTrendColor()}`}>{kpi.trend}</span>
                   <span className="hidden sm:inline text-xs">vs mês anterior</span>
                 </div>
               </CardContent>
@@ -304,7 +371,6 @@ export function Dashboard() {
       </div>
 
       <div className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-2">
-        {/* Gráfico de Riscos */}
         <Card>
           <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="flex items-center space-x-2 text-sm sm:text-base lg:text-lg">
@@ -334,7 +400,6 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Status dos Exames */}
         <Card>
           <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
             <CardTitle className="flex items-center space-x-2 text-sm sm:text-base lg:text-lg">
@@ -387,7 +452,6 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Alertas e Ações Pendentes */}
       <div className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-2">
         <Card>
           <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
@@ -470,7 +534,6 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Indicadores de Conformidade */}
       <Card>
         <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
           <CardTitle className="text-sm sm:text-base lg:text-lg">Indicadores de Conformidade</CardTitle>
