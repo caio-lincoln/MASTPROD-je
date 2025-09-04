@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Shield, Lock, Eye, EyeOff } from "lucide-react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
 
 export default function ResetPasswordPage() {
@@ -21,54 +21,38 @@ export default function ResetPasswordPage() {
   const [message, setMessage] = useState("")
   const { isLoading, withLoading } = useLoading()
   const router = useRouter()
-  const searchParams = useSearchParams()
-
-  useEffect(() => {
-    // Verificar se há um token de recuperação na URL
-    const accessToken = searchParams.get("access_token")
-    const refreshToken = searchParams.get("refresh_token")
-
-    if (accessToken && refreshToken) {
-      const supabase = createClient()
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      })
-    }
-  }, [searchParams])
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
+    setMessage("")
 
     if (password !== confirmPassword) {
-      setError("As senhas não coincidem")
+      setError("As senhas não coincidem.")
       return
     }
 
     if (password.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres")
+      setError("A senha deve ter pelo menos 6 caracteres.")
       return
     }
 
     const supabase = createClient()
 
     await withLoading(async () => {
-      setError(null)
-      setMessage("")
-
       try {
         const { error } = await supabase.auth.updateUser({
-          password: password,
+          password,
         })
 
-        if (error) throw error
-
-        setMessage("Senha redefinida com sucesso! Redirecionando...")
-
-        // Redirecionar para login após 2 segundos
-        setTimeout(() => {
-          router.push("/auth/login")
-        }, 2000)
+        if (error) {
+          setError(error.message)
+        } else {
+          setMessage("Senha redefinida com sucesso. Você será redirecionado para o login...")
+          setTimeout(() => {
+            router.push("/auth/login")
+          }, 3000)
+        }
       } catch (error: unknown) {
         setError(error instanceof Error ? error.message : "Erro ao redefinir senha")
       }
