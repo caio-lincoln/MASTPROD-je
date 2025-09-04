@@ -270,33 +270,32 @@ export function Dashboard() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="px-1">
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Dashboard SST</h1>
-        <p className="text-sm sm:text-base text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground">Dashboard SST</h1>
+        <p className="text-xs sm:text-sm lg:text-base text-muted-foreground mt-1 line-clamp-2">
           Visão geral do sistema de Segurança e Saúde no Trabalho - {selectedCompany.name}
         </p>
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         {kpiData.map((kpi, index) => {
           const Icon = kpi.icon
           return (
-            <Card key={index} className="min-h-[120px]">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium leading-tight">{kpi.title}</CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Card key={index} className="min-h-[100px] sm:min-h-[120px]">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+                <CardTitle className="text-xs sm:text-sm font-medium leading-tight line-clamp-2">{kpi.title}</CardTitle>
+                <Icon className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground shrink-0" />
               </CardHeader>
-              <CardContent>
-                <div className="text-xl sm:text-2xl font-bold">{kpi.value}</div>
+              <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold">{kpi.value}</div>
                 <div className="flex items-center space-x-1 text-xs text-muted-foreground mt-1">
                   {kpi.trendUp ? (
-                    <TrendingUp className="h-3 w-3 text-green-500 shrink-0" />
+                    <TrendingUp className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-green-500 shrink-0" />
                   ) : (
-                    <TrendingDown className="h-3 w-3 text-red-500 shrink-0" />
+                    <TrendingDown className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-red-500 shrink-0" />
                   )}
-                  <span className={kpi.trendUp ? "text-green-500" : "text-red-500"}>{kpi.trend}</span>
-                  <span className="hidden sm:inline">vs mês anterior</span>
-                  <span className="sm:hidden">vs mês ant.</span>
+                  <span className={`text-xs ${kpi.trendUp ? "text-green-500" : "text-red-500"}`}>{kpi.trend}</span>
+                  <span className="hidden sm:inline text-xs">vs mês anterior</span>
                 </div>
               </CardContent>
             </Card>
@@ -304,26 +303,26 @@ export function Dashboard() {
         })}
       </div>
 
-      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-2">
         {/* Gráfico de Riscos */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="flex items-center space-x-2 text-sm sm:text-base lg:text-lg">
               <Shield className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
               <span>Evolução dos Riscos</span>
             </CardTitle>
-            <CardDescription className="text-sm">Classificação de riscos por mês</CardDescription>
+            <CardDescription className="text-xs sm:text-sm">Classificação de riscos por mês</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <ResponsiveContainer width="100%" height={200} className="sm:h-[250px] lg:h-[300px]">
               <BarChart data={dashboardData.riskData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} interval={0} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} className="sm:text-xs" interval={0} />
+                <YAxis tick={{ fontSize: 10 }} className="sm:text-xs" />
                 <Tooltip
                   contentStyle={{
-                    fontSize: "12px",
-                    padding: "8px",
+                    fontSize: "11px",
+                    padding: "6px 8px",
                     borderRadius: "6px",
                   }}
                 />
@@ -337,25 +336,25 @@ export function Dashboard() {
 
         {/* Status dos Exames */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="flex items-center space-x-2 text-sm sm:text-base lg:text-lg">
               <Heart className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
               <span>Status dos Exames Médicos</span>
             </CardTitle>
-            <CardDescription className="text-sm">Situação atual dos ASOs</CardDescription>
+            <CardDescription className="text-xs sm:text-sm">Situação atual dos ASOs</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
+          <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+            <ResponsiveContainer width="100%" height={200} className="sm:h-[250px] lg:h-[300px]">
               <PieChart>
                 <Pie
                   data={dashboardData.examData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={40}
-                  outerRadius={80}
+                  innerRadius={30}
+                  outerRadius={70}
                   paddingAngle={5}
                   dataKey="value"
-                  className="sm:inner-radius-[60px] sm:outer-radius-[120px]"
+                  className="sm:inner-radius-[40px] sm:outer-radius-[80px] lg:inner-radius-[60px] lg:outer-radius-[120px]"
                 >
                   {dashboardData.examData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -363,21 +362,24 @@ export function Dashboard() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    fontSize: "12px",
-                    padding: "8px",
+                    fontSize: "11px",
+                    padding: "6px 8px",
                     borderRadius: "6px",
                   }}
                 />
               </PieChart>
             </ResponsiveContainer>
-            <div className="mt-3 sm:mt-4 space-y-2">
+            <div className="mt-2 sm:mt-3 lg:mt-4 space-y-1.5 sm:space-y-2">
               {dashboardData.examData.map((item, index) => (
                 <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="text-xs sm:text-sm">{item.name}</span>
+                  <div className="flex items-center space-x-2 min-w-0 flex-1">
+                    <div
+                      className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-xs sm:text-sm truncate">{item.name}</span>
                   </div>
-                  <span className="text-xs sm:text-sm font-medium">{item.value}</span>
+                  <span className="text-xs sm:text-sm font-medium shrink-0 ml-2">{item.value}</span>
                 </div>
               ))}
             </div>
@@ -386,20 +388,22 @@ export function Dashboard() {
       </div>
 
       {/* Alertas e Ações Pendentes */}
-      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 xl:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg">Alertas Críticos</CardTitle>
-            <CardDescription className="text-sm">Itens que requerem atenção imediata</CardDescription>
+          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="text-sm sm:text-base lg:text-lg">Alertas Críticos</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Itens que requerem atenção imediata</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
+          <CardContent className="space-y-2 sm:space-y-3 lg:space-y-4 px-3 sm:px-6 pb-3 sm:pb-6">
             {dashboardData.examData.find((e) => e.name === "Vencidos")?.value > 0 && (
-              <div className="flex items-start sm:items-center justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg gap-3">
-                <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
-                  <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500 shrink-0 mt-0.5 sm:mt-0" />
+              <div className="flex items-start justify-between p-2 sm:p-3 bg-red-50 dark:bg-red-950 rounded-lg gap-2 sm:gap-3">
+                <div className="flex items-start space-x-2 sm:space-x-3 min-w-0 flex-1">
+                  <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-red-500 shrink-0 mt-0.5" />
                   <div className="min-w-0">
-                    <p className="font-medium text-red-700 dark:text-red-300 text-sm sm:text-base">Exames Vencidos</p>
-                    <p className="text-xs sm:text-sm text-red-600 dark:text-red-400">
+                    <p className="font-medium text-red-700 dark:text-red-300 text-xs sm:text-sm lg:text-base">
+                      Exames Vencidos
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-400 line-clamp-2">
                       {dashboardData.examData.find((e) => e.name === "Vencidos")?.value} funcionários com ASO vencido
                     </p>
                   </div>
@@ -411,14 +415,14 @@ export function Dashboard() {
             )}
 
             {dashboardData.treinamentosPendentes > 0 && (
-              <div className="flex items-start sm:items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg gap-3">
-                <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
-                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-500 shrink-0 mt-0.5 sm:mt-0" />
+              <div className="flex items-start justify-between p-2 sm:p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg gap-2 sm:gap-3">
+                <div className="flex items-start space-x-2 sm:space-x-3 min-w-0 flex-1">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-yellow-500 shrink-0 mt-0.5" />
                   <div className="min-w-0">
-                    <p className="font-medium text-yellow-700 dark:text-yellow-300 text-sm sm:text-base">
+                    <p className="font-medium text-yellow-700 dark:text-yellow-300 text-xs sm:text-sm lg:text-base">
                       Treinamentos Pendentes
                     </p>
-                    <p className="text-xs sm:text-sm text-yellow-600 dark:text-yellow-400">
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 line-clamp-2">
                       {dashboardData.treinamentosPendentes} funcionários pendentes
                     </p>
                   </div>
@@ -432,32 +436,34 @@ export function Dashboard() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base sm:text-lg">Próximas Ações</CardTitle>
-            <CardDescription className="text-sm">Atividades programadas para os próximos dias</CardDescription>
+          <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+            <CardTitle className="text-sm sm:text-base lg:text-lg">Próximas Ações</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Atividades programadas para os próximos dias
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
-            <div className="flex items-start space-x-3 p-3 border rounded-lg">
-              <div className="w-2 h-2 bg-blue-500 rounded-full shrink-0 mt-2" />
+          <CardContent className="space-y-2 sm:space-y-3 lg:space-y-4 px-3 sm:px-6 pb-3 sm:pb-6">
+            <div className="flex items-start space-x-2 sm:space-x-3 p-2 sm:p-3 border rounded-lg">
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full shrink-0 mt-1.5 sm:mt-2" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Auditoria Interna</p>
-                <p className="text-xs sm:text-sm text-muted-foreground">Setor Produção - Amanhã às 14h</p>
+                <p className="font-medium text-xs sm:text-sm lg:text-base">Auditoria Interna</p>
+                <p className="text-xs text-muted-foreground truncate">Setor Produção - Amanhã às 14h</p>
               </div>
             </div>
 
-            <div className="flex items-start space-x-3 p-3 border rounded-lg">
-              <div className="w-2 h-2 bg-green-500 rounded-full shrink-0 mt-2" />
+            <div className="flex items-start space-x-2 sm:space-x-3 p-2 sm:p-3 border rounded-lg">
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full shrink-0 mt-1.5 sm:mt-2" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Treinamento NR-10</p>
-                <p className="text-xs sm:text-sm text-muted-foreground">Turma A - Sexta-feira às 8h</p>
+                <p className="font-medium text-xs sm:text-sm lg:text-base">Treinamento NR-10</p>
+                <p className="text-xs text-muted-foreground truncate">Turma A - Sexta-feira às 8h</p>
               </div>
             </div>
 
-            <div className="flex items-start space-x-3 p-3 border rounded-lg">
-              <div className="w-2 h-2 bg-purple-500 rounded-full shrink-0 mt-2" />
+            <div className="flex items-start space-x-2 sm:space-x-3 p-2 sm:p-3 border rounded-lg">
+              <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-purple-500 rounded-full shrink-0 mt-1.5 sm:mt-2" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm sm:text-base">Revisão PGR</p>
-                <p className="text-xs sm:text-sm text-muted-foreground">Análise anual - Próxima semana</p>
+                <p className="font-medium text-xs sm:text-sm lg:text-base">Revisão PGR</p>
+                <p className="text-xs text-muted-foreground truncate">Análise anual - Próxima semana</p>
               </div>
             </div>
           </CardContent>
@@ -466,34 +472,34 @@ export function Dashboard() {
 
       {/* Indicadores de Conformidade */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base sm:text-lg">Indicadores de Conformidade</CardTitle>
-          <CardDescription className="text-sm">Status de conformidade com as principais NRs</CardDescription>
+        <CardHeader className="px-3 sm:px-6 pt-3 sm:pt-6">
+          <CardTitle className="text-sm sm:text-base lg:text-lg">Indicadores de Conformidade</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">Status de conformidade com as principais NRs</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+          <div className="grid gap-3 sm:gap-4 lg:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span>NR-07 (PCMSO)</span>
                 <span className="font-medium">{dashboardData.complianceData.nr07}%</span>
               </div>
-              <Progress value={dashboardData.complianceData.nr07} className="h-2" />
+              <Progress value={dashboardData.complianceData.nr07} className="h-1.5 sm:h-2" />
             </div>
 
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span>NR-09 (PGR)</span>
                 <span className="font-medium">{dashboardData.complianceData.nr09}%</span>
               </div>
-              <Progress value={dashboardData.complianceData.nr09} className="h-2" />
+              <Progress value={dashboardData.complianceData.nr09} className="h-1.5 sm:h-2" />
             </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
+            <div className="space-y-2 sm:col-span-2 lg:col-span-1">
+              <div className="flex justify-between text-xs sm:text-sm">
                 <span>NR-06 (EPI)</span>
                 <span className="font-medium">{dashboardData.complianceData.nr06}%</span>
               </div>
-              <Progress value={dashboardData.complianceData.nr06} className="h-2" />
+              <Progress value={dashboardData.complianceData.nr06} className="h-1.5 sm:h-2" />
             </div>
           </div>
         </CardContent>

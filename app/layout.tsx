@@ -20,10 +20,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className={`font-sans h-full overflow-hidden ${GeistSans.variable} ${GeistMono.variable}`}>
+      <body className={`font-sans h-full ${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <CompanyProvider>
-            <div className="h-full w-full flex flex-col">{children}</div>
+            <div className="h-full w-full flex flex-col overflow-hidden">{children}</div>
             <Toaster />
           </CompanyProvider>
         </ThemeProvider>

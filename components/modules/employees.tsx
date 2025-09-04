@@ -331,24 +331,24 @@ export function Employees() {
           ) : (
             <div className="space-y-4">
               {/* Desktop Table */}
-              <div className="hidden md:block">
+              <div className="hidden lg:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Funcionário</TableHead>
-                      <TableHead>CPF</TableHead>
-                      <TableHead>Cargo</TableHead>
-                      <TableHead>Setor</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="min-w-[200px]">Funcionário</TableHead>
+                      <TableHead className="min-w-[120px]">CPF</TableHead>
+                      <TableHead className="min-w-[120px]">Cargo</TableHead>
+                      <TableHead className="min-w-[100px]">Setor</TableHead>
+                      <TableHead className="min-w-[80px]">Status</TableHead>
                       <TableHead className="w-[70px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {employees.map((employee) => (
                       <TableRow key={employee.id}>
-                        <TableCell>
+                        <TableCell className="min-w-[200px]">
                           <div className="flex items-center space-x-3">
-                            <Avatar className="h-8 w-8">
+                            <Avatar className="h-8 w-8 shrink-0">
                               <AvatarFallback>
                                 {employee.nome
                                   .split(" ")
@@ -357,19 +357,87 @@ export function Employees() {
                                   .toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
-                            <div>
-                              <div className="font-medium">{employee.nome}</div>
-                              {employee.email && <div className="text-sm text-muted-foreground">{employee.email}</div>}
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{employee.nome}</div>
+                              {employee.email && (
+                                <div className="text-sm text-muted-foreground truncate">{employee.email}</div>
+                              )}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{employee.cpf}</TableCell>
-                        <TableCell>{employee.cargo}</TableCell>
-                        <TableCell>{employee.setor}</TableCell>
-                        <TableCell>
+                        <TableCell className="min-w-[120px]">{employee.cpf}</TableCell>
+                        <TableCell className="min-w-[120px]">
+                          <span className="truncate block">{employee.cargo}</span>
+                        </TableCell>
+                        <TableCell className="min-w-[100px]">
+                          <span className="truncate block">{employee.setor}</span>
+                        </TableCell>
+                        <TableCell className="min-w-[80px]">
                           <Badge variant={getStatusColor(employee.status)}>{getStatusText(employee.status)}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-[70px]">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setSelectedEmployee(employee)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                Visualizar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEdit(employee)}>Editar</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Tablet Table - Simplified */}
+              <div className="hidden md:block lg:hidden overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[180px]">Funcionário</TableHead>
+                      <TableHead className="min-w-[120px]">Cargo</TableHead>
+                      <TableHead className="min-w-[80px]">Status</TableHead>
+                      <TableHead className="w-[70px]">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {employees.map((employee) => (
+                      <TableRow key={employee.id}>
+                        <TableCell className="min-w-[180px]">
+                          <div className="flex items-center space-x-3">
+                            <Avatar className="h-8 w-8 shrink-0">
+                              <AvatarFallback>
+                                {employee.nome
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <div className="font-medium truncate">{employee.nome}</div>
+                              <div className="text-xs text-muted-foreground truncate">{employee.cpf}</div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="min-w-[120px]">
+                          <div>
+                            <div className="truncate">{employee.cargo}</div>
+                            <div className="text-xs text-muted-foreground truncate">{employee.setor}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="min-w-[80px]">
+                          <Badge variant={getStatusColor(employee.status)}>{getStatusText(employee.status)}</Badge>
+                        </TableCell>
+                        <TableCell className="w-[70px]">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" className="h-8 w-8 p-0">
@@ -392,53 +460,56 @@ export function Employees() {
               </div>
 
               {/* Mobile Cards */}
-              <div className="md:hidden space-y-4">
+              <div className="md:hidden space-y-3">
                 {employees.map((employee) => (
-                  <Card key={employee.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <Avatar className="h-10 w-10">
-                            <AvatarFallback className="text-lg">
-                              {employee.nome
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-medium">{employee.nome}</div>
-                            <div className="text-sm text-muted-foreground">{employee.cargo}</div>
-                          </div>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setSelectedEmployee(employee)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Visualizar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEdit(employee)}>Editar</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                      <div className="mt-3 space-y-1">
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">CPF:</span> {employee.cpf}
-                        </div>
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">Setor:</span> {employee.setor}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <Badge variant={getStatusColor(employee.status)}>{getStatusText(employee.status)}</Badge>
+                  <Card key={employee.id} className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3 min-w-0 flex-1">
+                        <Avatar className="h-10 w-10 shrink-0">
+                          <AvatarFallback className="text-sm">
+                            {employee.nome
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-sm truncate">{employee.nome}</div>
+                          <div className="text-xs text-muted-foreground truncate">{employee.cargo}</div>
                         </div>
                       </div>
-                    </CardContent>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0 shrink-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setSelectedEmployee(employee)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            Visualizar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEdit(employee)}>Editar</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground">CPF:</span>
+                        <span className="font-mono">{employee.cpf}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground">Setor:</span>
+                        <span className="truncate ml-2">{employee.setor}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-muted-foreground">Status:</span>
+                        <Badge variant={getStatusColor(employee.status)} className="text-xs">
+                          {getStatusText(employee.status)}
+                        </Badge>
+                      </div>
+                    </div>
                   </Card>
                 ))}
               </div>

@@ -71,7 +71,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
   }
 
   return (
-    <div className="flex h-full w-full bg-background">
+    <div className="flex h-full w-full bg-background overflow-hidden">
       <MobileSidebarOverlay isOpen={isMobile && mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
 
       <Sidebar
@@ -84,7 +84,7 @@ export function DashboardClient({ user }: DashboardClientProps) {
         setMobileSidebarOpen={setMobileSidebarOpen}
       />
 
-      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
         <TopBar
           sidebarCollapsed={sidebarCollapsed}
           setSidebarCollapsed={setSidebarCollapsed}
@@ -93,8 +93,8 @@ export function DashboardClient({ user }: DashboardClientProps) {
           setMobileSidebarOpen={setMobileSidebarOpen}
           user={user}
         />
-        <main className="flex-1 overflow-auto p-2 sm:p-3 md:p-4 lg:p-6 bg-background/50 min-h-0">
-          <div className="w-full h-full">{renderModule()}</div>
+        <main className="flex-1 overflow-auto p-2 sm:p-3 md:p-4 lg:p-6 bg-background/50 min-h-0 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+          <div className="w-full h-full max-w-full">{renderModule()}</div>
         </main>
       </div>
     </div>
