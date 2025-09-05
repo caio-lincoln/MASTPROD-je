@@ -9,14 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Database,
@@ -33,12 +25,18 @@ import {
   AlertCircle,
   MoreHorizontal,
   Eye,
+  Shield,
+  Key,
+  TestTube,
+  Loader2,
 } from "lucide-react"
-import { format } from "date-fns"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useToast } from "@/hooks/use-toast"
 
 import { createClient } from "@/lib/supabase/client"
 import { useEffect } from "react"
+import { ESocialService } from "@/lib/esocial/esocial-service"
+import { DigitalSignatureService } from "@/lib/esocial/digital-signature"
 
 interface ESocialEvent {
   id: number
@@ -98,10 +96,33 @@ const getStatusIcon = (status: string) => {
 
 export function ESocialIntegration() {
   const { selectedCompany } = useCompany()
+  const { toast } = useToast()
   const [selectedEvent, setSelectedEvent] = useState<ESocialEvent | null>(null)
   const [events, setEvents] = useState<ESocialEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [certificateFile, setCertificateFile] = useState<File | null>(null)
+  const [certificatePassword, setCertificatePassword] = useState("")
+  const [certificateStatus, setCertificateStatus] = useState<{
+    loaded: boolean
+    fileName?: string
+    uploadDate?: string
+  }>({ loaded: false })
+  const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
+  const [isValidatingCertificate, setIsValidatingCertificate] = useState(false)
+  const [validationResult, setValidationResult] = useState<{
+    status: "valid" | "invalid" | "warning" | null
+    checks: Array<{
+      name: string
+      ok: boolean
+      message: string
+    }>
+    summary: string
+  } | null>(null)
+
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [processingEvents, setProcessingEvents] = useState(false)
 
   const supabase = createClient()
 
@@ -146,7 +167,6 @@ export function ESocialIntegration() {
 
       setEvents(transformedEvents)
     } catch (err) {
-      console.error("Erro ao carregar eventos eSocial:", err)
       setError("Erro ao carregar eventos eSocial")
     } finally {
       setLoading(false)
@@ -205,22 +225,295 @@ export function ESocialIntegration() {
       .filter((eventType) => eventType.total > 0)
   }
 
+  const handleTestConnection = async () => {
+    if (!selectedCompany) return
+
+    setTestingConnection(true)
+    try {
+      const esocialService = new ESocialService()
+      const result = await esocialService.testarConectividade(selectedCompany.id)
+
+      if (result.sucesso) {
+        toast({
+          title: "Conexão bem-sucedida",
+          description: "Conectividade com eSocial verificada com sucesso",
+        })
+      } else {
+        toast({
+          title: "Erro na conexão",
+          description: result.erro || "Falha ao conectar com eSocial",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      toast({
+        title: "Erro na conexão",
+        description: "Falha ao testar conectividade",
+        variant: "destructive",
+      })
+    } finally {
+      setTestingConnection(false)
+    }
+  }
+
+  const handleCertificateUpload = async () => {
+    if (!certificateFile || !certificatePassword || !selectedCompany) {
+      toast({
+        title: "Dados incompletos",
+        description: "Selecione um arquivo e digite a senha do certificado",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar extensão do arquivo
+    if (!certificateFile.name.match(/\.(p12|pfx)$/i)) {
+      toast({
+        title: "Arquivo inválido",
+        description: "Selecione um arquivo .p12 ou .pfx",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar tamanho do arquivo (máximo 5MB)
+    if (certificateFile.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "O certificado deve ter no máximo 5MB",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsUploadingCertificate(true)
+
+    try {
+      console.log("[v0] Iniciando upload do certificado A1:", {
+        fileName: certificateFile.name,
+        fileSize: certificateFile.size,
+        empresaId: selectedCompany.id,
+      })
+
+      const signatureService = new DigitalSignatureService()
+
+      const result = await signatureService.uploadCertificadoA1(
+        certificateFile,
+        selectedCompany.id,
+        certificatePassword,
+      )
+
+      console.log("[v0] Resultado do upload:", result)
+
+      if (result.sucesso) {
+        toast({
+          title: "Certificado A1 carregado e salvo com sucesso",
+          description: "O certificado foi armazenado com segurança e está pronto para uso",
+        })
+
+        setCertificateStatus({
+          loaded: true,
+          fileName: certificateFile.name,
+          uploadDate: new Date().toLocaleDateString("pt-BR"),
+        })
+
+        setCertificateFile(null)
+        setCertificatePassword("")
+
+        // Recarregar status do certificado
+        await loadCertificateStatus()
+      } else {
+        const errorMessage = result.erro || "Erro desconhecido no upload"
+        console.error("[v0] Erro no upload do certificado:", errorMessage)
+
+        toast({
+          title: "Erro ao carregar o certificado",
+          description: `Erro detalhado: ${errorMessage}`,
+          variant: "destructive",
+        })
+      }
+    } catch (err: any) {
+      console.error("[v0] Erro inesperado no upload:", err)
+
+      let errorMessage = "Erro inesperado ao enviar o certificado"
+
+      if (err?.message) {
+        errorMessage = err.message
+      } else if (typeof err === "string") {
+        errorMessage = err
+      }
+
+      // Verificar se é erro específico do Supabase
+      if (err?.error?.message) {
+        errorMessage = `Erro Supabase: ${err.error.message}`
+      } else if (err?.message?.includes("bucket")) {
+        errorMessage = "Erro de configuração: Bucket não encontrado ou inacessível"
+      } else if (err?.message?.includes("network") || err?.message?.includes("fetch")) {
+        errorMessage = "Erro de conexão: Verifique sua internet e tente novamente"
+      } else if (err?.message?.includes("permission") || err?.message?.includes("unauthorized")) {
+        errorMessage = "Erro de permissão: Acesso negado ao storage"
+      }
+
+      toast({
+        title: "Erro ao carregar o certificado",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploadingCertificate(false)
+    }
+  }
+
+  const handleValidateCertificate = async (showToast = true) => {
+    if (!certificateFile || !certificatePassword || !selectedCompany) {
+      if (showToast) {
+        toast({
+          title: "Dados incompletos",
+          description: "Selecione um arquivo e digite a senha do certificado",
+          variant: "destructive",
+        })
+      }
+      return
+    }
+
+    setIsValidatingCertificate(true)
+    setValidationResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("arquivo", certificateFile)
+      formData.append("senha", certificatePassword)
+      formData.append("cnpjEmpresa", selectedCompany.cnpj || "")
+
+      const response = await fetch("/api/esocial/validar-certificado", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || "Erro na validação")
+      }
+
+      setValidationResult(result)
+
+      if (showToast) {
+        if (result.status === "valid") {
+          toast({
+            title: "Certificado válido",
+            description: result.summary,
+          })
+        } else if (result.status === "warning") {
+          toast({
+            title: "Certificado válido com avisos",
+            description: result.summary,
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Certificado inválido",
+            description: result.summary,
+            variant: "destructive",
+          })
+        }
+      }
+
+      // Se certificado inválido, impede upload
+      if (result.status === "invalid") {
+        throw new Error(result.summary)
+      }
+    } catch (error: any) {
+      if (showToast) {
+        toast({
+          title: "Erro na validação",
+          description: error.message || "Falha ao validar certificado",
+          variant: "destructive",
+        })
+      }
+
+      // Re-throw error para impedir upload se chamado internamente
+      if (!showToast) {
+        throw error
+      }
+    } finally {
+      setIsValidatingCertificate(false)
+    }
+  }
+
+  const loadCertificateStatus = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const signatureService = new DigitalSignatureService()
+      const certificado = await signatureService.obterCertificadoAtivo(selectedCompany.id)
+
+      if (certificado && certificado.tipo === "A1") {
+        setCertificateStatus({
+          loaded: true,
+          fileName: certificado.arquivo_url || "certificado.p12",
+          uploadDate: new Date().toLocaleDateString("pt-BR"),
+        })
+      } else {
+        setCertificateStatus({ loaded: false })
+      }
+    } catch (error) {
+      setCertificateStatus({ loaded: false })
+    }
+  }
+
+  const handleProcessEvents = async () => {
+    if (!selectedCompany) return
+
+    setProcessingEvents(true)
+    try {
+      const esocialService = new ESocialService()
+      const result = await esocialService.processarEventosAutomaticos(selectedCompany.id)
+
+      toast({
+        title: "Processamento iniciado",
+        description: `${result.eventosProcessados} eventos em processamento`,
+      })
+
+      // Recarregar eventos após processamento
+      await loadEvents()
+    } catch (err) {
+      toast({
+        title: "Erro no processamento",
+        description: "Falha ao processar eventos",
+        variant: "destructive",
+      })
+    } finally {
+      setProcessingEvents(false)
+    }
+  }
+
   const handleGenerateEvent = async (tipoEvento: string) => {
     if (!selectedCompany) return
 
     try {
-      const { error } = await supabase.rpc("gerar_evento_esocial", {
-        p_empresa_id: selectedCompany.id,
-        p_tipo_evento: tipoEvento,
-      })
+      const esocialService = new ESocialService()
+      const result = await esocialService.gerarEventos(selectedCompany.id, tipoEvento)
 
-      if (error) throw error
-
-      // Recarregar eventos após gerar
-      await loadEvents()
+      if (result.sucesso) {
+        toast({
+          title: "Eventos gerados",
+          description: `${result.eventosGerados} eventos ${tipoEvento} criados`,
+        })
+        await loadEvents()
+      } else {
+        toast({
+          title: "Erro na geração",
+          description: result.erro || "Falha ao gerar eventos",
+          variant: "destructive",
+        })
+      }
     } catch (err) {
-      console.error("Erro ao gerar evento:", err)
-      setError("Erro ao gerar evento")
+      toast({
+        title: "Erro na geração",
+        description: "Falha ao gerar eventos",
+        variant: "destructive",
+      })
     }
   }
 
@@ -241,13 +534,13 @@ export function ESocialIntegration() {
       // Recarregar eventos após reenviar
       await loadEvents()
     } catch (err) {
-      console.error("Erro ao reenviar evento:", err)
       setError("Erro ao reenviar evento")
     }
   }
 
   useEffect(() => {
     loadEvents()
+    loadCertificateStatus()
   }, [selectedCompany])
 
   const eventTypes = getEventTypes(events)
@@ -329,85 +622,22 @@ export function ESocialIntegration() {
             <span>Integração eSocial</span>
           </h1>
           <p className="text-muted-foreground">
-            Envio automático de eventos SST para o eSocial - {selectedCompany.name}
+            Envio automático de eventos SST para o eSocial - {selectedCompany?.name}
           </p>
         </div>
         <div className="flex space-x-2">
+          <Button variant="outline" onClick={handleTestConnection} disabled={testingConnection}>
+            <TestTube className="h-4 w-4 mr-2" />
+            {testingConnection ? "Testando..." : "Testar Conexão"}
+          </Button>
           <Button variant="outline">
             <Settings className="h-4 w-4 mr-2" />
             Configurações
           </Button>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Evento
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Criar Novo Evento eSocial</DialogTitle>
-                <DialogDescription>
-                  Configure um novo evento para envio ao eSocial - {selectedCompany.name}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Tipo de Evento</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o evento" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="s2220">S-2220 - Monitoramento da Saúde</SelectItem>
-                        <SelectItem value="s2240">S-2240 - Condições Ambientais</SelectItem>
-                        <SelectItem value="s2210">S-2210 - Acidente de Trabalho</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Funcionário</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o funcionário" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="joao">João Silva - 123.456.789-00</SelectItem>
-                        <SelectItem value="maria">Maria Santos - 987.654.321-00</SelectItem>
-                        <SelectItem value="pedro">Pedro Oliveira - 456.789.123-00</SelectItem>
-                        <SelectItem value="ana">Ana Costa - 789.123.456-00</SelectItem>
-                        <SelectItem value="carlos">Carlos Santos - 321.654.987-00</SelectItem>
-                        <SelectItem value="lucia">Lucia Mendes - 654.321.987-00</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Data do Evento</Label>
-                  <Input type="date" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Observações</Label>
-                  <Input placeholder="Informações adicionais sobre o evento" />
-                </div>
-
-                <div className="p-4 bg-muted rounded-lg">
-                  <h4 className="font-medium mb-2">Dados Automáticos</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Os dados do funcionário, exames médicos e informações de risco serão incluídos automaticamente com
-                    base no tipo de evento selecionado e nos dados de {selectedCompany.name}.
-                  </p>
-                </div>
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline">Cancelar</Button>
-                <Button>Criar Evento</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={handleProcessEvents} disabled={processingEvents}>
+            <Send className="h-4 w-4 mr-2" />
+            {processingEvents ? "Processando..." : "Processar Eventos"}
+          </Button>
         </div>
       </div>
 
@@ -416,6 +646,7 @@ export function ESocialIntegration() {
           <TabsTrigger value="eventos">Eventos</TabsTrigger>
           <TabsTrigger value="tipos">Tipos de Evento</TabsTrigger>
           <TabsTrigger value="monitoramento">Monitoramento</TabsTrigger>
+          <TabsTrigger value="certificados">Certificados</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
@@ -774,6 +1005,254 @@ export function ESocialIntegration() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="certificados" className="space-y-4">
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Shield className="h-5 w-5" />
+                  <span>Certificado A1 (Arquivo)</span>
+                </CardTitle>
+                <CardDescription>Upload e configuração de certificado A1</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Arquivo do Certificado (.p12/.pfx)</Label>
+                  <Input
+                    type="file"
+                    accept=".p12,.pfx"
+                    onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
+                    disabled={isUploadingCertificate || isValidatingCertificate}
+                  />
+                  {certificateFile && (
+                    <p className="text-sm text-muted-foreground">
+                      Arquivo selecionado: {certificateFile.name} ({(certificateFile.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Senha do Certificado</Label>
+                  <Input
+                    type="password"
+                    value={certificatePassword}
+                    onChange={(e) => setCertificatePassword(e.target.value)}
+                    placeholder="Digite a senha do certificado"
+                    disabled={isUploadingCertificate || isValidatingCertificate}
+                  />
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Button
+                    onClick={() => handleValidateCertificate(true)}
+                    disabled={
+                      !certificateFile || !certificatePassword || isValidatingCertificate || isUploadingCertificate
+                    }
+                    variant="outline"
+                  >
+                    {isValidatingCertificate ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Validando...
+                      </>
+                    ) : (
+                      <>
+                        <TestTube className="h-4 w-4 mr-2" />
+                        Validar Certificado
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    onClick={handleCertificateUpload}
+                    disabled={
+                      !certificateFile || !certificatePassword || isUploadingCertificate || isValidatingCertificate
+                    }
+                  >
+                    {isUploadingCertificate ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Carregar Certificado
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {validationResult && (
+                  <Card className="mt-4">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center space-x-2 text-base">
+                        {validationResult.status === "valid" && <CheckCircle className="h-5 w-5 text-green-500" />}
+                        {validationResult.status === "warning" && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                        {validationResult.status === "invalid" && <AlertCircle className="h-5 w-5 text-red-500" />}
+                        <span>
+                          {validationResult.status === "valid" && "Certificado Válido"}
+                          {validationResult.status === "warning" && "Válido com Avisos"}
+                          {validationResult.status === "invalid" && "Certificado Inválido"}
+                        </span>
+                      </CardTitle>
+                      <CardDescription>{validationResult.summary}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {validationResult.checks.map((check, index) => (
+                          <div key={index} className="flex items-center space-x-2 text-sm">
+                            {check.ok ? (
+                              <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            ) : (
+                              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                            )}
+                            <span className={check.ok ? "text-green-700" : "text-red-700"}>{check.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    Status:{" "}
+                    {certificateStatus.loaded ? (
+                      <Badge variant="default" className="ml-1">
+                        Configurado
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="ml-1">
+                        Não configurado
+                      </Badge>
+                    )}
+                  </p>
+                  {certificateStatus.loaded && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-muted-foreground">Arquivo: {certificateStatus.fileName}</p>
+                      <p className="text-xs text-muted-foreground">Upload: {certificateStatus.uploadDate}</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Key className="h-5 w-5" />
+                  <span>Certificado A3 (Token/Smartcard)</span>
+                </CardTitle>
+                <CardDescription>Configuração de certificado A3</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Driver do Token</Label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o driver" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="safenet">SafeNet</SelectItem>
+                      <SelectItem value="gemalto">Gemalto</SelectItem>
+                      <SelectItem value="watchdata">WatchData</SelectItem>
+                      <SelectItem value="outros">Outros</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>PIN do Token</Label>
+                  <Input type="password" placeholder="Digite o PIN do token" />
+                </div>
+
+                <Button className="w-full bg-transparent" variant="outline">
+                  <Key className="h-4 w-4 mr-2" />
+                  Detectar Certificado A3
+                </Button>
+
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    Status: <Badge variant="outline">Token não detectado</Badge>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Validação de Certificados</CardTitle>
+              <CardDescription>Verificação de validade e configuração</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="text-center p-4 border rounded-lg">
+                    {validationResult?.status === "valid" ? (
+                      <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                    ) : validationResult?.status === "warning" ? (
+                      <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
+                    ) : validationResult?.status === "invalid" ? (
+                      <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                    ) : (
+                      <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    )}
+                    <p className="font-medium">
+                      {validationResult
+                        ? validationResult.status === "valid"
+                          ? "Certificado Válido"
+                          : validationResult.status === "warning"
+                            ? "Válido com Avisos"
+                            : "Certificado Inválido"
+                        : "Aguardando Validação"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {validationResult ? validationResult.summary : "Faça upload para validar"}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <Shield className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+                    <p className="font-medium">Assinatura Digital</p>
+                    <p className="text-sm text-muted-foreground">
+                      {certificateStatus.loaded ? "Configurada" : "Não configurada"}
+                    </p>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <Key className="h-8 w-8 text-purple-500 mx-auto mb-2" />
+                    <p className="font-medium">Cadeia de Confiança</p>
+                    <p className="text-sm text-muted-foreground">
+                      {validationResult?.checks.find((c) => c.name === "cadeia_certificacao")?.ok
+                        ? "Verificada"
+                        : "Pendente"}
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={() => handleValidateCertificate(true)}
+                  disabled={!certificateFile || !certificatePassword || isValidatingCertificate}
+                >
+                  {isValidatingCertificate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Validando...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Validar Certificados
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="configuracoes" className="space-y-4">
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
@@ -884,181 +1363,8 @@ export function ESocialIntegration() {
               </CardContent>
             </Card>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Mapeamento de Dados</CardTitle>
-              <CardDescription>Configuração do mapeamento automático de dados SST</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">S-2220 - Monitoramento da Saúde</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Dados do Funcionário:</span>
-                        <Badge variant="outline">Módulo Funcionários</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Exames Médicos:</span>
-                        <Badge variant="outline">Saúde Ocupacional</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>ASO:</span>
-                        <Badge variant="outline">Saúde Ocupacional</Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">S-2240 - Condições Ambientais</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Dados do Funcionário:</span>
-                        <Badge variant="outline">Módulo Funcionários</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Riscos Ocupacionais:</span>
-                        <Badge variant="outline">Gestão de Riscos</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Agentes Nocivos:</span>
-                        <Badge variant="outline">Gestão de Riscos</Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <Button className="w-full bg-transparent" variant="outline">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurar Mapeamentos
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Modal de Detalhes do Evento */}
-      {selectedEvent && (
-        <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Detalhes do Evento {selectedEvent.evento}</DialogTitle>
-              <DialogDescription>Informações completas do evento eSocial</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-6 py-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Informações do Evento</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tipo:</span>
-                      <span>{selectedEvent.evento}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Funcionário:</span>
-                      <span>{selectedEvent.funcionario_nome}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">CPF:</span>
-                      <span>{selectedEvent.funcionario_cpf}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Data do Evento:</span>
-                      <span>{format(new Date(selectedEvent.data_evento), "dd/MM/yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge variant={getStatusColor(selectedEvent.status) as any}>{selectedEvent.status}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Status do Envio</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Data de Envio:</span>
-                      <span>
-                        {selectedEvent.data_envio
-                          ? format(new Date(selectedEvent.data_envio), "dd/MM/yyyy HH:mm")
-                          : "Não enviado"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Protocolo:</span>
-                      <span>{selectedEvent.protocolo || "N/A"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Retorno:</span>
-                      <span>{selectedEvent.retorno || "Aguardando"}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Dados do XML</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-muted p-4 rounded-lg">
-                    <pre className="text-sm overflow-x-auto">
-                      {`<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_00_00">
-  <evtMonit Id="ID1234567890123456789012345678901234567890">
-    <ideEvento>
-      <indRetif>1</indRetif>
-      <tpAmb>1</tpAmb>
-      <procEmi>1</procEmi>
-      <verProc>1.0</verProc>
-    </ideEvento>
-    <ideEmpregador>
-      <tpInsc>1</tpInsc>
-      <nrInsc>12345678000190</nrInsc>
-    </ideEmpregador>
-    <ideTrabalhador>
-      <cpfTrab>${selectedEvent.funcionario_cpf.replace(/\D/g, "")}</cpfTrab>
-    </ideTrabalhador>
-    <!-- Dados específicos do evento -->
-  </evtMonit>
-</eSocial>`}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Baixar XML
-                </Button>
-                {selectedEvent.status === "Pendente" && (
-                  <Button>
-                    <Send className="h-4 w-4 mr-2" />
-                    Enviar Agora
-                  </Button>
-                )}
-                {selectedEvent.status === "Erro" && (
-                  <Button>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Reenviar
-                  </Button>
-                )}
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   )
 }
-
-export { ESocialIntegration as ESocialIntegrationComponent }
-export default ESocialIntegration

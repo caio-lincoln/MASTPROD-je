@@ -1,13 +1,26 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { DashboardClient } from "@/components/dashboard-client"
+import { DashboardServer } from "@/components/modules/dashboard-server"
 
-export default async function Home() {
+interface PageProps {
+  searchParams: { empresa?: string }
+}
+
+export default async function Home({ searchParams }: PageProps) {
   const supabase = await createClient()
 
   const { data, error } = await supabase.auth.getUser()
   if (error || !data?.user) {
     redirect("/auth/login")
+  }
+
+  if (searchParams.empresa) {
+    const { data: empresa } = await supabase.from("empresas").select("id, name").eq("id", searchParams.empresa).single()
+
+    if (empresa) {
+      return <DashboardServer empresaId={empresa.id} empresaName={empresa.name} />
+    }
   }
 
   return <DashboardClient user={data.user} />
