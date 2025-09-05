@@ -237,10 +237,17 @@ export class DigitalSignatureService {
       } = await this.supabase.auth.getUser()
       const responsavel = user?.user_metadata?.nome || user?.email || "Usuário desconhecido"
 
+      // Data de validade padrão (1 ano a partir de hoje) - deve ser substituída por validação real do certificado
+      const dataValidade = new Date()
+      dataValidade.setFullYear(dataValidade.getFullYear() + 1)
+
       const { error: updateError } = await this.supabase.from("certificados_esocial").upsert(
         {
           empresa_id: empresa_id,
+          nome: arquivo.name,
+          tipo: "A1",
           arquivo_url: filePath,
+          data_validade: dataValidade.toISOString().split('T')[0], // Formato YYYY-MM-DD
           data_upload: new Date().toISOString(),
           responsavel: responsavel,
           valido: true,
