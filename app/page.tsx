@@ -4,7 +4,7 @@ import { DashboardClient } from "@/components/dashboard-client"
 import { DashboardServer } from "@/components/modules/dashboard-server"
 
 interface PageProps {
-  searchParams: { empresa?: string }
+  searchParams: Promise<{ empresa?: string }>
 }
 
 export default async function Home({ searchParams }: PageProps) {
@@ -15,8 +15,10 @@ export default async function Home({ searchParams }: PageProps) {
     redirect("/auth/login")
   }
 
-  if (searchParams.empresa) {
-    const { data: empresa } = await supabase.from("empresas").select("id, name").eq("id", searchParams.empresa).single()
+  const params = await searchParams
+
+  if (params.empresa) {
+    const { data: empresa } = await supabase.from("empresas").select("id, name").eq("id", params.empresa).single()
 
     if (empresa) {
       return <DashboardServer empresaId={empresa.id} empresaName={empresa.name} />
