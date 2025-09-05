@@ -191,7 +191,7 @@ export function NonConformities() {
         responsavel: formData.responsavel,
         data_prazo: formData.data_prazo.toISOString(),
         acoes_corretivas: formData.acoes_corretivas,
-        empresa_id: selectedCompany.id,
+        empresa_id: selectedCompany?.id || '',
         status: "Aberta",
       }
 
@@ -580,7 +580,7 @@ export function NonConformities() {
                       <Calendar
                         mode="single"
                         selected={formData.data_prazo}
-                        onSelect={(date) => setFormData((prev) => ({ ...prev, data_prazo: date }))}
+                        onSelect={(date) => setFormData((prev) => ({ ...prev, data_prazo: date || new Date() }))}
                         locale={ptBR}
                       />
                     </PopoverContent>
@@ -1056,7 +1056,7 @@ export function NonConformities() {
                     <Calendar
                       mode="single"
                       selected={formData.data_prazo}
-                      onSelect={(date) => setFormData((prev) => ({ ...prev, data_prazo: date }))}
+                      onSelect={(date) => setFormData((prev) => ({ ...prev, data_prazo: date || new Date() }))}
                       locale={ptBR}
                     />
                   </PopoverContent>

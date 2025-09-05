@@ -48,7 +48,7 @@ export function AuditLogs() {
     setLoading(true)
     try {
       const { data, error } = await supabase.rpc("get_logs_auditoria", {
-        empresa_filter: selectedCompany.nome,
+        empresa_filter: selectedCompany.name,
         entidade_filter: filters.entidade === "all" ? null : filters.entidade,
         acao_filter: filters.acao === "all" ? null : filters.acao,
         data_inicio: filters.dataInicio || null,
@@ -114,7 +114,7 @@ export function AuditLogs() {
       {/* Header */}
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Logs de Auditoria</h2>
-        <p className="text-muted-foreground">Histórico de ações realizadas no sistema para {selectedCompany.nome}</p>
+        <p className="text-muted-foreground">Histórico de ações realizadas no sistema para {selectedCompany.name}</p>
       </div>
 
       {/* Filtros */}

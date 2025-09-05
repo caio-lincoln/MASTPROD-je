@@ -914,7 +914,7 @@ export function WorkplaceSafety() {
                   }
                 }}
                 accept="image/*,.pdf,.doc,.docx"
-                maxSize={10 * 1024 * 1024} // 10MB
+                maxSizeMB={10} // 10MB
               />
             </div>
           </div>

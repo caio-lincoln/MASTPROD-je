@@ -388,7 +388,10 @@ export async function DashboardServer({ empresaId, empresaName }: DashboardServe
             <CardDescription className="text-xs sm:text-sm">Itens que requerem atenção imediata</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 sm:space-y-3 lg:space-y-4 px-3 sm:px-6 pb-3 sm:pb-6">
-            {dashboardData.examData.find((e) => e.name === "Vencidos")?.value > 0 && (
+            {(() => {
+              const vencidosItem = dashboardData?.examData?.find((e) => e.name === "Vencidos");
+              return vencidosItem && vencidosItem.value > 0;
+            })() && (
               <div className="flex items-start justify-between p-2 sm:p-3 bg-red-50 dark:bg-red-950 rounded-lg gap-2 sm:gap-3">
                 <div className="flex items-start space-x-2 sm:space-x-3 min-w-0 flex-1">
                   <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-red-500 shrink-0 mt-0.5" />
@@ -397,7 +400,7 @@ export async function DashboardServer({ empresaId, empresaName }: DashboardServe
                       Exames Vencidos
                     </p>
                     <p className="text-xs text-red-600 dark:text-red-400 line-clamp-2">
-                      {dashboardData.examData.find((e) => e.name === "Vencidos")?.value} funcionários com ASO vencido
+                      {dashboardData?.examData?.find((e) => e.name === "Vencidos")?.value || 0} funcionários com ASO vencido
                     </p>
                   </div>
                 </div>
@@ -407,7 +410,7 @@ export async function DashboardServer({ empresaId, empresaName }: DashboardServe
               </div>
             )}
 
-            {dashboardData.treinamentosPendentes > 0 && (
+            {dashboardData?.treinamentosPendentes > 0 && (
               <div className="flex items-start justify-between p-2 sm:p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg gap-2 sm:gap-3">
                 <div className="flex items-start space-x-2 sm:space-x-3 min-w-0 flex-1">
                   <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 lg:h-5 lg:w-5 text-yellow-500 shrink-0 mt-0.5" />
@@ -416,7 +419,7 @@ export async function DashboardServer({ empresaId, empresaName }: DashboardServe
                       Treinamentos Pendentes
                     </p>
                     <p className="text-xs text-yellow-600 dark:text-yellow-400 line-clamp-2">
-                      {dashboardData.treinamentosPendentes} funcionários pendentes
+                      {dashboardData?.treinamentosPendentes} funcionários pendentes
                     </p>
                   </div>
                 </div>

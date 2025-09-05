@@ -128,6 +128,7 @@ export function OccupationalHealth() {
     data_proximo_exame: "",
     observacoes: "",
     riscos_ocupacionais: "",
+    arquivo_url: "",
   })
 
   const { selectedCompany } = useCompany()
@@ -227,6 +228,7 @@ export function OccupationalHealth() {
         data_proximo_exame: exam.data_proximo_exame,
         observacoes: exam.observacoes || "",
         riscos_ocupacionais: "",
+        arquivo_url: exam.arquivo_url || "",
       })
     }
     setSelectedEmployee(exam || null)
@@ -274,20 +276,11 @@ export function OccupationalHealth() {
     }
   }
 
-  const handleAsoSubmit = async (file?: File) => {
+  const handleAsoSubmit = async () => {
     if (!selectedCompany || !asoData.funcionario_id) return
 
     try {
       setUploading(true)
-      let arquivo_url = ""
-
-      // Upload file if provided
-      if (file) {
-        const uploadResult = await uploadFile(file, "asos", selectedCompany.id)
-        if (uploadResult.success && uploadResult.url) {
-          arquivo_url = uploadResult.url
-        }
-      }
 
       // Update or create ASO record
       const { error } = await supabase.from("exames_aso").upsert({
@@ -299,7 +292,7 @@ export function OccupationalHealth() {
         medico_responsavel: asoData.medico_responsavel,
         resultado: asoData.resultado,
         observacoes: asoData.observacoes,
-        arquivo_url: arquivo_url || undefined,
+        arquivo_url: asoData.arquivo_url || undefined,
       })
 
       if (error) throw error
@@ -932,10 +925,16 @@ export function OccupationalHealth() {
             <div className="space-y-2">
               <Label>Upload do ASO (PDF)</Label>
               <FileUpload
+                type="aso"
                 accept=".pdf"
-                maxSize={10 * 1024 * 1024} // 10MB
-                onFileSelect={(file) => handleAsoSubmit(file)}
-                disabled={uploading}
+                maxSizeMB={10} // 10MB
+                onUploadComplete={(url, path) => {
+                  // Set the uploaded file URL to be used when saving the ASO
+                  setAsoData(prev => ({ ...prev, arquivo_url: url }))
+                }}
+                onUploadError={(error) => {
+                  console.error('Erro no upload:', error)
+                }}
               />
             </div>
           </div>
@@ -943,7 +942,7 @@ export function OccupationalHealth() {
             <Button variant="outline" onClick={() => setShowAsoDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={() => handleAsoSubmit()} disabled={uploading}>
+            <Button onClick={handleAsoSubmit} disabled={uploading}>
               {uploading ? (
                 <>
                   <Upload className="h-4 w-4 mr-2 animate-spin" />

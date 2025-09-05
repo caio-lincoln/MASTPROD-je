@@ -2,9 +2,10 @@ import { Button, type ButtonProps } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
 import { forwardRef } from "react"
 
-interface LoadingButtonProps extends ButtonProps {
+interface LoadingButtonProps extends Omit<ButtonProps, 'children'> {
   isLoading?: boolean
   loadingText?: string
+  children?: React.ReactNode
 }
 
 /**

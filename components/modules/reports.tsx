@@ -264,17 +264,19 @@ function Reports() {
 
   const loadReportTemplates = () => {
     if (selectedCompany) {
-      setReportTemplates(reportTemplatesByCompany[selectedCompany.id] || [])
-      setTotalTemplates(reportTemplatesByCompany[selectedCompany.id]?.length || 0)
+      const companyId = Number(selectedCompany.id) as keyof typeof reportTemplatesByCompany
+      setReportTemplates(reportTemplatesByCompany[companyId] || [])
+      setTotalTemplates(reportTemplatesByCompany[companyId]?.length || 0)
     }
   }
 
   const loadReportHistory = () => {
     if (selectedCompany) {
-      setReportHistory(reportHistoryByCompany[selectedCompany.id] || [])
-      setTotalReports(reportHistoryByCompany[selectedCompany.id]?.length || 0)
+      const companyId = Number(selectedCompany.id) as keyof typeof reportHistoryByCompany
+      setReportHistory(reportHistoryByCompany[companyId] || [])
+      setTotalReports(reportHistoryByCompany[companyId]?.length || 0)
       setTotalDownloads(
-        reportHistoryByCompany[selectedCompany.id]?.reduce((acc, report) => acc + report.downloads, 0) || 0,
+        reportTemplatesByCompany[companyId]?.reduce((acc, template) => acc + template.downloads, 0) || 0,
       )
       setActiveSchedules(0) // Placeholder for active schedules
     }
@@ -509,9 +511,9 @@ function Reports() {
     }
   }
 
-  const handleExportEsocial = async (format: string) => {
+  const handleExportEsocial = async (exportFormat: string) => {
     try {
-      if (format === "xml") {
+      if (exportFormat === "xml") {
         const { data, error } = await supabase
           .from("eventos_esocial")
           .select("id, tipo_evento, xml_gerado, data_evento")
@@ -537,7 +539,7 @@ function Reports() {
           const url = URL.createObjectURL(zipBlob)
           const a = document.createElement("a")
           a.href = url
-          a.download = `esocial_xmls_${selectedCompany.name}_${format(new Date(), "yyyyMMdd")}.zip`
+          a.download = `esocial_xmls_${selectedCompany?.name || 'empresa'}_${format(new Date(), "yyyyMMdd")}.zip`
           document.body.appendChild(a)
           a.click()
           document.body.removeChild(a)
@@ -555,7 +557,7 @@ function Reports() {
             variant: "warning",
           })
         }
-      } else if (format === "csv") {
+      } else if (exportFormat === "csv") {
         const { data, error } = await supabase
           .from("eventos_esocial")
           .select("*")
@@ -587,7 +589,7 @@ function Reports() {
           const url = URL.createObjectURL(blob)
           const a = document.createElement("a")
           a.href = url
-          a.download = `esocial_eventos_${selectedCompany.name}_${format(new Date(), "yyyyMMdd")}.csv`
+          a.download = `esocial_eventos_${selectedCompany?.name || 'empresa'}_${format(new Date(), "yyyyMMdd")}.csv`
           document.body.appendChild(a)
           a.click()
           document.body.removeChild(a)
@@ -692,7 +694,7 @@ function Reports() {
             <span>Relatórios</span>
           </h1>
           <p className="text-muted-foreground">
-            Geração dinâmica de relatórios por módulo e unidade organizacional - {selectedCompany.nome}
+            Geração dinâmica de relatórios por módulo e unidade organizacional - {selectedCompany?.name}
           </p>
         </div>
         <Dialog>
