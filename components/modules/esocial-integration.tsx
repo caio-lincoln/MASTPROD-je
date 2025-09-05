@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Database,
@@ -31,7 +30,6 @@ import {
   TestTube,
   Loader2,
 } from "lucide-react"
-import { format } from "date-fns"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 
@@ -112,6 +110,16 @@ export function ESocialIntegration() {
     uploadDate?: string
   }>({ loaded: false })
   const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
+  const [isValidatingCertificate, setIsValidatingCertificate] = useState(false)
+  const [validationResult, setValidationResult] = useState<{
+    status: "valid" | "invalid" | "warning" | null
+    checks: Array<{
+      name: string
+      ok: boolean
+      message: string
+    }>
+    summary: string
+  } | null>(null)
 
   const [testingConnection, setTestingConnection] = useState(false)
   const [processingEvents, setProcessingEvents] = useState(false)
@@ -159,7 +167,6 @@ export function ESocialIntegration() {
 
       setEvents(transformedEvents)
     } catch (err) {
-      console.error("Erro ao carregar eventos eSocial:", err)
       setError("Erro ao carregar eventos eSocial")
     } finally {
       setLoading(false)
@@ -282,6 +289,12 @@ export function ESocialIntegration() {
     setIsUploadingCertificate(true)
 
     try {
+      console.log("[v0] Iniciando upload do certificado A1:", {
+        fileName: certificateFile.name,
+        fileSize: certificateFile.size,
+        empresaId: selectedCompany.id,
+      })
+
       const signatureService = new DigitalSignatureService()
 
       const result = await signatureService.uploadCertificadoA1(
@@ -290,10 +303,12 @@ export function ESocialIntegration() {
         certificatePassword,
       )
 
+      console.log("[v0] Resultado do upload:", result)
+
       if (result.sucesso) {
         toast({
-          title: "Certificado carregado",
-          description: "Certificado A1 configurado com sucesso",
+          title: "Certificado A1 carregado e salvo com sucesso",
+          description: "O certificado foi armazenado com segurança e está pronto para uso",
         })
 
         setCertificateStatus({
@@ -304,22 +319,125 @@ export function ESocialIntegration() {
 
         setCertificateFile(null)
         setCertificatePassword("")
+
+        // Recarregar status do certificado
+        await loadCertificateStatus()
       } else {
+        const errorMessage = result.erro || "Erro desconhecido no upload"
+        console.error("[v0] Erro no upload do certificado:", errorMessage)
+
         toast({
-          title: "Erro no certificado",
-          description: result.erro || "Falha ao carregar certificado",
+          title: "Erro ao carregar o certificado",
+          description: `Erro detalhado: ${errorMessage}`,
           variant: "destructive",
         })
       }
-    } catch (err) {
-      console.error("Erro ao carregar certificado:", err)
+    } catch (err: any) {
+      console.error("[v0] Erro inesperado no upload:", err)
+
+      let errorMessage = "Erro inesperado ao enviar o certificado"
+
+      if (err?.message) {
+        errorMessage = err.message
+      } else if (typeof err === "string") {
+        errorMessage = err
+      }
+
+      // Verificar se é erro específico do Supabase
+      if (err?.error?.message) {
+        errorMessage = `Erro Supabase: ${err.error.message}`
+      } else if (err?.message?.includes("bucket")) {
+        errorMessage = "Erro de configuração: Bucket não encontrado ou inacessível"
+      } else if (err?.message?.includes("network") || err?.message?.includes("fetch")) {
+        errorMessage = "Erro de conexão: Verifique sua internet e tente novamente"
+      } else if (err?.message?.includes("permission") || err?.message?.includes("unauthorized")) {
+        errorMessage = "Erro de permissão: Acesso negado ao storage"
+      }
+
       toast({
-        title: "Erro no certificado",
-        description: err instanceof Error ? err.message : "Falha ao processar certificado",
+        title: "Erro ao carregar o certificado",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
       setIsUploadingCertificate(false)
+    }
+  }
+
+  const handleValidateCertificate = async (showToast = true) => {
+    if (!certificateFile || !certificatePassword || !selectedCompany) {
+      if (showToast) {
+        toast({
+          title: "Dados incompletos",
+          description: "Selecione um arquivo e digite a senha do certificado",
+          variant: "destructive",
+        })
+      }
+      return
+    }
+
+    setIsValidatingCertificate(true)
+    setValidationResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("arquivo", certificateFile)
+      formData.append("senha", certificatePassword)
+      formData.append("cnpjEmpresa", selectedCompany.cnpj || "")
+
+      const response = await fetch("/api/esocial/validar-certificado", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || "Erro na validação")
+      }
+
+      setValidationResult(result)
+
+      if (showToast) {
+        if (result.status === "valid") {
+          toast({
+            title: "Certificado válido",
+            description: result.summary,
+          })
+        } else if (result.status === "warning") {
+          toast({
+            title: "Certificado válido com avisos",
+            description: result.summary,
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Certificado inválido",
+            description: result.summary,
+            variant: "destructive",
+          })
+        }
+      }
+
+      // Se certificado inválido, impede upload
+      if (result.status === "invalid") {
+        throw new Error(result.summary)
+      }
+    } catch (error: any) {
+      if (showToast) {
+        toast({
+          title: "Erro na validação",
+          description: error.message || "Falha ao validar certificado",
+          variant: "destructive",
+        })
+      }
+
+      // Re-throw error para impedir upload se chamado internamente
+      if (!showToast) {
+        throw error
+      }
+    } finally {
+      setIsValidatingCertificate(false)
     }
   }
 
@@ -340,7 +458,6 @@ export function ESocialIntegration() {
         setCertificateStatus({ loaded: false })
       }
     } catch (error) {
-      console.error("Erro ao carregar status do certificado:", error)
       setCertificateStatus({ loaded: false })
     }
   }
@@ -417,7 +534,6 @@ export function ESocialIntegration() {
       // Recarregar eventos após reenviar
       await loadEvents()
     } catch (err) {
-      console.error("Erro ao reenviar evento:", err)
       setError("Erro ao reenviar evento")
     }
   }
@@ -906,7 +1022,7 @@ export function ESocialIntegration() {
                     type="file"
                     accept=".p12,.pfx"
                     onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
-                    disabled={isUploadingCertificate}
+                    disabled={isUploadingCertificate || isValidatingCertificate}
                   />
                   {certificateFile && (
                     <p className="text-sm text-muted-foreground">
@@ -922,27 +1038,82 @@ export function ESocialIntegration() {
                     value={certificatePassword}
                     onChange={(e) => setCertificatePassword(e.target.value)}
                     placeholder="Digite a senha do certificado"
-                    disabled={isUploadingCertificate}
+                    disabled={isUploadingCertificate || isValidatingCertificate}
                   />
                 </div>
 
-                <Button
-                  onClick={handleCertificateUpload}
-                  disabled={!certificateFile || !certificatePassword || isUploadingCertificate}
-                  className="w-full"
-                >
-                  {isUploadingCertificate ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Carregando...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Carregar Certificado A1
-                    </>
-                  )}
-                </Button>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <Button
+                    onClick={() => handleValidateCertificate(true)}
+                    disabled={
+                      !certificateFile || !certificatePassword || isValidatingCertificate || isUploadingCertificate
+                    }
+                    variant="outline"
+                  >
+                    {isValidatingCertificate ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Validando...
+                      </>
+                    ) : (
+                      <>
+                        <TestTube className="h-4 w-4 mr-2" />
+                        Validar Certificado
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    onClick={handleCertificateUpload}
+                    disabled={
+                      !certificateFile || !certificatePassword || isUploadingCertificate || isValidatingCertificate
+                    }
+                  >
+                    {isUploadingCertificate ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Carregar Certificado
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {validationResult && (
+                  <Card className="mt-4">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center space-x-2 text-base">
+                        {validationResult.status === "valid" && <CheckCircle className="h-5 w-5 text-green-500" />}
+                        {validationResult.status === "warning" && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
+                        {validationResult.status === "invalid" && <AlertCircle className="h-5 w-5 text-red-500" />}
+                        <span>
+                          {validationResult.status === "valid" && "Certificado Válido"}
+                          {validationResult.status === "warning" && "Válido com Avisos"}
+                          {validationResult.status === "invalid" && "Certificado Inválido"}
+                        </span>
+                      </CardTitle>
+                      <CardDescription>{validationResult.summary}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {validationResult.checks.map((check, index) => (
+                          <div key={index} className="flex items-center space-x-2 text-sm">
+                            {check.ok ? (
+                              <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            ) : (
+                              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                            )}
+                            <span className={check.ok ? "text-green-700" : "text-red-700"}>{check.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <div className="p-3 bg-muted rounded-lg">
                   <p className="text-sm text-muted-foreground">
@@ -1019,25 +1190,63 @@ export function ESocialIntegration() {
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="text-center p-4 border rounded-lg">
-                    <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                    <p className="font-medium">Certificado Válido</p>
-                    <p className="text-sm text-muted-foreground">Expira em 180 dias</p>
+                    {validationResult?.status === "valid" ? (
+                      <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                    ) : validationResult?.status === "warning" ? (
+                      <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
+                    ) : validationResult?.status === "invalid" ? (
+                      <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                    ) : (
+                      <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                    )}
+                    <p className="font-medium">
+                      {validationResult
+                        ? validationResult.status === "valid"
+                          ? "Certificado Válido"
+                          : validationResult.status === "warning"
+                            ? "Válido com Avisos"
+                            : "Certificado Inválido"
+                        : "Aguardando Validação"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {validationResult ? validationResult.summary : "Faça upload para validar"}
+                    </p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <Shield className="h-8 w-8 text-blue-500 mx-auto mb-2" />
                     <p className="font-medium">Assinatura Digital</p>
-                    <p className="text-sm text-muted-foreground">Configurada</p>
+                    <p className="text-sm text-muted-foreground">
+                      {certificateStatus.loaded ? "Configurada" : "Não configurada"}
+                    </p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <Key className="h-8 w-8 text-purple-500 mx-auto mb-2" />
                     <p className="font-medium">Cadeia de Confiança</p>
-                    <p className="text-sm text-muted-foreground">Verificada</p>
+                    <p className="text-sm text-muted-foreground">
+                      {validationResult?.checks.find((c) => c.name === "cadeia_certificacao")?.ok
+                        ? "Verificada"
+                        : "Pendente"}
+                    </p>
                   </div>
                 </div>
 
-                <Button variant="outline" className="w-full bg-transparent">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Validar Certificados
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={() => handleValidateCertificate(true)}
+                  disabled={!certificateFile || !certificatePassword || isValidatingCertificate}
+                >
+                  {isValidatingCertificate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Validando...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Validar Certificados
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
@@ -1154,181 +1363,8 @@ export function ESocialIntegration() {
               </CardContent>
             </Card>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Mapeamento de Dados</CardTitle>
-              <CardDescription>Configuração do mapeamento automático de dados SST</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">S-2220 - Monitoramento da Saúde</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Dados do Funcionário:</span>
-                        <Badge variant="outline">Módulo Funcionários</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Exames Médicos:</span>
-                        <Badge variant="outline">Saúde Ocupacional</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>ASO:</span>
-                        <Badge variant="outline">Saúde Ocupacional</Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">S-2240 - Condições Ambientais</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Dados do Funcionário:</span>
-                        <Badge variant="outline">Módulo Funcionários</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Riscos Ocupacionais:</span>
-                        <Badge variant="outline">Gestão de Riscos</Badge>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Agentes Nocivos:</span>
-                        <Badge variant="outline">Gestão de Riscos</Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <Button className="w-full bg-transparent" variant="outline">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurar Mapeamentos
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Modal de Detalhes do Evento */}
-      {selectedEvent && (
-        <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Detalhes do Evento {selectedEvent.evento}</DialogTitle>
-              <DialogDescription>Informações completas do evento eSocial</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-6 py-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Informações do Evento</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tipo:</span>
-                      <span>{selectedEvent.evento}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Funcionário:</span>
-                      <span>{selectedEvent.funcionario_nome}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">CPF:</span>
-                      <span>{selectedEvent.funcionario_cpf}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Data do Evento:</span>
-                      <span>{format(new Date(selectedEvent.data_evento), "dd/MM/yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge variant={getStatusColor(selectedEvent.status) as any}>{selectedEvent.status}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Status do Envio</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Data de Envio:</span>
-                      <span>
-                        {selectedEvent.data_envio
-                          ? format(new Date(selectedEvent.data_envio), "dd/MM/yyyy HH:mm")
-                          : "Não enviado"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Protocolo:</span>
-                      <span>{selectedEvent.protocolo || "N/A"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Retorno:</span>
-                      <span>{selectedEvent.retorno || "Aguardando"}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Dados do XML</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-muted p-4 rounded-lg">
-                    <pre className="text-sm overflow-x-auto">
-                      {`<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_00_00">
-  <evtMonit Id="ID1234567890123456789012345678901234567890">
-    <ideEvento>
-      <indRetif>1</indRetif>
-      <tpAmb>1</tpAmb>
-      <procEmi>1</procEmi>
-      <verProc>1.0</verProc>
-    </ideEvento>
-    <ideEmpregador>
-      <tpInsc>1</tpInsc>
-      <nrInsc>12345678000190</nrInsc>
-    </ideEmpregador>
-    <ideTrabalhador>
-      <cpfTrab>${selectedEvent.funcionario_cpf.replace(/\D/g, "")}</cpfTrab>
-    </ideTrabalhador>
-    <!-- Dados específicos do evento -->
-  </evtMonit>
-</eSocial>`}
-                    </pre>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Baixar XML
-                </Button>
-                {selectedEvent.status === "Pendente" && (
-                  <Button>
-                    <Send className="h-4 w-4 mr-2" />
-                    Enviar Agora
-                  </Button>
-                )}
-                {selectedEvent.status === "Erro" && (
-                  <Button>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Reenviar
-                  </Button>
-                )}
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   )
 }
-
-export { ESocialIntegration as ESocialIntegrationComponent }
-export default ESocialIntegration

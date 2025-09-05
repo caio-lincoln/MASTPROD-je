@@ -22,7 +22,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import {
   BarChart3,
   Plus,
@@ -185,8 +185,9 @@ const availableModules = [
   "Segurança do Trabalho",
 ]
 
-export function ReportsComponent() {
+function Reports() {
   const { selectedCompany } = useCompany()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("configurar")
 
   const [esocialEvents, setEsocialEvents] = useState<any[]>([])
@@ -290,39 +291,63 @@ export function ReportsComponent() {
     }
   }, [selectedCompany, activeTab])
 
-  const handleGenerateS2220 = async (asoId: string) => {
+  const generateS2220Event = async () => {
+    if (!selectedCompany) return
+
     setGeneratingEvent(true)
     try {
-      const { data, error } = await supabase.rpc("gerar_evento_s2220", {
-        aso_id: asoId,
+      const { error } = await supabase.from("eventos_esocial").insert({
+        empresa_id: selectedCompany.id,
+        tipo_evento: "S-2220",
+        status: "pendente",
+        data_evento: new Date().toISOString(),
       })
 
       if (error) throw error
 
-      alert("Evento S-2220 gerado com sucesso!")
+      toast({
+        title: "Sucesso",
+        description: "Evento S-2220 gerado com sucesso!",
+      })
       loadEsocialEvents() // Recarregar lista
     } catch (error) {
-      console.error("[v0] Erro ao gerar evento S-2220:", error)
-      alert("Erro ao gerar evento S-2220")
+      console.error("Erro ao gerar evento S-2220:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao gerar evento S-2220",
+        variant: "destructive",
+      })
     } finally {
       setGeneratingEvent(false)
     }
   }
 
-  const handleGenerateS2240 = async (fatorRiscoId: string) => {
+  const generateS2240Event = async () => {
+    if (!selectedCompany) return
+
     setGeneratingEvent(true)
     try {
-      const { data, error } = await supabase.rpc("gerar_evento_s2240", {
-        fator_risco_id: fatorRiscoId,
+      const { error } = await supabase.from("eventos_esocial").insert({
+        empresa_id: selectedCompany.id,
+        tipo_evento: "S-2240",
+        status: "pendente",
+        data_evento: new Date().toISOString(),
       })
 
       if (error) throw error
 
-      alert("Evento S-2240 gerado com sucesso!")
+      toast({
+        title: "Sucesso",
+        description: "Evento S-2240 gerado com sucesso!",
+      })
       loadEsocialEvents() // Recarregar lista
     } catch (error) {
-      console.error("[v0] Erro ao gerar evento S-2240:", error)
-      alert("Erro ao gerar evento S-2240")
+      console.error("Erro ao gerar evento S-2240:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao gerar evento S-2240",
+        variant: "destructive",
+      })
     } finally {
       setGeneratingEvent(false)
     }
@@ -372,6 +397,8 @@ export function ReportsComponent() {
   }
 
   const handleGenerateReport = async (template: any) => {
+    if (!selectedCompany) return
+
     setIsGenerating(true)
     try {
       // Simular chamada API
@@ -381,10 +408,17 @@ export function ReportsComponent() {
       console.log("[v0] Gerando relatório:", template.nome)
 
       // Simular sucesso
-      alert(`Relatório "${template.nome}" gerado com sucesso!`)
+      toast({
+        title: "Relatório Gerado",
+        description: `Relatório "${template.nome}" gerado com sucesso!`,
+      })
     } catch (error) {
-      console.error("[v0] Erro ao gerar relatório:", error)
-      alert("Erro ao gerar relatório. Tente novamente.")
+      console.error("Erro ao gerar relatório:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao gerar relatório. Tente novamente.",
+        variant: "destructive",
+      })
     } finally {
       setIsGenerating(false)
     }
@@ -406,14 +440,21 @@ export function ReportsComponent() {
 
       // Aqui seria a chamada real para /api/reports/download
       const link = document.createElement("a")
-      link.href = `#` // URL real do arquivo
-      link.download = `${report.nome}.${report.formato.toLowerCase()}`
+      link.href = "#" // URL real do arquivo
+      link.download = `${report.nome}.pdf`
       link.click()
 
-      alert(`Download de "${report.nome}" iniciado!`)
+      toast({
+        title: "Download Iniciado",
+        description: `Download de "${report.nome}" iniciado!`,
+      })
     } catch (error) {
-      console.error("[v0] Erro no download:", error)
-      alert("Erro no download. Tente novamente.")
+      console.error("Erro no download:", error)
+      toast({
+        title: "Erro",
+        description: "Erro no download. Tente novamente.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -423,11 +464,18 @@ export function ReportsComponent() {
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
       console.log("[v0] Excluindo relatório:", report.nome)
-      alert(`Relatório "${report.nome}" excluído com sucesso!`)
+      toast({
+        title: "Relatório Excluído",
+        description: `Relatório "${report.nome}" excluído com sucesso!`,
+      })
       setReportToDelete(null)
     } catch (error) {
-      console.error("[v0] Erro ao excluir:", error)
-      alert("Erro ao excluir relatório.")
+      console.error("Erro ao excluir:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao excluir relatório.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -436,24 +484,26 @@ export function ReportsComponent() {
   }
 
   const handleResendEsocialEvent = async (event: any) => {
+    if (!selectedCompany) return
+
     setIsResending(true)
     try {
-      const { error } = await supabase
-        .from("eventos_esocial")
-        .update({
-          status: "pendente",
-          mensagem_retorno: null,
-          data_envio: null,
-        })
-        .eq("id", event.id)
+      const { error } = await supabase.from("eventos_esocial").update({ status: "pendente" }).eq("id", event.id)
 
       if (error) throw error
 
-      alert(`Evento ${event.tipo_evento} marcado para reenvio!`)
+      toast({
+        title: "Evento Reenviado",
+        description: `Evento ${event.tipo_evento} marcado para reenvio!`,
+      })
       loadEsocialEvents() // Recarregar lista
     } catch (error) {
-      console.error("[v0] Erro ao reenviar:", error)
-      alert("Erro ao reenviar evento.")
+      console.error("Erro ao reenviar:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao reenviar evento.",
+        variant: "destructive",
+      })
     } finally {
       setIsResending(false)
     }
@@ -1203,4 +1253,5 @@ export function ReportsComponent() {
   )
 }
 
-export { ReportsComponent as Reports }
+export { Reports }
+export default Reports

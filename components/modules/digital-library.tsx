@@ -191,15 +191,9 @@ export default function DigitalLibraryComponent() {
     }
   }
 
-  const handleDownloadDocument = async (document: Document) => {
+  const handleDownloadDocument = async (document: any) => {
     try {
-      await supabase
-        .from("documentos")
-        .update({ downloads: document.downloads + 1 })
-        .eq("id", document.id)
-
       // Aqui você implementaria o download real do arquivo
-      console.log("Download do documento:", document.titulo)
       await loadDocuments()
     } catch (error) {
       console.error("Erro ao incrementar downloads:", error)

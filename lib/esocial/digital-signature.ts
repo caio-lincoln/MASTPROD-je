@@ -128,10 +128,10 @@ export class DigitalSignatureService {
   // Obter certificado ativo da empresa
   async obterCertificadoAtivo(empresa_id: string): Promise<CertificadoDigital | null> {
     const { data, error } = await this.supabase
-      .from("esocial_config")
+      .from("certificados_esocial")
       .select("*")
       .eq("empresa_id", empresa_id)
-      .eq("ativo", true)
+      .eq("valido", true)
       .single()
 
     if (error || !data) return null
@@ -139,12 +139,11 @@ export class DigitalSignatureService {
     return {
       id: data.id,
       empresa_id: data.empresa_id,
-      tipo: data.certificado_tipo as "A1" | "A3",
-      nome: `Certificado ${data.certificado_tipo}`,
+      tipo: "A1",
+      nome: `Certificado A1`,
       validade: "2025-12-31", // Seria obtido do certificado real
-      thumbprint: data.certificado_thumbprint,
-      arquivo_url: data.certificado_arquivo,
-      ativo: data.ativo,
+      arquivo_url: data.arquivo_url,
+      ativo: data.valido,
     }
   }
 
@@ -217,11 +216,14 @@ export class DigitalSignatureService {
         }
       }
 
-      // Upload para storage
-      const fileName = `certificado_${empresa_id}_${Date.now()}.p12`
-      const filePath = `${empresa_id}/certificados/${fileName}`
+      const filePath = `empresa-${empresa_id}/certificado-a1.pfx`
 
-      const { error: uploadError } = await this.supabase.storage.from("esocial").upload(filePath, arquivo)
+      const { error: uploadError } = await this.supabase.storage
+        .from("certificados-esocial")
+        .upload(filePath, arquivo, {
+          upsert: true,
+          contentType: arquivo.type,
+        })
 
       if (uploadError) {
         return {
@@ -230,27 +232,34 @@ export class DigitalSignatureService {
         }
       }
 
-      // Atualizar configuração da empresa
-      const { error: updateError } = await this.supabase
-        .from("esocial_config")
-        .update({
-          certificado_tipo: "A1",
-          certificado_arquivo: fileName,
-          certificado_senha_encrypted: this.criptografarSenha(senha),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("empresa_id", empresa_id)
+      const {
+        data: { user },
+      } = await this.supabase.auth.getUser()
+      const responsavel = user?.user_metadata?.nome || user?.email || "Usuário desconhecido"
+
+      const { error: updateError } = await this.supabase.from("certificados_esocial").upsert(
+        {
+          empresa_id: empresa_id,
+          arquivo_url: filePath,
+          data_upload: new Date().toISOString(),
+          responsavel: responsavel,
+          valido: true,
+        },
+        {
+          onConflict: "empresa_id",
+        },
+      )
 
       if (updateError) {
         return {
           sucesso: false,
-          erro: `Erro ao salvar configuração: ${updateError.message}`,
+          erro: `Erro ao salvar certificado: ${updateError.message}`,
         }
       }
 
       return {
         sucesso: true,
-        arquivo_url: fileName,
+        arquivo_url: filePath,
       }
     } catch (error) {
       return {
@@ -334,9 +343,7 @@ export class DigitalSignatureService {
 
   // Funções utilitárias privadas
   private async downloadCertificadoFromStorage(arquivo_url: string, empresa_id: string): Promise<Buffer> {
-    const filePath = `${empresa_id}/certificados/${arquivo_url}`
-
-    const { data, error } = await this.supabase.storage.from("esocial").download(filePath)
+    const { data, error } = await this.supabase.storage.from("certificados-esocial").download(arquivo_url)
 
     if (error) throw error
 
