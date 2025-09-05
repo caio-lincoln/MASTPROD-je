@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import React, { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 
@@ -39,13 +39,14 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const loadUserAndCompanies = async () => {
-      setIsLoading(true)
-
       try {
-        // Obter usuário autenticado
+        setIsLoading(true)
+
+        // Verificar usuário autenticado
         const {
           data: { user: currentUser },
         } = await supabase.auth.getUser()
+
         setUser(currentUser)
 
         if (currentUser) {
@@ -70,6 +71,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             .eq("user_id", currentUser.id)
 
           if (userCompaniesError) {
+            console.error("Erro ao buscar empresas do usuário:", userCompaniesError)
             setIsLoading(false)
             return
           }
@@ -82,6 +84,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
               .eq("status", true)
 
             if (allCompaniesError) {
+              console.error("Erro ao buscar todas as empresas:", allCompaniesError)
               setIsLoading(false)
               return
             }
@@ -102,13 +105,15 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             setCompanies(formattedAllCompanies)
 
             if (formattedAllCompanies.length > 0 && !selectedCompany) {
-              const savedCompanyId = localStorage.getItem("selectedCompanyId")
+              const savedCompanyId = typeof window !== 'undefined' ? localStorage.getItem("selectedCompanyId") : null
               const companyToSelect = savedCompanyId
                 ? formattedAllCompanies.find((c) => c.id === savedCompanyId) || formattedAllCompanies[0]
                 : formattedAllCompanies[0]
 
               setSelectedCompany(companyToSelect)
-              localStorage.setItem("selectedCompanyId", companyToSelect.id)
+              if (typeof window !== 'undefined') {
+                localStorage.setItem("selectedCompanyId", companyToSelect.id)
+              }
             }
 
             setIsLoading(false)
@@ -135,7 +140,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
           if (formattedCompanies.length > 0) {
             // Verificar se há empresa salva no localStorage
-            const savedCompanyId = localStorage.getItem("selectedCompanyId")
+            const savedCompanyId = typeof window !== 'undefined' ? localStorage.getItem("selectedCompanyId") : null
             let companyToSelect: Company | null = null
 
             if (savedCompanyId) {
@@ -149,12 +154,14 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
             if (companyToSelect) {
               setSelectedCompany(companyToSelect)
-              localStorage.setItem("selectedCompanyId", companyToSelect.id)
+              if (typeof window !== 'undefined') {
+                localStorage.setItem("selectedCompanyId", companyToSelect.id)
+              }
             }
           }
         }
       } catch (error) {
-        // No changes needed here
+        console.error("Erro ao carregar usuário e empresas:", error)
       } finally {
         setIsLoading(false)
       }
@@ -170,7 +177,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setCompanies([])
         setSelectedCompany(null)
-        localStorage.removeItem("selectedCompanyId")
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem("selectedCompanyId")
+        }
       } else if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user)
         loadUserAndCompanies()
@@ -183,9 +192,13 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const handleSetSelectedCompany = (company: Company | null) => {
     setSelectedCompany(company)
     if (company) {
-      localStorage.setItem("selectedCompanyId", company.id)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem("selectedCompanyId", company.id)
+      }
     } else {
-      localStorage.removeItem("selectedCompanyId")
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem("selectedCompanyId")
+      }
     }
   }
 
@@ -209,6 +222,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (companyError) {
+        console.error("Erro ao criar empresa:", companyError)
         return null
       }
 
@@ -220,6 +234,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       })
 
       if (relationError) {
+        console.error("Erro ao criar relacionamento usuário-empresa:", relationError)
         return null
       }
 
@@ -238,6 +253,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       setCompanies((prev) => [...prev, formattedCompany])
       return formattedCompany
     } catch (error) {
+      console.error("Erro ao adicionar empresa:", error)
       return null
     }
   }
@@ -258,6 +274,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         .eq("id", id)
 
       if (error) {
+        console.error("Erro ao atualizar empresa:", error)
         return false
       }
 
@@ -271,6 +288,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
       return true
     } catch (error) {
+      console.error("Erro ao atualizar empresa:", error)
       return false
     }
   }
@@ -280,6 +298,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.from("empresas").delete().eq("id", id)
 
       if (error) {
+        console.error("Erro ao deletar empresa:", error)
         return false
       }
 
@@ -289,11 +308,14 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       // Limpar empresa selecionada se for a mesma
       if (selectedCompany?.id === id) {
         setSelectedCompany(null)
-        localStorage.removeItem("selectedCompanyId")
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem("selectedCompanyId")
+        }
       }
 
       return true
     } catch (error) {
+      console.error("Erro ao deletar empresa:", error)
       return false
     }
   }

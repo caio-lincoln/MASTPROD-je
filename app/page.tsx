@@ -1,27 +1,8 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
-import { DashboardClient } from "@/components/dashboard-client"
-import { DashboardServer } from "@/components/modules/dashboard-server"
-
-interface PageProps {
-  searchParams: { empresa?: string }
-}
-
-export default async function Home({ searchParams }: PageProps) {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data?.user) {
-    redirect("/auth/login")
-  }
-
-  if (searchParams.empresa) {
-    const { data: empresa } = await supabase.from("empresas").select("id, name").eq("id", searchParams.empresa).single()
-
-    if (empresa) {
-      return <DashboardServer empresaId={empresa.id} empresaName={empresa.name} />
-    }
-  }
-
-  return <DashboardClient user={data.user} />
+export default function Home() {
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold">Sistema SST</h1>
+      <p>Sistema funcionando corretamente!</p>
+    </div>
+  )
 }
