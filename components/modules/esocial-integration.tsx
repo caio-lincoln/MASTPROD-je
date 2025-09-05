@@ -29,6 +29,7 @@ import {
   Shield,
   Key,
   TestTube,
+  Loader2,
 } from "lucide-react"
 import { format } from "date-fns"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -102,8 +103,16 @@ export function ESocialIntegration() {
   const [events, setEvents] = useState<ESocialEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
   const [certificatePassword, setCertificatePassword] = useState("")
+  const [certificateStatus, setCertificateStatus] = useState<{
+    loaded: boolean
+    fileName?: string
+    uploadDate?: string
+  }>({ loaded: false })
+  const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
+
   const [testingConnection, setTestingConnection] = useState(false)
   const [processingEvents, setProcessingEvents] = useState(false)
 
@@ -241,14 +250,44 @@ export function ESocialIntegration() {
   }
 
   const handleCertificateUpload = async () => {
-    if (!certificateFile || !certificatePassword || !selectedCompany) return
+    if (!certificateFile || !certificatePassword || !selectedCompany) {
+      toast({
+        title: "Dados incompletos",
+        description: "Selecione um arquivo e digite a senha do certificado",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar extensão do arquivo
+    if (!certificateFile.name.match(/\.(p12|pfx)$/i)) {
+      toast({
+        title: "Arquivo inválido",
+        description: "Selecione um arquivo .p12 ou .pfx",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar tamanho do arquivo (máximo 5MB)
+    if (certificateFile.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "O certificado deve ter no máximo 5MB",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsUploadingCertificate(true)
 
     try {
       const signatureService = new DigitalSignatureService()
+
       const result = await signatureService.uploadCertificadoA1(
         certificateFile,
-        certificatePassword,
         selectedCompany.id,
+        certificatePassword,
       )
 
       if (result.sucesso) {
@@ -256,6 +295,13 @@ export function ESocialIntegration() {
           title: "Certificado carregado",
           description: "Certificado A1 configurado com sucesso",
         })
+
+        setCertificateStatus({
+          loaded: true,
+          fileName: certificateFile.name,
+          uploadDate: new Date().toLocaleDateString("pt-BR"),
+        })
+
         setCertificateFile(null)
         setCertificatePassword("")
       } else {
@@ -266,11 +312,36 @@ export function ESocialIntegration() {
         })
       }
     } catch (err) {
+      console.error("Erro ao carregar certificado:", err)
       toast({
         title: "Erro no certificado",
-        description: "Falha ao processar certificado",
+        description: err instanceof Error ? err.message : "Falha ao processar certificado",
         variant: "destructive",
       })
+    } finally {
+      setIsUploadingCertificate(false)
+    }
+  }
+
+  const loadCertificateStatus = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const signatureService = new DigitalSignatureService()
+      const certificado = await signatureService.obterCertificadoAtivo(selectedCompany.id)
+
+      if (certificado && certificado.tipo === "A1") {
+        setCertificateStatus({
+          loaded: true,
+          fileName: certificado.arquivo_url || "certificado.p12",
+          uploadDate: new Date().toLocaleDateString("pt-BR"),
+        })
+      } else {
+        setCertificateStatus({ loaded: false })
+      }
+    } catch (error) {
+      console.error("Erro ao carregar status do certificado:", error)
+      setCertificateStatus({ loaded: false })
     }
   }
 
@@ -353,6 +424,7 @@ export function ESocialIntegration() {
 
   useEffect(() => {
     loadEvents()
+    loadCertificateStatus()
   }, [selectedCompany])
 
   const eventTypes = getEventTypes(events)
@@ -834,7 +906,13 @@ export function ESocialIntegration() {
                     type="file"
                     accept=".p12,.pfx"
                     onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
+                    disabled={isUploadingCertificate}
                   />
+                  {certificateFile && (
+                    <p className="text-sm text-muted-foreground">
+                      Arquivo selecionado: {certificateFile.name} ({(certificateFile.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -844,22 +922,47 @@ export function ESocialIntegration() {
                     value={certificatePassword}
                     onChange={(e) => setCertificatePassword(e.target.value)}
                     placeholder="Digite a senha do certificado"
+                    disabled={isUploadingCertificate}
                   />
                 </div>
 
                 <Button
                   onClick={handleCertificateUpload}
-                  disabled={!certificateFile || !certificatePassword}
+                  disabled={!certificateFile || !certificatePassword || isUploadingCertificate}
                   className="w-full"
                 >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Carregar Certificado A1
+                  {isUploadingCertificate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Carregando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Carregar Certificado A1
+                    </>
+                  )}
                 </Button>
 
                 <div className="p-3 bg-muted rounded-lg">
                   <p className="text-sm text-muted-foreground">
-                    Status: <Badge variant="outline">Não configurado</Badge>
+                    Status:{" "}
+                    {certificateStatus.loaded ? (
+                      <Badge variant="default" className="ml-1">
+                        Configurado
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="ml-1">
+                        Não configurado
+                      </Badge>
+                    )}
                   </p>
+                  {certificateStatus.loaded && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-muted-foreground">Arquivo: {certificateStatus.fileName}</p>
+                      <p className="text-xs text-muted-foreground">Upload: {certificateStatus.uploadDate}</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
