@@ -41,6 +41,7 @@
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "autoprefixer": "^10.4.20",
+    "axios": "latest",
     "child_process": "1.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -69,6 +70,8 @@
     "util": "0.12.5",
     "uuid": "11.1.0",
     "vaul": "^0.9.9",
+    "xml-crypto": "latest",
+    "xmldom": "latest",
     "zod": "3.25.67"
   },
   "devDependencies": {

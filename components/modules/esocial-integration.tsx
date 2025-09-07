@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useCompany } from "@/contexts/company-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,14 +29,26 @@ import {
   Key,
   TestTube,
   Loader2,
+  XCircle,
+  Activity,
+  History,
+  Info,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
 
 import { createClient } from "@/lib/supabase/client"
-import { useEffect } from "react"
-import { ESocialService } from "@/lib/esocial/esocial-service"
 import { DigitalSignatureService } from "@/lib/esocial/digital-signature"
+import { signXMLWithSupabaseCertificate } from "@/lib/esocial/xml-signer"
+import { ESocialService } from "@/lib/esocial/esocial-service"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface ESocialEvent {
   id: number
@@ -62,6 +74,12 @@ interface EventType {
   enviados: number
   pendentes: number
   erros: number
+  id: string
+  versao: string
+  layout_xml: string
+  ativo: boolean
+  created_at: string
+  updated_at: string
 }
 
 const getStatusColor = (status: string) => {
@@ -102,12 +120,27 @@ export function ESocialIntegration() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [eventTypes, setEventTypes] = useState<EventType[]>([])
+  const [loadingEventTypes, setLoadingEventTypes] = useState(false)
+  const [selectedEventTypeForEdit, setSelectedEventTypeForEdit] = useState<any>(null)
+  const [showEventTypeDialog, setShowEventTypeDialog] = useState(false)
+  const [eventTypeForm, setEventTypeForm] = useState({
+    codigo: "",
+    nome: "",
+    descricao: "",
+    layout_xml: "",
+    versao: "1.0",
+    ativo: true,
+  })
+
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
   const [certificatePassword, setCertificatePassword] = useState("")
   const [certificateStatus, setCertificateStatus] = useState<{
     loaded: boolean
     fileName?: string
     uploadDate?: string
+    valid?: boolean
+    validUntil?: string
   }>({ loaded: false })
   const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
   const [isValidatingCertificate, setIsValidatingCertificate] = useState(false)
@@ -123,8 +156,185 @@ export function ESocialIntegration() {
 
   const [testingConnection, setTestingConnection] = useState(false)
   const [processingEvents, setProcessingEvents] = useState(false)
+  const [generatingEvents, setGeneratingEvents] = useState(false)
+  const [selectedEventType, setSelectedEventType] = useState<string>("")
+  const [showEventGenerationDialog, setShowEventGenerationDialog] = useState(false)
+  const [availableData, setAvailableData] = useState<{
+    asos: any[]
+    riscos: any[]
+    incidentes: any[]
+  }>({ asos: [], riscos: [], incidentes: [] })
 
   const supabase = createClient()
+
+  const loadEventTypes = async () => {
+    try {
+      setLoadingEventTypes(true)
+
+      // Load event types from database
+      const { data: tiposEventos, error: tiposError } = await supabase
+        .from("esocial_tipos_eventos")
+        .select("*")
+        .eq("ativo", true)
+        .order("codigo")
+
+      if (tiposError) throw tiposError
+
+      // Calculate statistics for each event type
+      const eventTypesWithStats = await Promise.all(
+        (tiposEventos || []).map(async (tipo) => {
+          const typeEvents = events.filter((event) => event.evento === tipo.codigo)
+          const enviados = typeEvents.filter((event) => event.status === "Enviado").length
+          const pendentes = typeEvents.filter((event) => event.status === "Pendente").length
+          const erros = typeEvents.filter((event) => event.status === "Erro").length
+
+          return {
+            id: tipo.id,
+            codigo: tipo.codigo,
+            nome: tipo.nome,
+            descricao: tipo.descricao,
+            versao: tipo.versao,
+            layout_xml: tipo.layout_xml,
+            ativo: tipo.ativo,
+            obrigatorio: ["S-2220", "S-2240", "S-2210"].includes(tipo.codigo), // Core events are mandatory
+            prazo: getPrazoByEventType(tipo.codigo),
+            total: typeEvents.length,
+            enviados,
+            pendentes,
+            erros,
+            created_at: tipo.created_at,
+            updated_at: tipo.updated_at,
+          }
+        }),
+      )
+
+      setEventTypes(eventTypesWithStats)
+    } catch (error) {
+      console.error("Erro ao carregar tipos de eventos:", error)
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar tipos de eventos",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingEventTypes(false)
+    }
+  }
+
+  const getPrazoByEventType = (codigo: string): string => {
+    const prazos: Record<string, string> = {
+      "S-2220": "Até o dia 15 do mês seguinte",
+      "S-2240": "Até o dia 15 do mês seguinte",
+      "S-2210": "Até o 1º dia útil seguinte",
+      "S-2230": "Até o dia 15 do mês seguinte",
+      "S-2250": "Até o dia 15 do mês seguinte",
+    }
+    return prazos[codigo] || "Conforme legislação"
+  }
+
+  const handleSaveEventType = async () => {
+    if (!eventTypeForm.codigo || !eventTypeForm.nome) {
+      toast({
+        title: "Dados incompletos",
+        description: "Código e nome são obrigatórios",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      if (selectedEventTypeForEdit) {
+        // Update existing event type
+        const { error } = await supabase
+          .from("esocial_tipos_eventos")
+          .update({
+            nome: eventTypeForm.nome,
+            descricao: eventTypeForm.descricao,
+            layout_xml: eventTypeForm.layout_xml,
+            versao: eventTypeForm.versao,
+            ativo: eventTypeForm.ativo,
+          })
+          .eq("id", selectedEventTypeForEdit.id)
+
+        if (error) throw error
+
+        toast({
+          title: "Tipo de evento atualizado",
+          description: `${eventTypeForm.codigo} foi atualizado com sucesso`,
+        })
+      } else {
+        // Create new event type
+        const { error } = await supabase.from("esocial_tipos_eventos").insert({
+          codigo: eventTypeForm.codigo,
+          nome: eventTypeForm.nome,
+          descricao: eventTypeForm.descricao,
+          layout_xml: eventTypeForm.layout_xml,
+          versao: eventTypeForm.versao,
+          ativo: eventTypeForm.ativo,
+        })
+
+        if (error) throw error
+
+        toast({
+          title: "Tipo de evento criado",
+          description: `${eventTypeForm.codigo} foi criado com sucesso`,
+        })
+      }
+
+      setShowEventTypeDialog(false)
+      setSelectedEventTypeForEdit(null)
+      setEventTypeForm({
+        codigo: "",
+        nome: "",
+        descricao: "",
+        layout_xml: "",
+        versao: "1.0",
+        ativo: true,
+      })
+
+      await loadEventTypes()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar tipo de evento",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditEventType = (eventType: any) => {
+    setSelectedEventTypeForEdit(eventType)
+    setEventTypeForm({
+      codigo: eventType.codigo,
+      nome: eventType.nome,
+      descricao: eventType.descricao,
+      layout_xml: eventType.layout_xml || "",
+      versao: eventType.versao || "1.0",
+      ativo: eventType.ativo,
+    })
+    setShowEventTypeDialog(true)
+  }
+
+  const handleToggleEventType = async (eventTypeId: string, ativo: boolean) => {
+    try {
+      const { error } = await supabase.from("esocial_tipos_eventos").update({ ativo }).eq("id", eventTypeId)
+
+      if (error) throw error
+
+      toast({
+        title: ativo ? "Tipo de evento ativado" : "Tipo de evento desativado",
+        description: "Status atualizado com sucesso",
+      })
+
+      await loadEventTypes()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao atualizar status do tipo de evento",
+        variant: "destructive",
+      })
+    }
+  }
 
   const loadEvents = async () => {
     if (!selectedCompany) {
@@ -315,6 +525,8 @@ export function ESocialIntegration() {
           loaded: true,
           fileName: certificateFile.name,
           uploadDate: new Date().toLocaleDateString("pt-BR"),
+          valid: true,
+          validUntil: "2024-12-31",
         })
 
         setCertificateFile(null)
@@ -414,7 +626,6 @@ export function ESocialIntegration() {
           toast({
             title: "Certificado inválido",
             description: result.summary,
-            variant: "destructive",
           })
         }
       }
@@ -453,6 +664,8 @@ export function ESocialIntegration() {
           loaded: true,
           fileName: certificado.arquivo_url || "certificado.p12",
           uploadDate: new Date().toLocaleDateString("pt-BR"),
+          valid: true,
+          validUntil: "2024-12-31",
         })
       } else {
         setCertificateStatus({ loaded: false })
@@ -519,33 +732,387 @@ export function ESocialIntegration() {
     }
   }
 
-  const handleResendEvent = async (eventId: number) => {
+  const loadAvailableData = async () => {
+    if (!selectedCompany) return
+
     try {
-      const { error } = await supabase
+      // Load ASO exams for S-2220 events
+      const { data: asos } = await supabase
+        .from("exames_aso")
+        .select(`
+          *,
+          funcionarios (
+            id,
+            nome,
+            cpf,
+            matricula
+          )
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .eq("resultado", "Apto")
+        .is("evento_esocial_id", null) // Not yet sent to eSocial
+
+      // Load risk assessments for S-2240 events
+      const { data: riscos } = await supabase
+        .from("riscos")
+        .select(`
+          *,
+          funcionarios (
+            id,
+            nome,
+            cpf,
+            matricula
+          )
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .is("evento_esocial_id", null)
+
+      // Load incidents for S-2210 events
+      const { data: incidentes } = await supabase
+        .from("incidentes")
+        .select(`
+          *,
+          funcionarios (
+            id,
+            nome,
+            cpf,
+            matricula
+          )
+        `)
+        .eq("empresa_id", selectedCompany.id)
+        .is("evento_esocial_id", null)
+
+      setAvailableData({
+        asos: asos || [],
+        riscos: riscos || [],
+        incidentes: incidentes || [],
+      })
+    } catch (error) {
+      console.error("Erro ao carregar dados disponíveis:", error)
+    }
+  }
+
+  const generateEventXML = async (eventType: string, data: any): Promise<string> => {
+    const { data: tipoEvento } = await supabase
+      .from("esocial_tipos_eventos")
+      .select("layout_xml")
+      .eq("codigo", eventType)
+      .single()
+
+    if (!tipoEvento?.layout_xml) {
+      throw new Error(`Layout XML não encontrado para evento ${eventType}`)
+    }
+
+    let xml = tipoEvento.layout_xml
+
+    // Replace placeholders based on event type
+    switch (eventType) {
+      case "S-2220": // ASO
+        xml = xml
+          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany.cnpj}</nrInsc>`)
+          .replace(/<cpfTrab><\/cpfTrab>/, `<cpfTrab>${data.funcionarios.cpf}</cpfTrab>`)
+          .replace(/<matricula><\/matricula>/, `<matricula>${data.funcionarios.matricula}</matricula>`)
+          .replace(/<dtAso><\/dtAso>/, `<dtAso>${new Date(data.data_exame).toISOString().split("T")[0]}</dtAso>`)
+          .replace(/<resAso>1<\/resAso>/, `<resAso>${data.resultado === "Apto" ? "1" : "2"}</resAso>`)
+        break
+
+      case "S-2240": // Risk exposure
+        xml = xml
+          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany.cnpj}</nrInsc>`)
+          .replace(/<cpfTrab><\/cpfTrab>/, `<cpfTrab>${data.funcionarios.cpf}</cpfTrab>`)
+          .replace(/<matricula><\/matricula>/, `<matricula>${data.funcionarios.matricula}</matricula>`)
+          .replace(
+            /<dtIniCondicao><\/dtIniCondicao>/,
+            `<dtIniCondicao>${new Date(data.data_identificacao).toISOString().split("T")[0]}</dtIniCondicao>`,
+          )
+          .replace(/<dscSetor><\/dscSetor>/, `<dscSetor>${data.setor}</dscSetor>`)
+          .replace(/<dscAtivDes><\/dscAtivDes>/, `<dscAtivDes>${data.descricao}</dscAtivDes>`)
+        break
+
+      case "S-2210": // Accident
+        xml = xml
+          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany.cnpj}</nrInsc>`)
+          .replace(/<cpfTrab><\/cpfTrab>/, `<cpfTrab>${data.funcionarios.cpf}</cpfTrab>`)
+          .replace(/<matricula><\/matricula>/, `<matricula>${data.funcionarios.matricula}</matricula>`)
+          .replace(
+            /<dtAcid><\/dtAcid>/,
+            `<dtAcid>${new Date(data.data_ocorrencia).toISOString().split("T")[0]}</dtAcid>`,
+          )
+          .replace(/<hrAcid><\/hrAcid>/, `<hrAcid>${data.hora_ocorrencia || "0800"}</hrAcid>`)
+          .replace(/<obsCAT><\/obsCAT>/, `<obsCAT>${data.descricao}</obsCAT>`)
+        break
+    }
+
+    // Add unique ID
+    const eventId = `ID${Date.now()}${Math.random().toString(36).substr(2, 9)}`
+    xml = xml.replace(/Id=""/, `Id="${eventId}"`)
+
+    return xml
+  }
+
+  const processEvents = async (eventType: string, selectedItems: any[]) => {
+    if (!selectedCompany || !certificatePassword) {
+      toast({
+        title: "Erro",
+        description: "Empresa não selecionada ou senha do certificado não informada",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setProcessingEvents(true)
+
+    try {
+      const esocialService = new ESocialService()
+      const processedEvents = []
+
+      for (const item of selectedItems) {
+        try {
+          // Generate XML
+          const rawXml = await generateEventXML(eventType, item)
+
+          // Sign XML
+          const signResult = await signXMLWithSupabaseCertificate({
+            empresaId: selectedCompany.id,
+            certPassword: certificatePassword,
+            rawXml,
+          })
+
+          if (!signResult.success) {
+            throw new Error(signResult.error)
+          }
+
+          // Save event to database
+          const { data: evento, error: eventoError } = await supabase
+            .from("eventos_esocial")
+            .insert({
+              empresa_id: selectedCompany.id,
+              tipo_evento: eventType,
+              funcionario_id: item.funcionarios.id,
+              xml_original: rawXml,
+              xml_assinado: signResult.signedXml,
+              status: "pendente",
+              criado_por: (await supabase.auth.getUser()).data.user?.id,
+            })
+            .select()
+            .single()
+
+          if (eventoError) throw eventoError
+
+          // Send to eSocial
+          const sendResult = await esocialService.enviarEvento({
+            empresaId: selectedCompany.id,
+            eventoId: evento.id,
+            xmlAssinado: signResult.signedXml!,
+          })
+
+          // Update event status
+          await supabase
+            .from("eventos_esocial")
+            .update({
+              status: sendResult.success ? "enviado" : "erro",
+              protocolo_envio: sendResult.protocolo,
+              data_envio: new Date().toISOString(),
+              resposta_envio: sendResult.resposta,
+              mensagem_erro: sendResult.error,
+            })
+            .eq("id", evento.id)
+
+          // Update source record
+          const sourceTable = eventType === "S-2220" ? "exames_aso" : eventType === "S-2240" ? "riscos" : "incidentes"
+
+          await supabase.from(sourceTable).update({ evento_esocial_id: evento.id }).eq("id", item.id)
+
+          processedEvents.push({
+            item: item.funcionarios.nome,
+            success: sendResult.success,
+            protocolo: sendResult.protocolo,
+            error: sendResult.error,
+          })
+        } catch (error) {
+          processedEvents.push({
+            item: item.funcionarios.nome,
+            success: false,
+            error: error instanceof Error ? error.message : "Erro desconhecido",
+          })
+        }
+      }
+
+      // Show results
+      const successCount = processedEvents.filter((e) => e.success).length
+      const errorCount = processedEvents.length - successCount
+
+      toast({
+        title: "Processamento Concluído",
+        description: `${successCount} eventos enviados com sucesso, ${errorCount} com erro`,
+        variant: successCount > errorCount ? "default" : "destructive",
+      })
+
+      // Reload events
+      await loadEvents()
+      await loadAvailableData()
+    } catch (error) {
+      toast({
+        title: "Erro no Processamento",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setProcessingEvents(false)
+      setShowEventGenerationDialog(false)
+    }
+  }
+
+  const handleResendEventById = async (eventId: string) => {
+    try {
+      const { data: evento } = await supabase.from("eventos_esocial").select("*").eq("id", eventId).single()
+
+      if (!evento) throw new Error("Evento não encontrado")
+
+      const esocialService = new ESocialService()
+      const sendResult = await esocialService.enviarEvento({
+        empresaId: evento.empresa_id,
+        eventoId: evento.id,
+        xmlAssinado: evento.xml_assinado,
+      })
+
+      await supabase
         .from("eventos_esocial")
         .update({
-          status: "Pendente",
-          data_envio: null,
-          protocolo: null,
-          retorno: null,
+          status: sendResult.success ? "enviado" : "erro",
+          protocolo_envio: sendResult.protocolo,
+          data_envio: new Date().toISOString(),
+          resposta_envio: sendResult.resposta,
+          mensagem_erro: sendResult.error,
         })
         .eq("id", eventId)
 
+      toast({
+        title: sendResult.success ? "Evento Reenviado" : "Erro no Reenvio",
+        description: sendResult.success ? `Protocolo: ${sendResult.protocolo}` : sendResult.error,
+        variant: sendResult.success ? "default" : "destructive",
+      })
+
+      await loadEvents()
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao reenviar evento",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const [connectionStatus, setConnectionStatus] = useState({
+    connected: false,
+    environment: "Produção",
+    lastCheck: null,
+  })
+  const [statistics, setStatistics] = useState({
+    totalEvents: 0,
+    successEvents: 0,
+    errorEvents: 0,
+    pendingEvents: 0,
+    averageTime: 0,
+  })
+  const [activityLogs, setActivityLogs] = useState([])
+
+  const loadConnectionStatus = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("empresas")
+        .select("conectado, ambiente, ultima_verificacao")
+        .eq("id", selectedCompany.id)
+        .single()
+
       if (error) throw error
 
-      // Recarregar eventos após reenviar
-      await loadEvents()
-    } catch (err) {
-      setError("Erro ao reenviar evento")
+      setConnectionStatus({
+        connected: data.conectado,
+        environment: data.ambiente,
+        lastCheck: data.ultima_verificacao,
+      })
+    } catch (error) {
+      console.error("Erro ao carregar status da conexão:", error)
+    }
+  }
+
+  const loadStatistics = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("estatisticas_esocial")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .single()
+
+      if (error) throw error
+
+      setStatistics({
+        totalEvents: data.total_eventos || 0,
+        successEvents: data.sucesso_eventos || 0,
+        errorEvents: data.erro_eventos || 0,
+        pendingEvents: data.pendente_eventos || 0,
+        averageTime: data.tempo_medio || 0,
+      })
+    } catch (error) {
+      console.error("Erro ao carregar estatísticas:", error)
+    }
+  }
+
+  const loadActivityLogs = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("logs_esocial")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("created_at", { ascending: false })
+        .limit(5)
+
+      if (error) throw error
+
+      setActivityLogs(data || [])
+    } catch (error) {
+      console.error("Erro ao carregar logs de atividade:", error)
+    }
+  }
+
+  const formatDateSafe = (dateString: string | null) => {
+    if (!dateString) return "N/A"
+    try {
+      return new Date(dateString).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch (error) {
+      return "Data inválida"
     }
   }
 
   useEffect(() => {
     loadEvents()
     loadCertificateStatus()
+    loadAvailableData()
+    loadConnectionStatus()
+    loadStatistics()
+    loadActivityLogs()
   }, [selectedCompany])
 
-  const eventTypes = getEventTypes(events)
+  useEffect(() => {
+    if (events.length >= 0) {
+      loadEventTypes()
+    }
+  }, [events])
+
+  const eventTypesList = getEventTypes(events)
   const stats = {
     totalEvents: events.length,
     enviados: events.filter((event) => event.status === "Enviado").length,
@@ -713,12 +1280,40 @@ export function ESocialIntegration() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-4">
-                <Button className="h-20 flex flex-col space-y-2">
+                <Button
+                  className="h-20 flex flex-col space-y-2"
+                  onClick={() => setShowEventGenerationDialog(true)}
+                  disabled={!certificateStatus.loaded}
+                >
                   <Send className="h-6 w-6" />
-                  <span>Enviar Pendentes</span>
+                  <span>Gerar Eventos</span>
                 </Button>
-                <Button variant="outline" className="h-20 flex flex-col space-y-2 bg-transparent">
-                  <RefreshCw className="h-6 w-6" />
+                <Button
+                  variant="outline"
+                  className="h-20 flex flex-col space-y-2 bg-transparent"
+                  onClick={async () => {
+                    setTestingConnection(true)
+                    try {
+                      const esocialService = new ESocialService()
+                      const result = await esocialService.testarConectividade()
+                      toast({
+                        title: result.success ? "Conexão OK" : "Erro de Conexão",
+                        description: result.message,
+                        variant: result.success ? "default" : "destructive",
+                      })
+                    } catch (error) {
+                      toast({
+                        title: "Erro",
+                        description: "Erro ao testar conectividade",
+                        variant: "destructive",
+                      })
+                    } finally {
+                      setTestingConnection(false)
+                    }
+                  }}
+                  disabled={testingConnection}
+                >
+                  <RefreshCw className={`h-6 w-6 ${testingConnection ? "animate-spin" : ""}`} />
                   <span>Consultar Status</span>
                 </Button>
                 <Button variant="outline" className="h-20 flex flex-col space-y-2 bg-transparent">
@@ -826,7 +1421,7 @@ export function ESocialIntegration() {
                                 Visualizar
                               </DropdownMenuItem>
                               {event.status === "Erro" && (
-                                <DropdownMenuItem onClick={() => handleResendEvent(event.id)}>
+                                <DropdownMenuItem onClick={() => handleResendEventById(event.id)}>
                                   <RefreshCw className="mr-2 h-4 w-4" />
                                   Reenviar
                                 </DropdownMenuItem>
@@ -849,38 +1444,235 @@ export function ESocialIntegration() {
 
         <TabsContent value="tipos" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Tipos de Eventos eSocial</CardTitle>
-              <CardDescription>Configuração e status dos eventos SST de {selectedCompany.name}</CardDescription>
+            <CardHeader className="flex items-center justify-between">
+              <div>
+                <CardTitle>Tipos de Eventos eSocial</CardTitle>
+                <CardDescription>Configuração e status dos eventos SST de {selectedCompany.name}</CardDescription>
+              </div>
+              <Button
+                onClick={() => {
+                  setSelectedEventTypeForEdit(null)
+                  setEventTypeForm({
+                    codigo: "",
+                    nome: "",
+                    descricao: "",
+                    layout_xml: "",
+                    versao: "1.0",
+                    ativo: true,
+                  })
+                  setShowEventTypeDialog(true)
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Tipo
+              </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Tipos de Eventos Disponíveis</h3>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {eventTypes.map((eventType) => (
-                    <Card key={eventType.codigo}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-medium">{eventType.codigo}</CardTitle>
-                          <Button size="sm" onClick={() => handleGenerateEvent(eventType.codigo)}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Gerar
-                          </Button>
-                        </div>
-                        <CardDescription className="text-xs">{eventType.nome}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-xs text-muted-foreground mb-3">{eventType.descricao}</div>
-                        <div className="flex justify-between text-xs">
-                          <span>Total: {eventType.total}</span>
-                          <span className="text-green-600">Enviados: {eventType.enviados}</span>
-                          <span className="text-yellow-600">Pendentes: {eventType.pendentes}</span>
-                          <span className="text-red-600">Erros: {eventType.erros}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+              {loadingEventTypes ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                    <p className="text-muted-foreground">Carregando tipos de eventos...</p>
+                  </div>
                 </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {eventTypesList.map((eventType) => (
+                      <Card key={eventType.codigo} className={!eventType.ativo ? "opacity-60" : ""}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <CardTitle className="text-sm font-medium">{eventType.codigo}</CardTitle>
+                              {eventType.obrigatorio && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Obrigatório
+                                </Badge>
+                              )}
+                              {!eventType.ativo && (
+                                <Badge variant="outline" className="text-xs">
+                                  Inativo
+                                </Badge>
+                              )}
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditEventType(eventType)}>
+                                  <Settings className="mr-2 h-4 w-4" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGenerateEvent(eventType.codigo)}>
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Gerar Eventos
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleToggleEventType(eventType.id, !eventType.ativo)}>
+                                  {eventType.ativo ? (
+                                    <>
+                                      <AlertCircle className="mr-2 h-4 w-4" />
+                                      Desativar
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="mr-2 h-4 w-4" />
+                                      Ativar
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                          <CardDescription className="text-xs">{eventType.nome}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-xs text-muted-foreground mb-3">{eventType.descricao}</div>
+                          <div className="text-xs text-muted-foreground mb-3">
+                            <strong>Prazo:</strong> {eventType.prazo}
+                          </div>
+                          <div className="text-xs text-muted-foreground mb-3">
+                            <strong>Versão:</strong> {eventType.versao}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="text-center p-2 bg-muted rounded">
+                              <div className="font-medium">{eventType.total}</div>
+                              <div className="text-muted-foreground">Total</div>
+                            </div>
+                            <div className="text-center p-2 bg-green-50 dark:bg-green-950 rounded">
+                              <div className="font-medium text-green-600">{eventType.enviados}</div>
+                              <div className="text-muted-foreground">Enviados</div>
+                            </div>
+                            <div className="text-center p-2 bg-yellow-50 dark:bg-yellow-950 rounded">
+                              <div className="font-medium text-yellow-600">{eventType.pendentes}</div>
+                              <div className="text-muted-foreground">Pendentes</div>
+                            </div>
+                            <div className="text-center p-2 bg-red-50 dark:bg-red-950 rounded">
+                              <div className="font-medium text-red-600">{eventType.erros}</div>
+                              <div className="text-muted-foreground">Erros</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {eventTypesList.length === 0 && (
+                    <div className="text-center py-8">
+                      <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">Nenhum tipo de evento configurado</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Configure os tipos de eventos eSocial para começar a enviar dados
+                      </p>
+                      <Button onClick={() => setShowEventTypeDialog(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Adicionar Primeiro Tipo
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Event Types Management Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Gerenciamento de Tipos de Eventos</CardTitle>
+              <CardDescription>Visualização detalhada e configuração avançada</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Código</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Versão</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Eventos</TableHead>
+                      <TableHead>Última Atualização</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {eventTypesList.map((eventType) => (
+                      <TableRow key={eventType.codigo}>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium">{eventType.codigo}</span>
+                            {eventType.obrigatorio && (
+                              <Badge variant="secondary" className="text-xs">
+                                Obrigatório
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{eventType.nome}</div>
+                            <div className="text-sm text-muted-foreground">{eventType.descricao}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{eventType.versao}</TableCell>
+                        <TableCell>
+                          <Badge variant={eventType.ativo ? "default" : "outline"}>
+                            {eventType.ativo ? "Ativo" : "Inativo"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            <div>Total: {eventType.total}</div>
+                            <div className="text-muted-foreground">
+                              {eventType.enviados} enviados, {eventType.pendentes} pendentes, {eventType.erros} erros
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {eventType.updated_at ? new Date(eventType.updated_at).toLocaleDateString("pt-BR") : "-"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditEventType(eventType)}>
+                                <Settings className="mr-2 h-4 w-4" />
+                                Editar Configuração
+                              </DropdownMenuItem>
+                              <DropdownMenuItem>
+                                <FileText className="mr-2 h-4 w-4" />
+                                Ver Layout XML
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleGenerateEvent(eventType.codigo)}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Gerar Eventos
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleEventType(eventType.id, !eventType.ativo)}>
+                                {eventType.ativo ? (
+                                  <>
+                                    <AlertCircle className="mr-2 h-4 w-4" />
+                                    Desativar
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="mr-2 h-4 w-4" />
+                                    Ativar
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             </CardContent>
           </Card>
@@ -897,21 +1689,35 @@ export function ESocialIntegration() {
                 <CardDescription>Monitoramento da conectividade com o eSocial</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                <div
+                  className={`flex justify-between items-center p-3 rounded-lg ${
+                    connectionStatus.connected ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"
+                  }`}
+                >
                   <div className="flex items-center space-x-3">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    {connectionStatus.connected ? (
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-red-500" />
+                    )}
                     <div>
-                      <p className="font-medium">Conexão Ativa</p>
-                      <p className="text-sm text-muted-foreground">Última verificação: há 2 minutos</p>
+                      <p className="font-medium">{connectionStatus.connected ? "Conexão Ativa" : "Conexão Inativa"}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {connectionStatus.lastCheck
+                          ? `Última verificação: ${formatDateSafe(connectionStatus.lastCheck)}`
+                          : "Nunca testado"}
+                      </p>
                     </div>
                   </div>
-                  <Badge>Online</Badge>
+                  <Badge variant={connectionStatus.connected ? "default" : "destructive"}>
+                    {connectionStatus.connected ? "Online" : "Offline"}
+                  </Badge>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Ambiente:</span>
-                    <span className="font-medium">Produção</span>
+                    <span className="font-medium">{connectionStatus.environment}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Versão do Layout:</span>
@@ -919,12 +1725,29 @@ export function ESocialIntegration() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Certificado Digital:</span>
-                    <Badge>Válido até 15/06/2025</Badge>
+                    {certificateStatus ? (
+                      <Badge variant={certificateStatus.valid ? "default" : "destructive"}>
+                        {certificateStatus.valid
+                          ? `Válido até ${formatDateSafe(certificateStatus.validUntil)}`
+                          : "Expirado"}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Não configurado</Badge>
+                    )}
                   </div>
                 </div>
 
-                <Button className="w-full bg-transparent" variant="outline">
-                  <RefreshCw className="h-4 w-4 mr-2" />
+                <Button
+                  className="w-full bg-transparent"
+                  variant="outline"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                >
+                  {testingConnection ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
                   Testar Conexão
                 </Button>
               </CardContent>
@@ -938,11 +1761,17 @@ export function ESocialIntegration() {
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="text-center p-3 border rounded-lg">
-                    <div className="text-2xl font-bold">98.2%</div>
+                    <div className="text-2xl font-bold">
+                      {statistics.totalEvents > 0
+                        ? `${((statistics.successEvents / statistics.totalEvents) * 100).toFixed(1)}%`
+                        : "0%"}
+                    </div>
                     <p className="text-sm text-muted-foreground">Taxa de Sucesso</p>
                   </div>
                   <div className="text-center p-3 border rounded-lg">
-                    <div className="text-2xl font-bold">1.8s</div>
+                    <div className="text-2xl font-bold">
+                      {statistics.averageTime ? `${statistics.averageTime}s` : "0s"}
+                    </div>
                     <p className="text-sm text-muted-foreground">Tempo Médio</p>
                   </div>
                 </div>
@@ -950,19 +1779,19 @@ export function ESocialIntegration() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span>Eventos Enviados</span>
-                    <span className="font-medium">1,247</span>
+                    <span className="font-medium">{statistics.totalEvents.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span>Sucessos</span>
-                    <span className="font-medium text-green-600">1,225</span>
+                    <span className="font-medium text-green-600">{statistics.successEvents.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span>Erros</span>
-                    <span className="font-medium text-red-600">22</span>
+                    <span className="font-medium text-red-600">{statistics.errorEvents.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span>Tempo Total</span>
-                    <span className="font-medium">37min 42s</span>
+                    <span>Pendentes</span>
+                    <span className="font-medium text-yellow-600">{statistics.pendingEvents.toLocaleString()}</span>
                   </div>
                 </div>
               </CardContent>
@@ -976,33 +1805,59 @@ export function ESocialIntegration() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex items-center space-x-3 p-3 border rounded-lg">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <div className="flex-1">
-                    <p className="font-medium">Lote S-2220 enviado com sucesso</p>
-                    <p className="text-sm text-muted-foreground">15 eventos processados • 16/12/2024 às 14:30</p>
-                  </div>
-                  <Badge>Sucesso</Badge>
-                </div>
+                {activityLogs.length > 0 ? (
+                  activityLogs.map((log) => (
+                    <div key={log.id} className="flex items-center space-x-3 p-3 border rounded-lg">
+                      {log.tipo === "sucesso" && <CheckCircle className="h-4 w-4 text-green-500" />}
+                      {log.tipo === "erro" && <XCircle className="h-4 w-4 text-red-500" />}
+                      {log.tipo === "aviso" && <AlertTriangle className="h-4 w-4 text-yellow-500" />}
+                      {log.tipo === "info" && <Info className="h-4 w-4 text-blue-500" />}
 
-                <div className="flex items-center space-x-3 p-3 border rounded-lg">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <div className="flex-1">
-                    <p className="font-medium">Certificado digital expira em 180 dias</p>
-                    <p className="text-sm text-muted-foreground">Renovação necessária • 16/12/2024 às 08:00</p>
-                  </div>
-                  <Badge variant="secondary">Aviso</Badge>
-                </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{log.descricao}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {log.detalhes && `${log.detalhes} • `}
+                          {formatDateSafe(log.created_at)}
+                        </p>
+                      </div>
 
-                <div className="flex items-center space-x-3 p-3 border rounded-lg">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <div className="flex-1">
-                    <p className="font-medium">Sincronização automática executada</p>
-                    <p className="text-sm text-muted-foreground">89 eventos verificados • 16/12/2024 às 06:00</p>
+                      <Badge
+                        variant={
+                          log.tipo === "sucesso"
+                            ? "default"
+                            : log.tipo === "erro"
+                              ? "destructive"
+                              : log.tipo === "aviso"
+                                ? "secondary"
+                                : "outline"
+                        }
+                      >
+                        {log.tipo === "sucesso"
+                          ? "Sucesso"
+                          : log.tipo === "erro"
+                            ? "Erro"
+                            : log.tipo === "aviso"
+                              ? "Aviso"
+                              : "Info"}
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhuma atividade registrada</p>
                   </div>
-                  <Badge>Sucesso</Badge>
-                </div>
+                )}
               </div>
+
+              {activityLogs.length > 0 && (
+                <div className="mt-4 text-center">
+                  <Button variant="outline" size="sm">
+                    <History className="h-4 w-4 mr-2" />
+                    Ver Histórico Completo
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1367,6 +2222,204 @@ export function ESocialIntegration() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showEventTypeDialog} onOpenChange={setShowEventTypeDialog}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{selectedEventTypeForEdit ? "Editar Tipo de Evento" : "Novo Tipo de Evento"}</DialogTitle>
+            <DialogDescription>Configure as informações e layout XML do tipo de evento eSocial</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <div>
+                <Label>Código do Evento</Label>
+                <Input
+                  value={eventTypeForm.codigo}
+                  onChange={(e) => setEventTypeForm((prev) => ({ ...prev, codigo: e.target.value }))}
+                  placeholder="Ex: S-2220"
+                  disabled={!!selectedEventTypeForEdit}
+                />
+              </div>
+
+              <div>
+                <Label>Nome do Evento</Label>
+                <Input
+                  value={eventTypeForm.nome}
+                  onChange={(e) => setEventTypeForm((prev) => ({ ...prev, nome: e.target.value }))}
+                  placeholder="Ex: Monitoramento da Saúde do Trabalhador"
+                />
+              </div>
+
+              <div>
+                <Label>Descrição</Label>
+                <Input
+                  value={eventTypeForm.descricao}
+                  onChange={(e) => setEventTypeForm((prev) => ({ ...prev, descricao: e.target.value }))}
+                  placeholder="Descrição detalhada do evento"
+                />
+              </div>
+
+              <div>
+                <Label>Versão</Label>
+                <Input
+                  value={eventTypeForm.versao}
+                  onChange={(e) => setEventTypeForm((prev) => ({ ...prev, versao: e.target.value }))}
+                  placeholder="1.0"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="ativo"
+                  checked={eventTypeForm.ativo}
+                  onChange={(e) => setEventTypeForm((prev) => ({ ...prev, ativo: e.target.checked }))}
+                />
+                <Label htmlFor="ativo">Evento ativo</Label>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Layout XML</Label>
+                <textarea
+                  className="w-full h-64 p-3 border rounded-md font-mono text-sm"
+                  value={eventTypeForm.layout_xml}
+                  onChange={(e) => setEventTypeForm((prev) => ({ ...prev, layout_xml: e.target.value }))}
+                  placeholder="Cole aqui o layout XML do evento conforme especificação eSocial..."
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEventTypeDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEventType}>
+              {selectedEventTypeForEdit ? "Atualizar" : "Criar"} Tipo de Evento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEventGenerationDialog} onOpenChange={setShowEventGenerationDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gerar Eventos eSocial</DialogTitle>
+            <DialogDescription>Selecione os dados para gerar eventos automaticamente</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label>Tipo de Evento</Label>
+              <Select value={selectedEventType} onValueChange={setSelectedEventType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo de evento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="S-2220">S-2220 - ASO (Exames Médicos)</SelectItem>
+                  <SelectItem value="S-2240">S-2240 - Riscos Ocupacionais</SelectItem>
+                  <SelectItem value="S-2210">S-2210 - Acidentes de Trabalho</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {selectedEventType && (
+              <div className="space-y-2">
+                <Label>Dados Disponíveis</Label>
+                <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
+                  {selectedEventType === "S-2220" && availableData.asos.length > 0 && (
+                    <div className="space-y-2">
+                      {availableData.asos.map((aso) => (
+                        <div key={aso.id} className="flex items-center space-x-2">
+                          <input type="checkbox" id={`aso-${aso.id}`} />
+                          <label htmlFor={`aso-${aso.id}`} className="text-sm">
+                            {aso.funcionarios?.nome} - ASO {aso.tipo_exame} (
+                            {new Date(aso.data_exame).toLocaleDateString("pt-BR")})
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedEventType === "S-2240" && availableData.riscos.length > 0 && (
+                    <div className="space-y-2">
+                      {availableData.riscos.map((risco) => (
+                        <div key={risco.id} className="flex items-center space-x-2">
+                          <input type="checkbox" id={`risco-${risco.id}`} />
+                          <label htmlFor={`risco-${risco.id}`} className="text-sm">
+                            {risco.funcionarios?.nome} - {risco.tipo_risco} ({risco.setor})
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedEventType === "S-2210" && availableData.incidentes.length > 0 && (
+                    <div className="space-y-2">
+                      {availableData.incidentes.map((incidente) => (
+                        <div key={incidente.id} className="flex items-center space-x-2">
+                          <input type="checkbox" id={`incidente-${incidente.id}`} />
+                          <label htmlFor={`incidente-${incidente.id}`} className="text-sm">
+                            {incidente.funcionarios?.nome} - {incidente.tipo_incidente} (
+                            {new Date(incidente.data_ocorrencia).toLocaleDateString("pt-BR")})
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {((selectedEventType === "S-2220" && availableData.asos.length === 0) ||
+                    (selectedEventType === "S-2240" && availableData.riscos.length === 0) ||
+                    (selectedEventType === "S-2210" && availableData.incidentes.length === 0)) && (
+                    <p className="text-muted-foreground text-sm">Nenhum dado disponível para este tipo de evento</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Senha do Certificado</Label>
+              <Input
+                type="password"
+                value={certificatePassword}
+                onChange={(e) => setCertificatePassword(e.target.value)}
+                placeholder="Digite a senha do certificado A1"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEventGenerationDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                const selectedItems = []
+                // Logic to get selected items would go here
+                processEvents(selectedEventType, selectedItems)
+              }}
+              disabled={!selectedEventType || !certificatePassword || processingEvents}
+            >
+              {processingEvents ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" />
+                  Gerar e Enviar Eventos
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+
+export default ESocialIntegration

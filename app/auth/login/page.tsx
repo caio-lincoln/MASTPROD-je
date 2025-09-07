@@ -60,15 +60,17 @@ export default function LoginPage() {
           </div>
 
           {/* Card de Login */}
-          <Card className="shadow-lg border-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
+          <Card className="shadow-lg border-0 bg-white dark:bg-gray-800 backdrop-blur-sm">
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-2xl font-semibold text-center">Fazer Login</CardTitle>
-              <CardDescription className="text-center">Digite suas credenciais para acessar o sistema</CardDescription>
+              <CardTitle className="text-2xl font-semibold text-center text-foreground">Fazer Login</CardTitle>
+              <CardDescription className="text-center text-muted-foreground">
+                Digite suas credenciais para acessar o sistema
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium">
+                  <Label htmlFor="email" className="text-sm font-medium text-foreground">
                     E-mail
                   </Label>
                   <Input
@@ -84,7 +86,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">
+                  <Label htmlFor="password" className="text-sm font-medium text-foreground">
                     Senha
                   </Label>
                   <div className="relative">
@@ -134,8 +136,11 @@ export default function LoginPage() {
                 </LoadingButton>
               </form>
 
-              <div className="mt-6 text-center text-sm text-muted-foreground">
-                <Link href="/auth/forgot-password" className="font-medium text-primary hover:underline">
+              <div className="mt-6 text-center text-sm">
+                <Link
+                  href="/auth/forgot-password"
+                  className="font-medium text-primary hover:text-primary/80 hover:underline"
+                >
                   Esqueceu sua senha?
                 </Link>
               </div>
