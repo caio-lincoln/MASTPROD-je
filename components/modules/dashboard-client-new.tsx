@@ -1,9 +1,12 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Users, AlertTriangle, CheckCircle, Clock, TrendingUp, TrendingDown, Shield, Heart } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/client"
 
 interface KPIData {
   title: string
@@ -53,7 +56,7 @@ interface DashboardServerProps {
 }
 
 async function fetchDashboardData(empresaId: string): Promise<DashboardStats> {
-  const supabase = await createClient()
+  const supabase = createClient()
 
   const today = new Date()
   const startOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString()
@@ -218,8 +221,27 @@ async function fetchDashboardData(empresaId: string): Promise<DashboardStats> {
   }
 }
 
-export async function DashboardServer({ empresaId, empresaName }: DashboardServerProps) {
-  const dashboardData = await fetchDashboardData(empresaId)
+export function DashboardServer({ empresaId, empresaName }: DashboardServerProps) {
+  const [dashboardData, setDashboardData] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const data = await fetchDashboardData(empresaId)
+        setDashboardData(data)
+      } catch (error) {
+        console.error('Erro ao carregar dados do dashboard:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [empresaId])
+
+  if (loading || !dashboardData) {
+    return <div className="p-4">Carregando...</div>
+  }
 
   const kpiData: KPIData[] = [
     {

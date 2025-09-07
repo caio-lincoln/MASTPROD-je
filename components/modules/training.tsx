@@ -204,7 +204,7 @@ export default function TrainingComponent() {
       if (certificatesError) throw certificatesError
 
       const formattedCertificates =
-        certificatesData?.map((cert) => ({
+        certificatesData?.map((cert: any) => ({
           id: cert.id,
           treinamento_nome: cert.treinamentos?.nome || "",
           data_treinamento: cert.created_at,
@@ -734,11 +734,11 @@ export default function TrainingComponent() {
                         <div>
                           <div className="flex justify-between text-sm mb-1">
                             <span>Progresso Geral</span>
-                            <span>{Math.round((training.concluidos / training.participantes) * 100) || 0}%</span>
+                            <span>{Math.round((participants.filter(p => p.treinamento_id === training.id && p.status === "Concluído").length / participants.filter(p => p.treinamento_id === training.id).length) * 100) || 0}%</span>
                           </div>
                           <Progress
                             value={
-                              training.participantes > 0 ? (training.concluidos / training.participantes) * 100 : 0
+                              participants.filter(p => p.treinamento_id === training.id).length > 0 ? (participants.filter(p => p.treinamento_id === training.id && p.status === "Concluído").length / participants.filter(p => p.treinamento_id === training.id).length) * 100 : 0
                             }
                             className="h-2"
                           />
@@ -747,22 +747,22 @@ export default function TrainingComponent() {
                         <div className="flex justify-between items-center">
                           <div>
                             <p className="text-sm text-muted-foreground">Participantes</p>
-                            <p className="font-medium">{training.participantes}</p>
+                            <p className="font-medium">{participants.filter(p => p.treinamento_id === training.id).length}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">Concluídos</p>
-                            <p className="font-medium text-green-600">{training.concluidos}</p>
+                            <p className="font-medium text-green-600">{participants.filter(p => p.treinamento_id === training.id && p.status === "Concluído").length}</p>
                           </div>
                           <div>
                             <p className="text-sm text-muted-foreground">Pendentes</p>
-                            <p className="font-medium text-yellow-600">{training.pendentes}</p>
+                            <p className="font-medium text-yellow-600">{participants.filter(p => p.treinamento_id === training.id && p.status === "Pendente").length}</p>
                           </div>
                         </div>
 
                         <div className="flex justify-between items-center">
                           <div>
                             <p className="text-sm text-muted-foreground">Próxima Turma</p>
-                            <p className="font-medium">{format(new Date(training.proxima_turma), "dd/MM/yyyy")}</p>
+                            <p className="font-medium">{training.proxima_turma ? format(new Date(training.proxima_turma), "dd/MM/yyyy") : "Não definida"}</p>
                           </div>
                           <div className="flex space-x-2">
                             <Button variant="outline" size="sm">
@@ -1040,11 +1040,11 @@ export default function TrainingComponent() {
                               {training.instrutor} • {training.carga_horaria}h
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {training.participantes} participantes inscritos
+                              {participants.filter(p => p.treinamento_id === training.id).length} participantes inscritos
                             </p>
                           </div>
                           <Badge variant={training.status === "Planejado" ? "outline" : undefined}>
-                            {format(new Date(training.proxima_turma), "dd/MM")}
+                            {training.proxima_turma ? format(new Date(training.proxima_turma), "dd/MM") : "--/--"}
                           </Badge>
                         </div>
                       </div>
@@ -1154,8 +1154,8 @@ export default function TrainingComponent() {
                 <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
-                    selected={formData.proximaTurma}
-                    onSelect={(date) => setFormData({ ...formData, proximaTurma: date })}
+                    selected={formData.proximaTurma || undefined}
+                    onSelect={(date) => setFormData({ ...formData, proximaTurma: date || null })}
                     initialFocus
                   />
                 </PopoverContent>

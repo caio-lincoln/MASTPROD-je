@@ -708,11 +708,17 @@ export function RiskManagement() {
                     </DialogHeader>
                     <div className="py-4">
                       <FileUpload
-                        onFilesSelected={handleUploadPGR}
-                        acceptedTypes={["application/pdf"]}
+                        type="pgr"
+                        onUploadComplete={(url, path) => {
+                          // Handle upload completion
+                          console.log('Upload completed:', url, path)
+                        }}
+                        onUploadError={(error) => {
+                          console.error('Upload error:', error)
+                        }}
                         maxFiles={1}
                         maxSizeMB={50}
-                        disabled={uploadingPGR}
+                        accept="application/pdf"
                       />
                       {uploadingPGR && (
                         <div className="mt-4 text-center">

@@ -355,7 +355,7 @@ export function WorkplaceSafety() {
   const handleUploadEvidence = async (file: File, incidentId: string) => {
     try {
       const fileName = `incident-${incidentId}-${Date.now()}-${file.name}`
-      const filePath = await uploadArquivo(file, "evidencia", selectedCompany?.id || "", fileName)
+      const filePath = await uploadArquivo(file, "evidencias", selectedCompany?.id || "", fileName)
 
       const { error } = await supabase.from("incidentes").update({ evidencia_url: filePath }).eq("id", incidentId)
 
@@ -402,7 +402,7 @@ export function WorkplaceSafety() {
       const blob = new Blob([reportContent], { type: "text/plain" })
       const file = new File([blob], fileName, { type: "text/plain" })
 
-      const filePath = await uploadArquivo(file, "relatorio", selectedCompany?.id || "", fileName)
+      const filePath = await uploadArquivo(file, "relatorios", selectedCompany?.id || "", fileName)
 
       // Save report record to database
       const { error } = await supabase.from("logs_gerais").insert([
@@ -907,14 +907,19 @@ export function WorkplaceSafety() {
             <div>
               <Label>Arquivo de Evidência</Label>
               <FileUpload
-                onUpload={(file) => {
-                  if (selectedIncident) {
-                    handleUploadEvidence(file, selectedIncident.id)
+                type="evidencias"
+                onUploadComplete={(url, path) => {
+                  if (selectedIncident && path) {
+                    // Update incident with evidence URL
+                    supabase.from("incidentes").update({ evidencia_url: path }).eq("id", selectedIncident.id)
                     setIsEvidenceDialogOpen(false)
                   }
                 }}
-                accept="image/*,.pdf,.doc,.docx"
-                maxSizeMB={10} // 10MB
+                onUploadError={(error) => {
+                  console.error("Erro no upload:", error)
+                }}
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                maxSizeMB={10}
               />
             </div>
           </div>

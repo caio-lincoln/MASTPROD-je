@@ -49,6 +49,18 @@ import { ptBR } from "date-fns/locale"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import JSZip from "jszip"
 
+interface ReportTemplate {
+  id: number
+  nome: string
+  categoria: string
+  descricao: string
+  modulos: string[]
+  periodicidade: string
+  ultimaGeracao: string
+  status: string
+  downloads: number
+}
+
 const reportTemplatesByCompany = {
   1: [
     {
@@ -215,7 +227,7 @@ function Reports() {
   const [totalReports, setTotalReports] = useState(0)
   const [totalDownloads, setTotalDownloads] = useState(0)
   const [activeSchedules, setActiveSchedules] = useState(0)
-  const [reportTemplates, setReportTemplates] = useState<any[]>([])
+  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([])
   const [reportHistory, setReportHistory] = useState<any[]>([])
 
   const supabase = createClientComponentClient()
@@ -706,7 +718,7 @@ function Reports() {
           </DialogTrigger>
           <DialogContent className="max-w-3xl">
             <DialogHeader>
-              <DialogTitle>Gerar Novo Relatório - {selectedCompany.nome}</DialogTitle>
+              <DialogTitle>Gerar Novo Relatório - {selectedCompany.name}</DialogTitle>
               <DialogDescription>Configure um relatório personalizado com os dados desejados</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -856,7 +868,7 @@ function Reports() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{totalTemplates}</div>
-                <p className="text-xs text-muted-foreground">Para {selectedCompany.nome}</p>
+                <p className="text-xs text-muted-foreground">Para {selectedCompany.name}</p>
               </CardContent>
             </Card>
 
@@ -897,7 +909,7 @@ function Reports() {
           {/* Lista de Modelos */}
           <Card>
             <CardHeader>
-              <CardTitle>Modelos de Relatórios - {selectedCompany.nome}</CardTitle>
+              <CardTitle>Modelos de Relatórios - {selectedCompany.name}</CardTitle>
               <CardDescription>Templates pré-configurados para geração rápida</CardDescription>
             </CardHeader>
             <CardContent>
@@ -981,7 +993,7 @@ function Reports() {
         <TabsContent value="historico" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Histórico de Relatórios - {selectedCompany.nome}</CardTitle>
+              <CardTitle>Histórico de Relatórios - {selectedCompany.name}</CardTitle>
               <CardDescription>Todos os relatórios gerados recentemente</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1114,7 +1126,7 @@ function Reports() {
         <TabsContent value="esocial" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Relatórios eSocial - {selectedCompany.nome}</CardTitle>
+              <CardTitle>Relatórios eSocial - {selectedCompany.name}</CardTitle>
               <CardDescription>Eventos eSocial transmitidos e pendentes</CardDescription>
             </CardHeader>
             <CardContent>

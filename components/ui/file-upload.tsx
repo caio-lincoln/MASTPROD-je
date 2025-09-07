@@ -47,8 +47,8 @@ export function FileUpload({
         return false
       }
 
-      if (!validarTamanhoArquivo(file, maxSizeMB)) {
-        onUploadError?.(`Arquivo muito grande: ${file.name} (máximo ${maxSizeMB}MB)`)
+      if (!validarTamanhoArquivo(file, type)) {
+        onUploadError?.(`Arquivo muito grande: ${file.name}`)
         return false
       }
 

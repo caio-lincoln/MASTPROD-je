@@ -1,6 +1,12 @@
-import { Button, type ButtonProps } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { type VariantProps } from "class-variance-authority"
 import { Loader2 } from "lucide-react"
 import { forwardRef } from "react"
+
+type ButtonProps = React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }
 
 interface LoadingButtonProps extends Omit<ButtonProps, 'children'> {
   isLoading?: boolean

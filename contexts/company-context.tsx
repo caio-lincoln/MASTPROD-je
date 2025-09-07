@@ -125,15 +125,15 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             userCompanies
               ?.filter((uc) => uc.empresas)
               .map((uc) => ({
-                id: uc.empresas.id,
-                name: uc.empresas.nome,
-                cnpj: uc.empresas.cnpj || "",
-                address: uc.empresas.endereco || "",
-                phone: uc.empresas.telefone || "",
-                email: uc.empresas.email || "",
-                logo: uc.empresas.logo_url || undefined,
-                isActive: uc.empresas.status,
-                createdAt: new Date(uc.empresas.created_at),
+                id: (uc.empresas as any).id,
+                name: (uc.empresas as any).nome,
+                cnpj: (uc.empresas as any).cnpj || "",
+                address: (uc.empresas as any).endereco || "",
+                phone: (uc.empresas as any).telefone || "",
+                email: (uc.empresas as any).email || "",
+                logo: (uc.empresas as any).logo_url || undefined,
+                isActive: (uc.empresas as any).status,
+                createdAt: new Date((uc.empresas as any).created_at),
               })) || []
 
           setCompanies(formattedCompanies)

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { DashboardClient } from "@/components/dashboard-client"
-import { DashboardServer } from "@/components/modules/dashboard-server"
+import { DashboardServer } from "@/components/modules/dashboard-client-new"
 
 interface PageProps {
   searchParams: Promise<{ empresa?: string }>

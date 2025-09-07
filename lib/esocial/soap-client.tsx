@@ -359,7 +359,6 @@ export class EsocialSoapClient {
       // Fazer uma requisição simples para testar conectividade
       const response = await fetch(this.config.urls.recepcaoLote, {
         method: "HEAD",
-        timeout: 10000,
       })
 
       return {

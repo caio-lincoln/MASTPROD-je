@@ -30,18 +30,7 @@ export const TIPOS_EVENTO = {
   "S-2230": "Afastamento Temporário",
 }
 
-interface EsocialConfig {
-  ambiente: "producao" | "homologacao"
-  cnpj: string
-  certificado: {
-    tipo: string
-  }
-  urls: {
-    recepcaoLote: string
-    consultaLote: string
-    downloadEvento: string
-  }
-}
+import { EsocialConfig } from './types'
 
 export function getEsocialConfig(
   empresa_cnpj: string,
@@ -51,7 +40,7 @@ export function getEsocialConfig(
     ambiente,
     cnpj: empresa_cnpj,
     certificado: {
-      tipo: "A1", // Padrão A1, pode ser configurado por empresa
+      tipo: "A1" as const, // Padrão A1, pode ser configurado por empresa
     },
     urls: ESOCIAL_URLS[ambiente],
   }
