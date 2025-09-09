@@ -9,15 +9,15 @@ import { ModuleErrorBoundary } from "@/components/error-boundary"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { preloadModuleUtilities } from "@/lib/dynamic-imports"
 
-const Dashboard = lazy(() => import("@/components/modules/dashboard").then((module) => ({ default: module.Dashboard })))
-const RiskManagement = lazy(() => import("@/components/modules/risk-management"))
-const OccupationalHealth = lazy(() => import("@/components/modules/occupational-health"))
-const Employees = lazy(() => import("@/components/modules/employees"))
+const Dashboard = lazy(() => import("@/components/modules/dashboard"))
+const RiskManagement = lazy(() => import("@/components/modules/risk-management").then((module) => ({ default: module.RiskManagement })))
+const OccupationalHealth = lazy(() => import("@/components/modules/occupational-health").then((module) => ({ default: module.OccupationalHealth })))
+const Employees = lazy(() => import("@/components/modules/employees").then((module) => ({ default: module.Employees })))
 const Training = lazy(() => import("@/components/modules/training"))
 const DigitalLibrary = lazy(() => import("@/components/modules/digital-library"))
-const Reports = lazy(() => import("@/components/modules/reports").then((module) => ({ default: module.Reports })))
+const Reports = lazy(() => import("@/components/modules/reports"))
 const ESocialIntegration = lazy(() => import("@/components/modules/esocial-integration"))
-const NonConformities = lazy(() => import("@/components/modules/non-conformities"))
+const NonConformities = lazy(() => import("@/components/modules/non-conformities").then((module) => ({ default: module.NonConformities })))
 const WorkplaceSafety = lazy(() => import("@/components/modules/workplace-safety"))
 const Settings = lazy(() => import("@/components/modules/settings"))
 

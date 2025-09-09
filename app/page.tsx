@@ -1,39 +1,47 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import { DashboardClient } from "@/components/dashboard-client"
-import { DashboardServer } from "@/components/modules/dashboard-client-new"
 import { ModulePreloader } from "@/components/module-preloader"
+import type { User } from "@supabase/supabase-js"
 
-interface PageProps {
-  searchParams: Promise<{ empresa?: string }>
-}
+export default function Home() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const supabase = createClient()
 
-export default async function Home({ searchParams }: PageProps) {
-  const supabase = await createClient()
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data, error } = await supabase.auth.getUser()
+      if (error || !data?.user) {
+        router.push("/auth/login")
+        return
+      }
+      setUser(data.user)
+      setLoading(false)
+    }
 
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data?.user) {
-    redirect("/auth/login")
+    checkUser()
+  }, [router, supabase.auth])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">Loading...</div>
+      </div>
+    )
   }
 
-  const params = await searchParams
-
-  if (params.empresa) {
-    const { data: empresa } = await supabase.from("empresas").select("id, name").eq("id", params.empresa).single()
-
-    if (empresa) {
-      return (
-        <>
-          <DashboardServer empresaId={empresa.id} empresaName={empresa.name} />
-          <ModulePreloader />
-        </>
-      )
-    }
+  if (!user) {
+    return null
   }
 
   return (
     <>
-      <DashboardClient user={data.user} />
+      <DashboardClient user={user} />
       <ModulePreloader />
     </>
   )

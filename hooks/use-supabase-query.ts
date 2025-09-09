@@ -43,7 +43,7 @@ export function useSupabaseQuery<T = any>(table: string, options: UseSupabaseQue
     isLoading,
     isValidating,
     mutate: mutateSingle,
-  } = useSWR<T[]>(cacheKey, supabaseFetcher, {
+  } = useSWR<T[]>(cacheKey, (key: string) => supabaseFetcher(key) as Promise<T[]>, {
     ...swrOptions,
     revalidateOnMount: true,
   })
@@ -54,7 +54,10 @@ export function useSupabaseQuery<T = any>(table: string, options: UseSupabaseQue
 
       try {
         // Optimistically update the cache
-        await mutateSingle(updateFn, false)
+        await mutateSingle((currentData: T[] | undefined) => {
+          if (!currentData) return []
+          return updateFn(currentData)
+        }, false)
 
         // Perform the actual update if provided
         if (asyncUpdate) {

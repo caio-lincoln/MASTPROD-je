@@ -17,10 +17,41 @@ export function LazyModuleLoader({
   importPath,
   fallbackVariant = "dashboard",
 }: LazyModuleLoaderProps) {
-  const LazyComponent = lazy(() =>
-    import(importPath).catch((error) => {
+  // Use a more specific import pattern to avoid webpack warnings
+  const LazyComponent = lazy(() => {
+    // Define known module paths to avoid dynamic import warnings
+    const moduleMap: Record<string, () => Promise<any>> = {
+      "@/components/modules/dashboard": () => import("@/components/modules/dashboard"),
+      "@/components/modules/employees": () => import("@/components/modules/employees"),
+      "@/components/modules/occupational-health": () => import("@/components/modules/occupational-health"),
+      "@/components/modules/training": () => import("@/components/modules/training"),
+      "@/components/modules/reports": () => import("@/components/modules/reports"),
+      "@/components/modules/esocial-integration": () => import("@/components/modules/esocial-integration"),
+      "@/components/modules/digital-library": () => import("@/components/modules/digital-library"),
+      "@/components/modules/risk-management": () => import("@/components/modules/risk-management"),
+      "@/components/modules/workplace-safety": () => import("@/components/modules/workplace-safety"),
+      "@/components/modules/non-conformities": () => import("@/components/modules/non-conformities"),
+      "@/components/modules/audit-logs": () => import("@/components/modules/audit-logs"),
+      "@/components/modules/settings": () => import("@/components/modules/settings"),
+    }
+
+    const importFn = moduleMap[importPath]
+    if (!importFn) {
+      console.warn(`Unknown module path: ${importPath}. Using fallback.`)
+      return Promise.resolve({
+        default: () => (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-destructive mb-2">Módulo não encontrado</h3>
+              <p className="text-sm text-muted-foreground mb-4">O módulo {moduleName} não está disponível.</p>
+            </div>
+          </div>
+        ),
+      })
+    }
+
+    return importFn().catch((error) => {
       console.error(`Failed to load module ${moduleName}:`, error)
-      // Return a fallback component on import error
       return {
         default: () => (
           <div className="flex items-center justify-center h-64">
@@ -37,8 +68,8 @@ export function LazyModuleLoader({
           </div>
         ),
       }
-    }),
-  )
+    })
+  })
 
   const LoadingFallback = () => (
     <div className="space-y-4 sm:space-y-6">
@@ -77,7 +108,29 @@ export function createLazyModule(
 }
 
 export function preloadModule(importPath: string) {
-  return import(importPath).catch((error) => {
+  // Use the same module map to avoid dynamic import warnings
+  const moduleMap: Record<string, () => Promise<any>> = {
+    "@/components/modules/dashboard": () => import("@/components/modules/dashboard"),
+    "@/components/modules/employees": () => import("@/components/modules/employees"),
+    "@/components/modules/occupational-health": () => import("@/components/modules/occupational-health"),
+    "@/components/modules/training": () => import("@/components/modules/training"),
+    "@/components/modules/reports": () => import("@/components/modules/reports"),
+    "@/components/modules/esocial-integration": () => import("@/components/modules/esocial-integration"),
+    "@/components/modules/digital-library": () => import("@/components/modules/digital-library"),
+    "@/components/modules/risk-management": () => import("@/components/modules/risk-management"),
+    "@/components/modules/workplace-safety": () => import("@/components/modules/workplace-safety"),
+    "@/components/modules/non-conformities": () => import("@/components/modules/non-conformities"),
+    "@/components/modules/audit-logs": () => import("@/components/modules/audit-logs"),
+    "@/components/modules/settings": () => import("@/components/modules/settings"),
+  }
+
+  const importFn = moduleMap[importPath]
+  if (!importFn) {
+    console.warn(`Cannot preload unknown module: ${importPath}`)
+    return Promise.resolve()
+  }
+
+  return importFn().catch((error) => {
     console.warn(`Failed to preload module ${importPath}:`, error)
   })
 }

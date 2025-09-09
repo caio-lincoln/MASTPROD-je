@@ -14,11 +14,11 @@ export const dynamicImports = {
   // Excel processing (heavy)
   xlsx: () => import("xlsx"),
 
-  // XML processing for eSocial
-  xmlUtils: () => import("@/lib/esocial/xml-utils"),
+  // XML processing utilities
+  xmlUtils: () => import("@/lib/utils/xml-utils"),
 
-  // Crypto utilities for certificates
-  cryptoUtils: () => import("@/lib/esocial/crypto-utils"),
+  // Crypto utilities
+  cryptoUtils: () => import("@/lib/utils/crypto-utils"),
 
   // Image processing
   imageUtils: () => import("@/lib/utils/image-utils"),

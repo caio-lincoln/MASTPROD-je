@@ -112,13 +112,13 @@ export const cacheInvalidation = {
     ]
 
     patterns.forEach((pattern) => {
-      mutate((key) => typeof key === "string" && key.includes(empresaId), undefined, { revalidate: true })
+      mutate((key: any) => typeof key === "string" && key.includes(empresaId), undefined, { revalidate: true })
     })
   },
 
   // Invalidate specific table data
   invalidateTable: (mutate: any, table: string, empresaId: string) => {
-    mutate((key) => typeof key === "string" && key.startsWith(table) && key.includes(empresaId), undefined, {
+    mutate((key: any) => typeof key === "string" && key.startsWith(table) && key.includes(empresaId), undefined, {
       revalidate: true,
     })
   },
