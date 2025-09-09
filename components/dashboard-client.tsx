@@ -1,25 +1,39 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense, lazy } from "react"
 import type { User } from "@supabase/supabase-js"
 import { Sidebar } from "@/components/sidebar"
 import { TopBar } from "@/components/top-bar"
-import { Dashboard } from "@/components/modules/dashboard"
-import { RiskManagement } from "@/components/modules/risk-management"
-import { OccupationalHealth } from "@/components/modules/occupational-health"
-import { Employees } from "@/components/modules/employees"
-import { Training } from "@/components/modules/training"
-import { DigitalLibrary } from "@/components/modules/digital-library"
-import { Reports } from "@/components/modules/reports"
-import { ESocialIntegration } from "@/components/modules/esocial-integration"
-import { NonConformities } from "@/components/modules/non-conformities"
-import { WorkplaceSafety } from "@/components/modules/workplace-safety"
-import { Settings } from "@/components/modules/settings"
 import { MobileSidebarOverlay } from "@/components/mobile-sidebar-overlay"
+import { ModuleErrorBoundary } from "@/components/error-boundary"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { preloadModuleUtilities } from "@/lib/dynamic-imports"
+
+const Dashboard = lazy(() => import("@/components/modules/dashboard").then((module) => ({ default: module.Dashboard })))
+const RiskManagement = lazy(() => import("@/components/modules/risk-management"))
+const OccupationalHealth = lazy(() => import("@/components/modules/occupational-health"))
+const Employees = lazy(() => import("@/components/modules/employees"))
+const Training = lazy(() => import("@/components/modules/training"))
+const DigitalLibrary = lazy(() => import("@/components/modules/digital-library"))
+const Reports = lazy(() => import("@/components/modules/reports").then((module) => ({ default: module.Reports })))
+const ESocialIntegration = lazy(() => import("@/components/modules/esocial-integration"))
+const NonConformities = lazy(() => import("@/components/modules/non-conformities"))
+const WorkplaceSafety = lazy(() => import("@/components/modules/workplace-safety"))
+const Settings = lazy(() => import("@/components/modules/settings"))
 
 interface DashboardClientProps {
   user: User
 }
+
+const ModuleLoadingFallback = ({ moduleName }: { moduleName: string }) => (
+  <div className="space-y-4 sm:space-y-6">
+    <div className="px-1">
+      <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+      <div className="h-4 w-64 bg-muted animate-pulse rounded mt-2" />
+    </div>
+    <LoadingSkeleton variant="dashboard" />
+  </div>
+)
 
 export function DashboardClient({ user }: DashboardClientProps) {
   const [activeModule, setActiveModule] = useState("dashboard")
@@ -41,33 +55,79 @@ export function DashboardClient({ user }: DashboardClientProps) {
     return () => window.removeEventListener("resize", checkMobile)
   }, [])
 
+  useEffect(() => {
+    preloadModuleUtilities(activeModule)
+  }, [activeModule])
+
   const renderModule = () => {
-    switch (activeModule) {
-      case "dashboard":
-        return <Dashboard />
-      case "risk-management":
-        return <RiskManagement />
-      case "occupational-health":
-        return <OccupationalHealth />
-      case "employees":
-        return <Employees />
-      case "training":
-        return <Training />
-      case "digital-library":
-        return <DigitalLibrary />
-      case "reports":
-        return <Reports />
-      case "esocial":
-        return <ESocialIntegration />
-      case "non-conformities":
-        return <NonConformities />
-      case "workplace-safety":
-        return <WorkplaceSafety />
-      case "settings":
-        return <Settings />
-      default:
-        return <Dashboard />
+    const moduleComponents = {
+      dashboard: {
+        component: Dashboard,
+        name: "Dashboard",
+        fallback: <ModuleLoadingFallback moduleName="Dashboard" />,
+      },
+      "risk-management": {
+        component: RiskManagement,
+        name: "Gestão de Riscos",
+        fallback: <ModuleLoadingFallback moduleName="Gestão de Riscos" />,
+      },
+      "occupational-health": {
+        component: OccupationalHealth,
+        name: "Saúde Ocupacional",
+        fallback: <ModuleLoadingFallback moduleName="Saúde Ocupacional" />,
+      },
+      employees: {
+        component: Employees,
+        name: "Funcionários",
+        fallback: <ModuleLoadingFallback moduleName="Funcionários" />,
+      },
+      training: {
+        component: Training,
+        name: "Treinamentos",
+        fallback: <ModuleLoadingFallback moduleName="Treinamentos" />,
+      },
+      "digital-library": {
+        component: DigitalLibrary,
+        name: "Biblioteca Digital",
+        fallback: <ModuleLoadingFallback moduleName="Biblioteca Digital" />,
+      },
+      reports: {
+        component: Reports,
+        name: "Relatórios",
+        fallback: <ModuleLoadingFallback moduleName="Relatórios" />,
+      },
+      esocial: {
+        component: ESocialIntegration,
+        name: "eSocial",
+        fallback: <ModuleLoadingFallback moduleName="eSocial" />,
+      },
+      "non-conformities": {
+        component: NonConformities,
+        name: "Não Conformidades",
+        fallback: <ModuleLoadingFallback moduleName="Não Conformidades" />,
+      },
+      "workplace-safety": {
+        component: WorkplaceSafety,
+        name: "Segurança do Trabalho",
+        fallback: <ModuleLoadingFallback moduleName="Segurança do Trabalho" />,
+      },
+      settings: {
+        component: Settings,
+        name: "Configurações",
+        fallback: <ModuleLoadingFallback moduleName="Configurações" />,
+      },
     }
+
+    const moduleConfig = moduleComponents[activeModule as keyof typeof moduleComponents] || moduleComponents.dashboard
+    const Component = moduleConfig.component
+
+    return (
+      <ModuleErrorBoundary moduleName={moduleConfig.name}>
+        <Suspense fallback={moduleConfig.fallback}>
+          <Component />
+        </Suspense>
+      </ModuleErrorBoundary>
+    )
   }
 
   return (

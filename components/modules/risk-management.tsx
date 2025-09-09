@@ -19,19 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Shield,
-  Plus,
-  Edit,
-  Eye,
-  AlertTriangle,
-  CheckCircle,
-  AlertCircle,
-  Upload,
-  Download,
-  FileText,
-} from "lucide-react"
+import { Shield, Plus, Edit, Eye, AlertTriangle, CheckCircle, Upload, Download, FileText } from "lucide-react"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { FileUpload } from "@/components/ui/file-upload"
 import { uploadPGR, getSignedUrl } from "@/lib/supabase/storage"
@@ -142,17 +130,32 @@ export function RiskManagement() {
     }
   }
 
+  const loadPGRFiles = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data: filesData, error: filesError } = await supabase.storage.from("pgr").list(selectedCompany.id)
+
+      if (!filesError && filesData) {
+        setPgrFiles(filesData)
+      }
+    } catch (error) {
+      console.error("Erro ao carregar arquivos PGR:", error)
+    }
+  }
+
   useEffect(() => {
     loadRisks()
   }, [selectedCompany])
 
   const riskStats = {
     total: risks.length,
-    alto: risks.filter((r) => r.nivel_risco >= 15).length,
-    medio: risks.filter((r) => r.nivel_risco >= 6 && r.nivel_risco < 15).length,
-    baixo: risks.filter((r) => r.nivel_risco < 6).length,
-    ativo: risks.filter((r) => r.status === "pendente" || r.status === "em_andamento").length,
-    controlado: risks.filter((r) => r.status === "concluido").length,
+    alto: risks.filter((r) => r && typeof r.nivel_risco === "number" && r.nivel_risco >= 15).length,
+    medio: risks.filter((r) => r && typeof r.nivel_risco === "number" && r.nivel_risco >= 6 && r.nivel_risco < 15)
+      .length,
+    baixo: risks.filter((r) => r && typeof r.nivel_risco === "number" && r.nivel_risco < 6).length,
+    ativo: risks.filter((r) => r && (r.status === "pendente" || r.status === "em_andamento")).length,
+    controlado: risks.filter((r) => r && r.status === "concluido").length,
   }
 
   const handleUploadPGR = async (files: File[]) => {
@@ -162,7 +165,11 @@ export function RiskManagement() {
       setUploadingPGR(true)
       const file = files[0]
       const timestamp = new Date().toISOString().split("T")[0]
-      const fileName = `PGR_${selectedCompany.name}_${timestamp}.pdf`
+      const companyName =
+        selectedCompany?.name && typeof selectedCompany.name === "string"
+          ? selectedCompany.name.replace(/[^a-zA-Z0-9]/g, "_")
+          : "empresa"
+      const fileName = `PGR_${companyName}_${timestamp}.pdf`
 
       const result = await uploadPGR(file, selectedCompany.id, fileName)
 
@@ -175,7 +182,7 @@ export function RiskManagement() {
           arquivo_url: result.publicUrl,
         })
 
-        await loadRisks()
+        await loadPGRFiles()
         setIsUploadDialogOpen(false)
       }
     } catch (error) {
@@ -267,19 +274,8 @@ export function RiskManagement() {
 
   if (!selectedCompany) {
     return (
-      <div className="space-y-4 sm:space-y-6">
-        <div className="px-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center space-x-2">
-            <Shield className="h-6 w-6 sm:h-8 sm:w-8" />
-            <span>Gestão de Riscos (PGR)</span>
-          </h1>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">Programa de Gerenciamento de Riscos - NR-01</p>
-        </div>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Selecione uma empresa para visualizar e gerenciar os riscos ocupacionais.</AlertDescription>
-        </Alert>
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Selecione uma empresa para continuar</p>
       </div>
     )
   }
@@ -484,21 +480,21 @@ export function RiskManagement() {
                     Médio
                   </div>
                   <div className="h-16 sm:h-20 bg-red-100 dark:bg-red-900 border-2 border-red-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Alto ({risks.filter((r) => r.probabilidade === "Alta" && r.severidade === "Média").length})
+                    Alto ({risks.filter((r) => r && r.probabilidade === "Alta" && r.severidade === "Média").length})
                   </div>
                   <div className="h-16 sm:h-20 bg-red-100 dark:bg-red-900 border-2 border-red-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Alto ({risks.filter((r) => r.probabilidade === "Alta" && r.severidade === "Alta").length})
+                    Alto ({risks.filter((r) => r && r.probabilidade === "Alta" && r.severidade === "Alta").length})
                   </div>
 
                   <div className="font-medium text-xs sm:text-sm">Média</div>
                   <div className="h-16 sm:h-20 bg-green-100 dark:bg-green-900 border-2 border-green-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Baixo ({risks.filter((r) => r.probabilidade === "Média" && r.severidade === "Baixa").length})
+                    Baixo ({risks.filter((r) => r && r.probabilidade === "Média" && r.severidade === "Baixa").length})
                   </div>
                   <div className="h-16 sm:h-20 bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
                     Médio
                   </div>
                   <div className="h-16 sm:h-20 bg-red-100 dark:bg-red-900 border-2 border-red-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Alto ({risks.filter((r) => r.probabilidade === "Média" && r.severidade === "Alta").length})
+                    Alto ({risks.filter((r) => r && r.probabilidade === "Média" && r.severidade === "Alta").length})
                   </div>
 
                   <div className="font-medium text-xs sm:text-sm">Baixa</div>
@@ -509,7 +505,7 @@ export function RiskManagement() {
                     Baixo
                   </div>
                   <div className="h-16 sm:h-20 bg-yellow-100 dark:bg-yellow-900 border-2 border-yellow-300 rounded flex items-center justify-center text-xs sm:text-sm p-1">
-                    Médio ({risks.filter((r) => r.probabilidade === "Baixa" && r.severidade === "Alta").length})
+                    Médio ({risks.filter((r) => r && r.probabilidade === "Baixa" && r.severidade === "Alta").length})
                   </div>
                 </div>
               </div>
@@ -711,10 +707,10 @@ export function RiskManagement() {
                         type="pgr"
                         onUploadComplete={(url, path) => {
                           // Handle upload completion
-                          console.log('Upload completed:', url, path)
+                          console.log("Upload completed:", url, path)
                         }}
                         onUploadError={(error) => {
-                          console.error('Upload error:', error)
+                          console.error("Upload error:", error)
                         }}
                         maxFiles={1}
                         maxSizeMB={50}
@@ -744,8 +740,16 @@ export function RiskManagement() {
                       <div>
                         <p className="font-medium text-sm">{file.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(file.created_at).toLocaleDateString("pt-BR")} •{" "}
-                          {Math.round(file.metadata?.size / 1024 / 1024 || 0)} MB
+                          {file.created_at && typeof file.created_at === "string"
+                            ? new Date(file.created_at).toLocaleDateString("pt-BR")
+                            : "Data não disponível"}{" "}
+                          •{" "}
+                          {file.metadata?.size && typeof file.metadata.size === "number"
+                            ? Math.round(file.metadata.size / 1024 / 1024)
+                            : file.metadata?.size && typeof file.metadata.size === "string"
+                              ? Math.round(Number(file.metadata.size) / 1024 / 1024) || 0
+                              : 0}{" "}
+                          MB
                         </p>
                       </div>
                     </div>
