@@ -428,6 +428,12 @@ export function ESocialIntegration() {
           ...eventType,
           total: typeEvents.length,
           enviados,
+          id: `event-${eventType.codigo}`,
+          versao: "1.0",
+          layout_xml: "",
+          ativo: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
           pendentes,
           erros,
         }
@@ -809,7 +815,7 @@ export function ESocialIntegration() {
     switch (eventType) {
       case "S-2220": // ASO
         xml = xml
-          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany.cnpj}</nrInsc>`)
+          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany?.cnpj || ''}</nrInsc>`)
           .replace(/<cpfTrab><\/cpfTrab>/, `<cpfTrab>${data.funcionarios.cpf}</cpfTrab>`)
           .replace(/<matricula><\/matricula>/, `<matricula>${data.funcionarios.matricula}</matricula>`)
           .replace(/<dtAso><\/dtAso>/, `<dtAso>${new Date(data.data_exame).toISOString().split("T")[0]}</dtAso>`)
@@ -818,7 +824,7 @@ export function ESocialIntegration() {
 
       case "S-2240": // Risk exposure
         xml = xml
-          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany.cnpj}</nrInsc>`)
+          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany?.cnpj || ''}</nrInsc>`)
           .replace(/<cpfTrab><\/cpfTrab>/, `<cpfTrab>${data.funcionarios.cpf}</cpfTrab>`)
           .replace(/<matricula><\/matricula>/, `<matricula>${data.funcionarios.matricula}</matricula>`)
           .replace(
@@ -831,7 +837,7 @@ export function ESocialIntegration() {
 
       case "S-2210": // Accident
         xml = xml
-          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany.cnpj}</nrInsc>`)
+          .replace(/<nrInsc><\/nrInsc>/, `<nrInsc>${selectedCompany?.cnpj || ''}</nrInsc>`)
           .replace(/<cpfTrab><\/cpfTrab>/, `<cpfTrab>${data.funcionarios.cpf}</cpfTrab>`)
           .replace(/<matricula><\/matricula>/, `<matricula>${data.funcionarios.matricula}</matricula>`)
           .replace(
@@ -900,21 +906,20 @@ export function ESocialIntegration() {
           if (eventoError) throw eventoError
 
           // Send to eSocial
-          const sendResult = await esocialService.enviarEvento({
-            empresaId: selectedCompany.id,
-            eventoId: evento.id,
-            xmlAssinado: signResult.signedXml!,
-          })
+          const sendResult = await esocialService.processarEventoCompleto(
+            evento.id,
+            selectedCompany.id
+          )
 
           // Update event status
           await supabase
             .from("eventos_esocial")
             .update({
-              status: sendResult.success ? "enviado" : "erro",
+              status: sendResult.sucesso ? "enviado" : "erro",
               protocolo_envio: sendResult.protocolo,
               data_envio: new Date().toISOString(),
-              resposta_envio: sendResult.resposta,
-              mensagem_erro: sendResult.error,
+              resposta_envio: sendResult.sucesso ? "Enviado com sucesso" : sendResult.erro,
+              mensagem_erro: sendResult.erro,
             })
             .eq("id", evento.id)
 
@@ -925,9 +930,9 @@ export function ESocialIntegration() {
 
           processedEvents.push({
             item: item.funcionarios.nome,
-            success: sendResult.success,
+            success: sendResult.sucesso,
             protocolo: sendResult.protocolo,
-            error: sendResult.error,
+            error: sendResult.erro,
           })
         } catch (error) {
           processedEvents.push({
@@ -970,27 +975,26 @@ export function ESocialIntegration() {
       if (!evento) throw new Error("Evento não encontrado")
 
       const esocialService = new ESocialService()
-      const sendResult = await esocialService.enviarEvento({
-        empresaId: evento.empresa_id,
-        eventoId: evento.id,
-        xmlAssinado: evento.xml_assinado,
-      })
+      const sendResult = await esocialService.processarEventoCompleto(
+        evento.id,
+        evento.empresa_id
+      )
 
       await supabase
         .from("eventos_esocial")
         .update({
-          status: sendResult.success ? "enviado" : "erro",
+          status: sendResult.sucesso ? "enviado" : "erro",
           protocolo_envio: sendResult.protocolo,
           data_envio: new Date().toISOString(),
-          resposta_envio: sendResult.resposta,
-          mensagem_erro: sendResult.error,
+          resposta_envio: sendResult.sucesso ? "Enviado com sucesso" : sendResult.erro,
+          mensagem_erro: sendResult.erro,
         })
         .eq("id", eventId)
 
       toast({
-        title: sendResult.success ? "Evento Reenviado" : "Erro no Reenvio",
-        description: sendResult.success ? `Protocolo: ${sendResult.protocolo}` : sendResult.error,
-        variant: sendResult.success ? "default" : "destructive",
+        title: sendResult.sucesso ? "Evento Reenviado" : "Erro no Reenvio",
+        description: sendResult.sucesso ? `Protocolo: ${sendResult.protocolo}` : sendResult.erro,
+        variant: sendResult.sucesso ? "default" : "destructive",
       })
 
       await loadEvents()
@@ -1015,7 +1019,7 @@ export function ESocialIntegration() {
     pendingEvents: 0,
     averageTime: 0,
   })
-  const [activityLogs, setActivityLogs] = useState([])
+  const [activityLogs, setActivityLogs] = useState<any[]>([])
 
   const loadConnectionStatus = async () => {
     if (!selectedCompany) return
@@ -1295,11 +1299,11 @@ export function ESocialIntegration() {
                     setTestingConnection(true)
                     try {
                       const esocialService = new ESocialService()
-                      const result = await esocialService.testarConectividade()
+                      const result = await esocialService.testarConectividade(selectedCompany.id)
                       toast({
-                        title: result.success ? "Conexão OK" : "Erro de Conexão",
-                        description: result.message,
-                        variant: result.success ? "default" : "destructive",
+                        title: result.conectado ? "Conexão OK" : "Erro de Conexão",
+                        description: result.conectado ? `Ambiente: ${result.ambiente}` : result.erro,
+                        variant: result.conectado ? "default" : "destructive",
                       })
                     } catch (error) {
                       toast({
@@ -1421,7 +1425,7 @@ export function ESocialIntegration() {
                                 Visualizar
                               </DropdownMenuItem>
                               {event.status === "Erro" && (
-                                <DropdownMenuItem onClick={() => handleResendEventById(event.id)}>
+                                <DropdownMenuItem onClick={() => handleResendEventById(event.id.toString())}>
                                   <RefreshCw className="mr-2 h-4 w-4" />
                                   Reenviar
                                 </DropdownMenuItem>
@@ -1728,7 +1732,7 @@ export function ESocialIntegration() {
                     {certificateStatus ? (
                       <Badge variant={certificateStatus.valid ? "default" : "destructive"}>
                         {certificateStatus.valid
-                          ? `Válido até ${formatDateSafe(certificateStatus.validUntil)}`
+                          ? `Válido até ${formatDateSafe(certificateStatus.validUntil || null)}`
                           : "Expirado"}
                       </Badge>
                     ) : (
@@ -2397,7 +2401,7 @@ export function ESocialIntegration() {
             </Button>
             <Button
               onClick={() => {
-                const selectedItems = []
+                const selectedItems: any[] = []
                 // Logic to get selected items would go here
                 processEvents(selectedEventType, selectedItems)
               }}

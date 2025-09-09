@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js"
 // Supabase service client (server-side)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!, // required for private bucket access
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, // fallback to anon key
 )
 
 interface SignXMLParams {
@@ -74,26 +74,38 @@ export async function signXMLWithSupabaseCertificate({
 
       // Extrair chave privada
       const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })
-      if (!keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || keyBags[forge.pki.oids.pkcs8ShroudedKeyBag].length === 0) {
+      if (!keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.length === 0) {
         return {
           success: false,
           error: "Chave privada não encontrada no certificado.",
         }
       }
 
-      const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag][0]
+      const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0]
+      if (!keyBag || !keyBag.key) {
+        return {
+          success: false,
+          error: "Chave privada não encontrada no certificado.",
+        }
+      }
       privateKey = forge.pki.privateKeyToPem(keyBag.key)
 
       // Extrair certificado
       const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
-      if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag].length === 0) {
+      if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag]?.length === 0) {
         return {
           success: false,
           error: "Certificado não encontrado no arquivo .pfx.",
         }
       }
 
-      const certBag = certBags[forge.pki.oids.certBag][0]
+      const certBag = certBags[forge.pki.oids.certBag]?.[0]
+      if (!certBag || !certBag.cert) {
+        return {
+          success: false,
+          error: "Certificado não encontrado no arquivo .pfx.",
+        }
+      }
       certificate = forge.pki.certificateToPem(certBag.cert)
 
       // Verificar validade do certificado
@@ -135,31 +147,13 @@ export async function signXMLWithSupabaseCertificate({
       const sig = new SignedXml()
 
       // Configurar referência para o elemento eSocial
-      sig.addReference("//*[local-name(.)='eSocial']", [
-        "http://www.w3.org/2000/09/xmldsig#enveloped-signature",
-        "http://www.w3.org/2001/10/xml-exc-c14n#",
-      ])
+      sig.addReference({ xpath: "//*[local-name(.)='eSocial']" })
 
       // Configurar chave de assinatura
-      sig.signingKey = privateKey
-
-      // Configurar informações do certificado
-      sig.keyInfoProvider = {
-        getKeyInfo() {
-          const certBase64 = certificate
-            .replace("-----BEGIN CERTIFICATE-----", "")
-            .replace("-----END CERTIFICATE-----", "")
-            .replace(/\n/g, "")
-            .replace(/\r/g, "")
-
-          return `<X509Data><X509Certificate>${certBase64}</X509Certificate></X509Data>`
-        },
-      }
+      sig.privateKey = privateKey
 
       // Computar assinatura
-      sig.computeSignature(rawXml, {
-        location: { reference: "//*[local-name(.)='eSocial']", action: "append" },
-      })
+      sig.computeSignature(rawXml)
 
       const signedXml = sig.getSignedXml()
 
@@ -229,7 +223,11 @@ export async function getCertificateInfo(empresaId: string, certPassword: string
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certPassword)
 
     const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
-    const cert = certBags[forge.pki.oids.certBag][0].cert
+    const certBag = certBags[forge.pki.oids.certBag]?.[0]
+    if (!certBag || !certBag.cert) {
+      throw new Error("Certificado não encontrado no arquivo .pfx")
+    }
+    const cert = certBag.cert
 
     return {
       subject: cert.subject.getField("CN")?.value || "N/A",

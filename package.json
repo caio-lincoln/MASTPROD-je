@@ -80,6 +80,7 @@
     "@types/node-forge": "^1.3.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/xmldom": "^0.1.34",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",

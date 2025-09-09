@@ -46,7 +46,7 @@ export function CompanySelector() {
               <div className="flex items-center space-x-2">
                 <span className="truncate">{selectedCompany.name}</span>
                 <Badge variant="secondary" className="text-xs">
-                  {selectedCompany.cnpj.split("/")[0]}
+                  {selectedCompany.cnpj?.split("/")[0] || ''}
                 </Badge>
               </div>
             ) : (
