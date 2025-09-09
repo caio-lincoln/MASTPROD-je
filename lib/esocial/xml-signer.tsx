@@ -1,14 +1,14 @@
-import forge from "node-forge"
-import axios from "axios"
-import { SignedXml } from "xml-crypto"
-import { DOMParser } from "xmldom"
 import { createClient } from "@supabase/supabase-js"
+<<<<<<< HEAD
 
 // Supabase service client (server-side)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, // fallback to anon key
 )
+=======
+import * as forge from "node-forge"
+>>>>>>> 3029c084f5ef10e4cff57f1b69e5a24dac08c3fc
 
 interface SignXMLParams {
   empresaId: string
@@ -22,53 +22,54 @@ interface SignXMLResult {
   error?: string
 }
 
-/**
- * Assina um XML usando o certificado A1 armazenado no Supabase Storage
- * @param empresaId ID da empresa
- * @param certPassword Senha do certificado
- * @param rawXml XML bruto para assinar
- * @returns XML assinado ou erro
- */
 export async function signXMLWithSupabaseCertificate({
   empresaId,
   certPassword,
   rawXml,
 }: SignXMLParams): Promise<SignXMLResult> {
   try {
-    // 1. Buscar certificado do Supabase Storage
-    const filePath = `empresa-${empresaId}/certificado-a1.pfx`
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseKey) {
+      return {
+        success: false,
+        error: "Configuração do Supabase não encontrada",
+      }
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Buscar certificado A1 da empresa
+    const { data: certificateData, error: fetchError } = await supabase.storage
       .from("certificados-esocial")
-      .createSignedUrl(filePath, 60)
+      .download(`empresa-${empresaId}/certificado-a1.pfx`)
 
-    if (signedUrlError || !signedUrlData?.signedUrl) {
+    if (fetchError || !certificateData) {
       return {
         success: false,
-        error: "Certificado não encontrado no Supabase Storage. Verifique se o certificado foi enviado corretamente.",
+        error: "Certificado A1 não encontrado para esta empresa",
       }
     }
 
-    // 2. Baixar o certificado
-    let certBuffer: ArrayBuffer
+    // Converter blob para buffer
+    const certificateBuffer = await certificateData.arrayBuffer()
+    const certificateBytes = new Uint8Array(certificateBuffer)
+
+    // Carregar certificado PKCS#12
+    let p12Asn1: forge.asn1.Asn1
     try {
-      const response = await axios.get(signedUrlData.signedUrl, {
-        responseType: "arraybuffer",
-        timeout: 30000, // 30 segundos timeout
-      })
-      certBuffer = response.data
-    } catch (downloadError) {
+      p12Asn1 = forge.asn1.fromDer(forge.util.binary.raw.encode(certificateBytes))
+    } catch (error) {
       return {
         success: false,
-        error: "Erro ao baixar o certificado do storage. Tente novamente.",
+        error: "Formato de certificado inválido",
       }
     }
 
-    // 3. Ler e extrair chave do .pfx
     let p12: forge.pkcs12.Pkcs12Pfx
-    let privateKey: string
-    let certificate: string
-
     try {
+<<<<<<< HEAD
       const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(certBuffer))
       p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certPassword)
 
@@ -118,12 +119,17 @@ export async function signXMLWithSupabaseCertificate({
         }
       }
     } catch (certError) {
+=======
+      p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, certPassword)
+    } catch (error) {
+>>>>>>> 3029c084f5ef10e4cff57f1b69e5a24dac08c3fc
       return {
         success: false,
-        error: "Erro ao processar o certificado. Verifique se a senha está correta.",
+        error: "Senha do certificado incorreta",
       }
     }
 
+<<<<<<< HEAD
     // 4. Validar XML de entrada
     let xmlDoc: Document
     try {
@@ -228,16 +234,105 @@ export async function getCertificateInfo(empresaId: string, certPassword: string
       throw new Error("Certificado não encontrado no arquivo .pfx")
     }
     const cert = certBag.cert
+=======
+    // Extrair chave privada e certificado
+    const bags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })
+    const keyBag = bags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0]
+
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
+    const certBag = certBags[forge.pki.oids.certBag]?.[0]
+
+    if (!keyBag?.key || !certBag?.cert) {
+      return {
+        success: false,
+        error: "Não foi possível extrair chave privada ou certificado",
+      }
+    }
+
+    const privateKey = keyBag.key as forge.pki.PrivateKey
+    const certificate = certBag.cert as forge.pki.Certificate
+
+    // Verificar validade do certificado
+    const now = new Date()
+    if (now < certificate.validity.notBefore || now > certificate.validity.notAfter) {
+      return {
+        success: false,
+        error: "Certificado expirado ou ainda não válido",
+      }
+    }
+
+    // Assinar XML usando XMLDSig
+    const signedXml = await signXMLWithCertificate(rawXml, privateKey, certificate)
+>>>>>>> 3029c084f5ef10e4cff57f1b69e5a24dac08c3fc
 
     return {
-      subject: cert.subject.getField("CN")?.value || "N/A",
-      issuer: cert.issuer.getField("CN")?.value || "N/A",
-      validFrom: cert.validity.notBefore,
-      validTo: cert.validity.notAfter,
-      serialNumber: cert.serialNumber,
-      isValid: new Date() >= cert.validity.notBefore && new Date() <= cert.validity.notAfter,
+      success: true,
+      signedXml,
     }
   } catch (error) {
-    throw new Error("Erro ao obter informações do certificado")
+    console.error("Erro ao assinar XML:", error)
+    return {
+      success: false,
+      error: "Erro interno ao assinar XML",
+    }
   }
+}
+
+async function signXMLWithCertificate(
+  xmlContent: string,
+  privateKey: forge.pki.PrivateKey,
+  certificate: forge.pki.Certificate,
+): Promise<string> {
+  // Implementação básica de assinatura XML
+  // Em produção, usar biblioteca especializada como xml-crypto
+
+  const canonicalXml = xmlContent.trim()
+
+  // Calcular hash SHA-256 do XML
+  const md = forge.md.sha256.create()
+  md.update(canonicalXml, "utf8")
+  const hash = md.digest()
+
+  // Assinar hash com chave privada
+  const signature = privateKey.sign(hash)
+  const signatureBase64 = forge.util.encode64(signature)
+
+  // Converter certificado para Base64
+  const certPem = forge.pki.certificateToPem(certificate)
+  const certBase64 = certPem
+    .replace("-----BEGIN CERTIFICATE-----", "")
+    .replace("-----END CERTIFICATE-----", "")
+    .replace(/\n/g, "")
+
+  // Inserir assinatura no XML (implementação simplificada)
+  const signatureXml = `
+    <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+      <SignedInfo>
+        <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+        <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+        <Reference URI="">
+          <Transforms>
+            <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+          </Transforms>
+          <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+          <DigestValue>${forge.util.encode64(hash.getBytes())}</DigestValue>
+        </Reference>
+      </SignedInfo>
+      <SignatureValue>${signatureBase64}</SignatureValue>
+      <KeyInfo>
+        <X509Data>
+          <X509Certificate>${certBase64}</X509Certificate>
+        </X509Data>
+      </KeyInfo>
+    </Signature>`
+
+  // Inserir assinatura antes da tag de fechamento do elemento raiz
+  const lastTagIndex = xmlContent.lastIndexOf("</")
+  if (lastTagIndex === -1) {
+    throw new Error("XML inválido: tag de fechamento não encontrada")
+  }
+
+  const signedXml = xmlContent.slice(0, lastTagIndex) + signatureXml + xmlContent.slice(lastTagIndex)
+
+  return signedXml
 }
