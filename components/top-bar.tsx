@@ -87,7 +87,7 @@ export function TopBar({
 
           <div className="min-w-0 flex-1">
             <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-foreground truncate">
-              {isMobile ? "SST" : "MASTPROD SST"}
+              {isMobile ? "SST" : "Sistema SST"}
             </h2>
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block truncate">
               Gestão completa de Segurança e Saúde no Trabalho

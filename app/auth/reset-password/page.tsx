@@ -71,7 +71,7 @@ export default function ResetPasswordPage() {
               </div>
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-foreground">MASTPROD SST</h1>
+              <h1 className="text-3xl font-bold text-foreground">Sistema SST</h1>
               <p className="text-muted-foreground">Segurança e Saúde no Trabalho</p>
             </div>
           </div>
@@ -177,7 +177,7 @@ export default function ResetPasswordPage() {
 
           {/* Footer */}
           <div className="text-center text-xs text-muted-foreground">
-            <p>© 2025 MASTPROD SST. Todos os direitos reservados.</p>
+            <p>© 2025 Sistema SST MASTPROD. Todos os direitos reservados.</p>
           </div>
         </div>
       </div>
