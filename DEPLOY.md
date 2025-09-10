@@ -5,11 +5,11 @@
 Antes de fazer o deploy no Vercel, configure as seguintes variáveis de ambiente no painel do Vercel:
 
 ### Supabase
-```
+\`\`\`
 NEXT_PUBLIC_SUPABASE_URL=sua_url_do_supabase
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
 SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_do_supabase
-```
+\`\`\`
 
 ## Configurações do Vercel
 
@@ -75,7 +75,7 @@ SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_do_supabase
 
 ## Comandos Úteis
 
-```bash
+\`\`\`bash
 # Deploy manual
 vercel --prod
 
@@ -88,7 +88,7 @@ vercel env add VARIABLE_NAME
 # Testar build local
 npm run build
 npm run start
-```
+\`\`\`
 
 ## Contato
 
