@@ -961,3 +961,6 @@ export function OccupationalHealth() {
     </div>
   )
 }
+
+// Export default para compatibilidade com importações dinâmicas
+export default OccupationalHealth

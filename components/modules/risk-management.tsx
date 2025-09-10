@@ -1005,3 +1005,6 @@ export function RiskManagement() {
     </div>
   )
 }
+
+// Export default para compatibilidade com importações dinâmicas
+export default RiskManagement
