@@ -10,7 +10,7 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { SWRProvider } from "@/components/swr-provider"
 
 export const metadata: Metadata = {
-  title: "Sistema SST - Segurança e Saúde no Trabalho",
+  title: "MASTPROD SST - Segurança e Saúde no Trabalho",
   description: "Sistema completo de gestão de SST com conformidade às NRs brasileiras",
   generator: "v0.app",
 }

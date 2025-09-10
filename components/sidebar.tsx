@@ -275,7 +275,7 @@ export function Sidebar({
         {(!collapsed || isMobile) && (
           <div className="p-3 sm:p-4 border-t border-sidebar-border bg-sidebar/30">
             <div className="text-xs text-sidebar-foreground/50 text-center">
-              <p className="truncate">Sistema SST v1.0</p>
+              <p className="truncate">MASTPROD SST v1.0</p>
               <p className="truncate hidden sm:block">© 2025 - Todos os direitos reservados</p>
             </div>
           </div>
