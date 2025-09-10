@@ -1,14 +1,24 @@
 # Deploy no Vercel - MASTPROD
 
-## Variáveis de Ambiente Necessárias
+## Configuração Simplificada
 
-Antes de fazer o deploy no Vercel, configure as seguintes variáveis de ambiente no painel do Vercel:
+✅ **Não são necessárias variáveis de ambiente!**
 
-### Supabase
-\`\`\`
-NEXT_PUBLIC_SUPABASE_URL=sua_url_do_supabase
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
-SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_do_supabase
+Este projeto foi configurado para funcionar diretamente no Vercel sem necessidade de configurar variáveis de ambiente no painel.
+
+### Configuração do Supabase
+
+Antes do deploy, configure as credenciais do Supabase no arquivo `lib/config/supabase-config.ts`:
+
+```typescript
+export const SUPABASE_CONFIG = {
+  url: "https://seu-project-ref.supabase.co",
+  anonKey: "sua-chave-anonima-aqui",
+  serviceRoleKey: "sua-chave-service-role-aqui"
+}
+```
+
+Veja o arquivo `CONFIGURACAO-SUPABASE.md` para instruções detalhadas.
 \`\`\`
 
 ## Configurações do Vercel
@@ -41,12 +51,13 @@ SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_do_supabase
 
 ## Checklist de Deploy
 
-- [ ] Variáveis de ambiente configuradas no Vercel
+- [ ] Credenciais do Supabase configuradas em `lib/config/supabase-config.ts`
 - [ ] Build local executado com sucesso (`npm run build`)
 - [ ] Testes de API funcionando
 - [ ] Configuração do Supabase validada
 - [ ] RLS (Row Level Security) configurado no Supabase
 - [ ] Certificados de teste disponíveis
+- [ ] Projeto commitado e enviado para o repositório
 
 ## Monitoramento
 
@@ -76,18 +87,17 @@ SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_do_supabase
 ## Comandos Úteis
 
 \`\`\`bash
-# Deploy manual
+```bash
+# Deploy manual (opcional - o Vercel faz deploy automático)
 vercel --prod
 
 # Visualizar logs
 vercel logs
 
-# Configurar variáveis de ambiente
-vercel env add VARIABLE_NAME
-
 # Testar build local
 npm run build
 npm run start
+```
 \`\`\`
 
 ## Contato

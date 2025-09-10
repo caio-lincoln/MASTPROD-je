@@ -26,8 +26,8 @@ export default function ForgotPasswordPage() {
       setMessage("")
 
       try {
-        const redirectUrl = process.env.NODE_ENV === 'production' 
-          ? 'https://your-domain.com/auth/reset-password'
+        const redirectUrl = typeof window !== 'undefined' 
+          ? `${window.location.origin}/auth/reset-password`
           : 'http://localhost:3000/auth/reset-password'
         
         const { error } = await supabase.auth.resetPasswordForEmail(email, {

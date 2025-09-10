@@ -3,11 +3,12 @@ import * as forge from "node-forge"
 import axios from "axios"
 import { SignedXml } from "xml-crypto"
 import { DOMParser } from "xmldom"
+import { getSupabaseUrl, getSupabaseServiceRoleKey, getSupabaseAnonKey } from "@/lib/config/supabase-config"
 
 // Supabase service client (server-side)
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  getSupabaseUrl(),
+  getSupabaseServiceRoleKey() || getSupabaseAnonKey()
 )
 
 interface SignXMLParams {
@@ -28,8 +29,8 @@ export async function signXMLWithSupabaseCertificate({
   rawXml,
 }: SignXMLParams): Promise<SignXMLResult> {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseUrl = getSupabaseUrl()
+    const supabaseKey = getSupabaseAnonKey()
 
     if (!supabaseUrl || !supabaseKey) {
       return {
