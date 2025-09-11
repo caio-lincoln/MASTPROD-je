@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,6 +45,7 @@ interface User {
   department: string
   status: "active" | "inactive"
   lastLogin: string
+  created_at?: string
 }
 
 interface CompanyInfo {
@@ -57,37 +59,72 @@ interface CompanyInfo {
 }
 
 const SettingsComponent = () => {
-  const { companies, setCompanies } = useCompany()
+  const { companies, setCompanies, selectedCompany } = useCompany()
+  const supabase = createClient()
 
-  const [users] = useState<User[]>([
-    {
-      id: "1",
-      name: "João Silva",
-      email: "joao.silva@empresa.com",
-      role: "admin",
-      department: "SST",
-      status: "active",
-      lastLogin: "2024-01-15T10:30:00",
-    },
-    {
-      id: "2",
-      name: "Maria Santos",
-      email: "maria.santos@empresa.com",
-      role: "manager",
-      department: "RH",
-      status: "active",
-      lastLogin: "2024-01-15T09:15:00",
-    },
-    {
-      id: "3",
-      name: "Carlos Oliveira",
-      email: "carlos.oliveira@empresa.com",
-      role: "user",
-      department: "Produção",
-      status: "active",
-      lastLogin: "2024-01-14T16:45:00",
-    },
-  ])
+  const [users, setUsers] = useState<User[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(true)
+  const [userError, setUserError] = useState<string | null>(null)
+  const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [userForm, setUserForm] = useState({
+    name: "",
+    email: "",
+    role: "user" as "admin" | "manager" | "user" | "viewer",
+    department: ""
+  })
+
+  // Função para carregar usuários reais do Supabase
+  const loadUsers = async () => {
+    if (!selectedCompany) {
+      setUsers([])
+      setLoadingUsers(false)
+      return
+    }
+
+    try {
+      setLoadingUsers(true)
+      setUserError(null)
+
+      // Buscar usuários relacionados à empresa selecionada via API route
+      const response = await fetch(`/api/users?empresa_id=${selectedCompany.id}`)
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao buscar usuários: ${response.statusText}`)
+      }
+
+      const { users: fetchedUsers, error } = await response.json()
+      
+      if (error) {
+        throw new Error(error)
+      }
+
+      // Transformar dados para o formato esperado
+      const transformedUsers: User[] = fetchedUsers.map((user: any) => ({
+        id: user.id,
+        name: user.name || user.email?.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || `Usuário ${user.id.substring(0, 8)}`,
+        email: user.email || `usuario-${user.id.substring(0, 8)}@empresa.com`,
+        role: user.role as "admin" | "manager" | "user" | "viewer",
+        department: user.role === 'admin' ? 'Administração' : user.role === 'manager' ? 'Gestão' : 'Operacional',
+        status: 'active' as const,
+        lastLogin: user.last_sign_in_at || user.created_at,
+        created_at: user.created_at
+      }))
+
+      setUsers(transformedUsers)
+    } catch (error) {
+      console.error('Erro ao carregar usuários:', error)
+      setUserError('Erro ao carregar usuários. Tente novamente.')
+      setUsers([])
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  // Carregar usuários quando a empresa selecionada mudar
+  useEffect(() => {
+    loadUsers()
+  }, [selectedCompany])
 
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
     name: "Empresa Exemplo Ltda",
@@ -230,6 +267,81 @@ const SettingsComponent = () => {
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return emailRegex.test(email)
+  }
+
+  const handleUserFormChange = (field: string, value: string) => {
+    setUserForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const openUserDialog = (user?: User) => {
+    if (user) {
+      setEditingUser(user)
+      setUserForm({
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department
+      })
+    } else {
+      setEditingUser(null)
+      setUserForm({
+        name: "",
+        email: "",
+        role: "user",
+        department: ""
+      })
+    }
+    setIsUserDialogOpen(true)
+  }
+
+  const handleSaveUser = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const method = editingUser ? 'PUT' : 'POST'
+      const url = editingUser 
+        ? `/api/users?user_id=${editingUser.id}&empresa_id=${selectedCompany.id}`
+        : `/api/users?empresa_id=${selectedCompany.id}`
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userForm)
+      })
+
+      if (!response.ok) {
+        throw new Error('Erro ao salvar usuário')
+      }
+
+      setIsUserDialogOpen(false)
+      loadUsers() // Recarrega a lista de usuários
+    } catch (error) {
+      console.error('Erro ao salvar usuário:', error)
+      setUserError('Erro ao salvar usuário. Tente novamente.')
+    }
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!selectedCompany) return
+    
+    if (!confirm('Tem certeza que deseja deletar este usuário?')) return
+
+    try {
+      const response = await fetch(`/api/users?user_id=${userId}&empresa_id=${selectedCompany.id}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Erro ao deletar usuário')
+      }
+
+      loadUsers() // Recarrega a lista de usuários
+    } catch (error) {
+      console.error('Erro ao deletar usuário:', error)
+      setUserError('Erro ao deletar usuário. Tente novamente.')
+    }
   }
 
   return (
@@ -513,6 +625,85 @@ const SettingsComponent = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Dialog de Usuário */}
+          <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingUser ? "Editar Usuário" : "Novo Usuário"}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingUser ? "Edite as informações do usuário" : "Adicione um novo usuário ao sistema"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="user-name" className="text-right">
+                    Nome
+                  </Label>
+                  <Input
+                    id="user-name"
+                    value={userForm.name}
+                    onChange={(e) => handleUserFormChange("name", e.target.value)}
+                    className="col-span-3"
+                    placeholder="Nome completo"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="user-email" className="text-right">
+                    E-mail
+                  </Label>
+                  <Input
+                    id="user-email"
+                    type="email"
+                    value={userForm.email}
+                    onChange={(e) => handleUserFormChange("email", e.target.value)}
+                    className="col-span-3"
+                    placeholder="email@exemplo.com"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="user-role" className="text-right">
+                    Função
+                  </Label>
+                  <select
+                    id="user-role"
+                    value={userForm.role}
+                    onChange={(e) => handleUserFormChange("role", e.target.value)}
+                    className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="user">Usuário</option>
+                    <option value="manager">Gerente</option>
+                    <option value="admin">Administrador</option>
+                    <option value="viewer">Visualizador</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="user-department" className="text-right">
+                    Departamento
+                  </Label>
+                  <Input
+                    id="user-department"
+                    value={userForm.department}
+                    onChange={(e) => handleUserFormChange("department", e.target.value)}
+                    className="col-span-3"
+                    placeholder="Departamento"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  onClick={handleSaveUser}
+                  disabled={!userForm.name || !userForm.email || !validateEmail(userForm.email)}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingUser ? "Salvar Alterações" : "Criar Usuário"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
@@ -526,7 +717,7 @@ const SettingsComponent = () => {
                   </CardTitle>
                   <CardDescription>Gerencie usuários e suas permissões</CardDescription>
                 </div>
-                <Button>
+                <Button onClick={() => openUserDialog()}>
                   <Plus className="mr-2 h-4 w-4" />
                   Novo Usuário
                 </Button>
@@ -534,39 +725,73 @@ const SettingsComponent = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {users.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium">{user.name}</h4>
-                        <Badge className={getRoleColor(user.role)}>
-                          {user.role === "admin"
-                            ? "Administrador"
-                            : user.role === "manager"
-                              ? "Gerente"
-                              : user.role === "user"
-                                ? "Usuário"
-                                : "Visualizador"}
-                        </Badge>
-                        <Badge className={getStatusColor(user.status)}>
-                          {user.status === "active" ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{user.email}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {user.department} • Último acesso: {new Date(user.lastLogin).toLocaleString("pt-BR")}
-                      </p>
+                {loadingUsers ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center space-y-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-sm text-muted-foreground">Carregando usuários...</p>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Trash2 className="h-4 w-4" />
+                  </div>
+                ) : userError ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center space-y-2">
+                      <AlertCircle className="h-8 w-8 text-red-500 mx-auto" />
+                      <p className="text-sm text-red-600">{userError}</p>
+                      <Button variant="outline" size="sm" onClick={loadUsers}>
+                        Tentar Novamente
                       </Button>
                     </div>
                   </div>
-                ))}
+                ) : !selectedCompany ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center space-y-2">
+                      <Users className="h-8 w-8 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">Selecione uma empresa para visualizar os usuários</p>
+                    </div>
+                  </div>
+                ) : users.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-center space-y-2">
+                      <Users className="h-8 w-8 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">Nenhum usuário encontrado para esta empresa</p>
+                      <p className="text-xs text-muted-foreground">Adicione usuários para começar</p>
+                    </div>
+                  </div>
+                ) : (
+                  users.map((user) => (
+                    <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{user.name}</h4>
+                          <Badge className={getRoleColor(user.role)}>
+                            {user.role === "admin"
+                              ? "Administrador"
+                              : user.role === "manager"
+                                ? "Gerente"
+                                : user.role === "user"
+                                  ? "Usuário"
+                                  : "Visualizador"}
+                          </Badge>
+                          <Badge className={getStatusColor(user.status)}>
+                            {user.status === "active" ? "Ativo" : "Inativo"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {user.department} • Último acesso: {new Date(user.lastLogin).toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openUserDialog(user)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleDeleteUser(user.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
