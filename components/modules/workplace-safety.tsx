@@ -31,6 +31,8 @@ import {
 import { formatDateSafe } from "@/lib/utils/date-utils"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { uploadArquivo } from "@/lib/supabase/storage"
+import jsPDF from "jspdf"
+import html2canvas from "html2canvas"
 
 interface SafetyInspection {
   id: string
@@ -386,57 +388,254 @@ export function WorkplaceSafety() {
     }
   }
 
-  const handleGenerateReport = async (tipo: string) => {
+  const generatePDFReport = async (tipo: string) => {
     try {
-      // Generate report content based on type
-      let reportContent = ""
-      let fileName = ""
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      let yPosition = 20
 
+      // Header
+      pdf.setFontSize(20)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('RELATÓRIO DE SEGURANÇA DO TRABALHO', pageWidth / 2, yPosition, { align: 'center' })
+      yPosition += 10
+
+      pdf.setFontSize(14)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`Empresa: ${selectedCompany?.name}`, pageWidth / 2, yPosition, { align: 'center' })
+      yPosition += 10
+
+      pdf.text(`Data de Geração: ${formatDateSafe(new Date().toISOString(), 'dd/MM/yyyy HH:mm')}`, pageWidth / 2, yPosition, { align: 'center' })
+      yPosition += 20
+
+      // Content based on report type
       switch (tipo) {
-        case "inspecoes":
-          reportContent = `Relatório de Inspeções - ${selectedCompany?.name}\n\nTotal de inspeções: ${stats.totalInspections}\nConcluídas: ${stats.completedInspections}\nPendentes: ${stats.pendingInspections}`
-          fileName = `relatorio-inspecoes-${Date.now()}.txt`
+        case 'inspecoes':
+          pdf.setFontSize(16)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text('RELATÓRIO DE INSPEÇÕES', 20, yPosition)
+          yPosition += 15
+
+          // Statistics
+          pdf.setFontSize(12)
+          pdf.setFont('helvetica', 'normal')
+          pdf.text('RESUMO ESTATÍSTICO:', 20, yPosition)
+          yPosition += 8
+          pdf.text(`• Total de Inspeções: ${stats.totalInspections}`, 25, yPosition)
+          yPosition += 6
+          pdf.text(`• Inspeções Concluídas: ${stats.completedInspections}`, 25, yPosition)
+          yPosition += 6
+          pdf.text(`• Inspeções Pendentes: ${stats.pendingInspections}`, 25, yPosition)
+          yPosition += 15
+
+          // Detailed inspections
+          if (inspections.length > 0) {
+            pdf.text('DETALHAMENTO DAS INSPEÇÕES:', 20, yPosition)
+            yPosition += 10
+
+            inspections.slice(0, 10).forEach((inspection, index) => {
+              if (yPosition > pageHeight - 30) {
+                pdf.addPage()
+                yPosition = 20
+              }
+              pdf.text(`${index + 1}. ${inspection.setor} - ${inspection.responsavel}`, 25, yPosition)
+              yPosition += 5
+              pdf.text(`   Data: ${formatDateSafe(inspection.data_inspecao)} | Status: ${inspection.status}`, 25, yPosition)
+              yPosition += 5
+              if (inspection.observacoes) {
+                pdf.text(`   Observações: ${inspection.observacoes.substring(0, 80)}...`, 25, yPosition)
+                yPosition += 5
+              }
+              yPosition += 3
+            })
+          }
           break
-        case "incidentes":
-          reportContent = `Análise de Incidentes - ${selectedCompany?.name}\n\nTotal de incidentes: ${stats.totalIncidents}\nResolvidos: ${stats.resolvedIncidents}\nEm investigação: ${stats.investigatingIncidents}`
-          fileName = `analise-incidentes-${Date.now()}.txt`
+
+        case 'incidentes':
+          pdf.setFontSize(16)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text('ANÁLISE DE INCIDENTES', 20, yPosition)
+          yPosition += 15
+
+          // Statistics
+          pdf.setFontSize(12)
+          pdf.setFont('helvetica', 'normal')
+          pdf.text('RESUMO ESTATÍSTICO:', 20, yPosition)
+          yPosition += 8
+          pdf.text(`• Total de Incidentes: ${stats.totalIncidents}`, 25, yPosition)
+          yPosition += 6
+          pdf.text(`• Incidentes Resolvidos: ${stats.resolvedIncidents}`, 25, yPosition)
+          yPosition += 6
+          pdf.text(`• Em Investigação: ${stats.investigatingIncidents}`, 25, yPosition)
+          yPosition += 15
+
+          // Detailed incidents
+          if (incidents.length > 0) {
+            pdf.text('DETALHAMENTO DOS INCIDENTES:', 20, yPosition)
+            yPosition += 10
+
+            incidents.slice(0, 10).forEach((incident, index) => {
+              if (yPosition > pageHeight - 30) {
+                pdf.addPage()
+                yPosition = 20
+              }
+              pdf.text(`${index + 1}. ${incident.tipo} - Gravidade: ${incident.gravidade}`, 25, yPosition)
+              yPosition += 5
+              pdf.text(`   Data: ${formatDateSafe(incident.data_ocorrencia)} | Status: ${incident.status}`, 25, yPosition)
+              yPosition += 5
+              pdf.text(`   Descrição: ${incident.descricao.substring(0, 80)}...`, 25, yPosition)
+              yPosition += 8
+            })
+          }
           break
-        case "equipamentos":
-          reportContent = `Status dos Equipamentos - ${selectedCompany?.name}\n\nTotal de equipamentos: ${stats.totalEquipment}\nAtivos: ${stats.activeEquipment}\nVencidos: ${stats.expiredEquipment}`
-          fileName = `status-equipamentos-${Date.now()}.txt`
+
+        case 'equipamentos':
+          pdf.setFontSize(16)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text('STATUS DOS EQUIPAMENTOS', 20, yPosition)
+          yPosition += 15
+
+          // Statistics
+          pdf.setFontSize(12)
+          pdf.setFont('helvetica', 'normal')
+          pdf.text('RESUMO ESTATÍSTICO:', 20, yPosition)
+          yPosition += 8
+          pdf.text(`• Total de Equipamentos: ${stats.totalEquipment}`, 25, yPosition)
+          yPosition += 6
+          pdf.text(`• Equipamentos Ativos: ${stats.activeEquipment}`, 25, yPosition)
+          yPosition += 6
+          pdf.text(`• Equipamentos Vencidos: ${stats.expiredEquipment}`, 25, yPosition)
+          yPosition += 15
+
+          // Detailed equipment
+          if (equipment.length > 0) {
+            pdf.text('DETALHAMENTO DOS EQUIPAMENTOS:', 20, yPosition)
+            yPosition += 10
+
+            equipment.slice(0, 15).forEach((item, index) => {
+              if (yPosition > pageHeight - 30) {
+                pdf.addPage()
+                yPosition = 20
+              }
+              pdf.text(`${index + 1}. ${item.nome} (${item.tipo})`, 25, yPosition)
+              yPosition += 5
+              pdf.text(`   Quantidade: ${item.quantidade} | Validade: ${formatDateSafe(item.validade)}`, 25, yPosition)
+              yPosition += 8
+            })
+          }
           break
       }
 
-      // Create file and upload to storage
-      const blob = new Blob([reportContent], { type: "text/plain" })
-      const file = new File([blob], fileName, { type: "text/plain" })
+      // Footer
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'italic')
+      pdf.text('Relatório gerado automaticamente pelo Sistema MASTPROD', pageWidth / 2, pageHeight - 10, { align: 'center' })
 
-      const filePath = await uploadArquivo(file, "relatorios", selectedCompany?.id || "", fileName)
+      return pdf
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error)
+      throw error
+    }
+  }
+
+  const handleGenerateReport = async (tipo: string) => {
+    try {
+      // Generate PDF
+      const pdf = await generatePDFReport(tipo)
+      
+      // Convert PDF to blob
+      const pdfBlob = pdf.output('blob')
+      
+      // Create filename
+      const timestamp = Date.now()
+      let fileName = ''
+      let reportTitle = ''
+      
+      switch (tipo) {
+        case 'inspecoes':
+          fileName = `relatorio-inspecoes-${timestamp}.pdf`
+          reportTitle = 'Relatório de Inspeções'
+          break
+        case 'incidentes':
+          fileName = `analise-incidentes-${timestamp}.pdf`
+          reportTitle = 'Análise de Incidentes'
+          break
+        case 'equipamentos':
+          fileName = `status-equipamentos-${timestamp}.pdf`
+          reportTitle = 'Status dos Equipamentos'
+          break
+      }
+
+      // Create file from blob
+      const file = new File([pdfBlob], fileName, { type: 'application/pdf' })
+
+      // Upload to storage
+      const filePath = await uploadArquivo(file, 'relatorios', selectedCompany?.id || '', fileName)
 
       // Save report record to database
-      const { error } = await supabase.from("logs_gerais").insert([
+      const { error } = await supabase.from('logs_gerais').insert([
         {
           empresa_id: selectedCompany?.id,
-          modulo: "Segurança do Trabalho",
-          tipo: tipo,
+          modulo: 'Segurança do Trabalho',
+          tipo: reportTitle,
           arquivo_url: filePath,
+          data_geracao: new Date().toISOString(),
         },
       ])
 
       if (error) throw error
 
+      // Also trigger direct download
+      const url = URL.createObjectURL(pdfBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
       toast({
-        title: "Sucesso",
-        description: "Relatório gerado com sucesso.",
+        title: 'Sucesso',
+        description: `${reportTitle} gerado e salvo com sucesso.`,
       })
 
       loadData()
     } catch (error) {
-      console.error("Erro ao gerar relatório:", error)
+      console.error('Erro ao gerar relatório:', error)
       toast({
-        title: "Erro",
-        description: "Não foi possível gerar o relatório.",
-        variant: "destructive",
+        title: 'Erro',
+        description: 'Não foi possível gerar o relatório.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleDownloadReport = async (report: SafetyReport) => {
+    try {
+      if (!report.arquivo_url) {
+        toast({
+          title: 'Erro',
+          description: 'URL do arquivo não encontrada.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      // Open file in new tab for download
+      window.open(report.arquivo_url, '_blank')
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Download iniciado.',
+      })
+    } catch (error) {
+      console.error('Erro ao fazer download:', error)
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível fazer o download do relatório.',
+        variant: 'destructive',
       })
     }
   }
@@ -946,9 +1145,9 @@ export function WorkplaceSafety() {
                           </p>
                         </div>
                         {report.arquivo_url && (
-                          <Button variant="outline" size="sm" onClick={() => window.open(report.arquivo_url, "_blank")}>
+                          <Button variant="outline" size="sm" onClick={() => handleDownloadReport(report)}>
                             <Download className="h-4 w-4 mr-1" />
-                            Download
+                            Download PDF
                           </Button>
                         )}
                       </div>
