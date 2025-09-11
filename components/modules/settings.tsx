@@ -55,6 +55,7 @@ interface Role {
   description: string
   permissions: { [key: string]: boolean }
   isDefault: boolean
+  isEditable?: boolean
 }
 
 interface Integration {
@@ -141,82 +142,70 @@ export function SettingsComponent() {
     "Configurações",
   ]
 
-  // Função para carregar funções customizadas
+  // Função para carregar funções padrão do sistema
   const loadRoles = async () => {
     if (!selectedCompany) return
     
     setLoadingRoles(true)
     try {
-      const supabase = createClient()
-      
-      // Buscar funções customizadas do Supabase
-      const { data: customRoles, error: rolesError } = await supabase
-        .from('roles')
-        .select(`
-          id,
-          name,
-          description,
-          permissions (
-            module,
-            can_read,
-            can_write,
-            can_delete
-          )
-        `)
-        .eq('empresa_id', selectedCompany.id)
-
-      if (rolesError) {
-        console.error('Erro ao buscar funções:', rolesError)
-        return
-      }
-
-      // Converter dados do Supabase para o formato esperado
-      const formattedRoles: Role[] = []
-      
-      // Adicionar funções padrão do sistema
+      // Definir apenas as 4 funções padrão do sistema
       const defaultRoles = [
-        { id: 'admin', name: 'Administrador', description: 'Acesso total ao sistema' },
-        { id: 'manager', name: 'Gerente', description: 'Acesso de gerenciamento' },
-        { id: 'user', name: 'Usuário', description: 'Acesso básico' },
-        { id: 'viewer', name: 'Visualizador', description: 'Apenas visualização' }
+        {
+          id: 'admin',
+          name: 'Administrador',
+          description: 'Acesso total ao sistema',
+          isEditable: false // Administrador não pode ser editado
+        },
+        {
+          id: 'manager',
+          name: 'Gerente',
+          description: 'Acesso de gerenciamento',
+          isEditable: true // Gerente pode ser editado
+        },
+        {
+          id: 'user',
+          name: 'Usuário',
+          description: 'Acesso básico',
+          isEditable: true // Usuário pode ser editado
+        },
+        {
+          id: 'viewer',
+          name: 'Visualizador',
+          description: 'Apenas visualização',
+          isEditable: true // Visualizador pode ser editado
+        }
       ]
 
-      defaultRoles.forEach(role => {
-        // Inicializar todos os módulos com false
+      const formattedRoles: Role[] = defaultRoles.map(role => {
         const permissions: { [key: string]: boolean } = {}
+        
+        // Definir permissões específicas para cada função
         availableModules.forEach(module => {
-          permissions[module] = false
+          if (role.id === 'admin') {
+            // Administrador tem acesso a tudo
+            permissions[module] = true
+          } else if (role.id === 'manager') {
+            // Gerente tem acesso a quase tudo, exceto configurações
+            permissions[module] = module !== 'Configurações'
+          } else if (role.id === 'user') {
+            // Usuário tem acesso básico
+            permissions[module] = ['Dashboard', 'Funcionários', 'Treinamentos', 'Relatórios'].includes(module)
+          } else if (role.id === 'viewer') {
+            // Visualizador apenas visualiza
+            permissions[module] = ['Dashboard', 'Relatórios'].includes(module)
+          } else {
+            permissions[module] = false
+          }
         })
         
-        // Aplicar permissões do banco de dados
-        // (aqui você pode definir permissões padrão ou buscar do banco)
-        
-        formattedRoles.push({
-          ...role,
-          permissions,
-          isDefault: true
-        })
-      })
-
-      // Adicionar funções customizadas
-      customRoles?.forEach((role: any) => {
-        const permissions: { [key: string]: boolean } = {}
-        availableModules.forEach(module => {
-          permissions[module] = false
-        })
-        
-        // Aplicar permissões do banco de dados
-        role.permissions?.forEach((perm: any) => {
-          permissions[perm.module] = perm.can_read || perm.can_write || perm.can_delete
-        })
-        
-        formattedRoles.push({
+        return {
           id: role.id,
           name: role.name,
           description: role.description,
           permissions,
-          isDefault: ['Administrador', 'Gerente', 'Usuário', 'Visualizador'].includes(role.name),
-        })
+          isDefault: true,
+          isEditable: role.isEditable
+        }
       })
 
       setRoles(formattedRoles)
@@ -258,7 +247,7 @@ export function SettingsComponent() {
       if (editingRole && !editingRole.isDefault) {
         // Atualizar função existente
         const { error: updateError } = await supabase
-          .from('roles')
+          .from('custom_roles')
           .update({
             name: newRoleName,
             description: newRoleDescription
@@ -269,7 +258,7 @@ export function SettingsComponent() {
       } else if (!editingRole) {
         // Criar nova função
         const { data: newRole, error: insertError } = await supabase
-          .from('roles')
+          .from('custom_roles')
           .insert({
             name: newRoleName,
             description: newRoleDescription,
@@ -324,7 +313,7 @@ export function SettingsComponent() {
       // Deletar função (as permissões serão deletadas automaticamente por CASCADE)
       const supabase = createClient()
       const { error } = await supabase
-        .from('roles')
+        .from('custom_roles')
         .delete()
         .eq('id', role.id)
 
@@ -367,16 +356,27 @@ export function SettingsComponent() {
       }
       
       // Transformar os dados para o formato esperado
-      const transformedUsers: User[] = data.users.map((user: any) => ({
-        id: user.id,
-        name: user.name || user.email?.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || `Usuário ${user.id.substring(0, 8)}`,
-        email: user.email,
-        role: user.role || 'Usuário',
-        department: user.role === 'admin' ? 'Administração' : user.role === 'manager' ? 'Gestão' : 'Operacional',
-        status: user.status === 'active' ? 'active' : 'inactive',
-        lastLogin: user.last_sign_in_at || new Date().toISOString(),
-        created_at: user.created_at
-      }))
+      const transformedUsers: User[] = data.users.map((user: any) => {
+        // Determinar status baseado nos campos do Supabase Auth
+        // Usuário é considerado ativo se:
+        // - Email foi confirmado (email_confirmed_at não é null)
+        // - Não está banido (banned_until é null ou já passou)
+        // - Não foi deletado (deleted_at é null)
+        const isActive = user.email_confirmed_at && 
+                        !user.deleted_at && 
+                        (!user.banned_until || new Date(user.banned_until) < new Date())
+        
+        return {
+          id: user.id,
+          name: user.name || user.email?.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || `Usuário ${user.id.substring(0, 8)}`,
+          email: user.email,
+          role: user.role || 'Usuário',
+          department: user.role === 'admin' ? 'Administração' : user.role === 'manager' ? 'Gestão' : 'Operacional',
+          status: isActive ? 'active' : 'inactive',
+          lastLogin: user.last_sign_in_at || new Date().toISOString(),
+          created_at: user.created_at
+        }
+      })
       
       setUsers(transformedUsers)
       setUserError(null)
@@ -510,12 +510,18 @@ export function SettingsComponent() {
         email: userData.email,
         role: userData.role,
         department: userData.department,
-        status: userData.status
+        status: userData.status,
+        empresa_id: selectedCompany.id
       }
       
       // Para novos usuários, incluir a senha no payload
       if (!editingUser && userData.password) {
         payload.password = userData.password
+      }
+      
+      // Para edição de usuários, incluir user_id no payload
+      if (editingUser) {
+        payload.user_id = editingUser.id
       }
       
       const response = await fetch(url, {
@@ -1164,12 +1170,8 @@ export function SettingsComponent() {
                     <Shield className="h-5 w-5" />
                     <span>Gestão de Funções e Permissões</span>
                   </CardTitle>
-                  <CardDescription>Crie e configure funções personalizadas com permissões específicas</CardDescription>
+                  <CardDescription>Configure as permissões das funções do sistema</CardDescription>
                 </div>
-                <Button onClick={() => openRoleDialog()}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nova Função
-                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -1203,22 +1205,19 @@ export function SettingsComponent() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openRoleDialog(role)}
-                            disabled={role.isDefault}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {!role.isDefault && (
+                          {role.isEditable && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleDeleteRole(role)}
+                              onClick={() => openRoleDialog(role)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Edit className="h-4 w-4" />
                             </Button>
+                          )}
+                          {!role.isEditable && (
+                            <Badge variant="secondary" className="text-xs">
+                              Não editável
+                            </Badge>
                           )}
                         </div>
                       </div>
@@ -1931,3 +1930,6 @@ export function SettingsComponent() {
  function toast({ title, description, variant }: { title: string; description: string; variant?: 'default' | 'destructive' }) {
    console.log(`Toast: ${title} - ${description} (${variant || 'default'})`)
  }
+
+ // Export default para compatibilidade com lazy loading
+ export default SettingsComponent

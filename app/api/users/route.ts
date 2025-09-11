@@ -70,6 +70,8 @@ export async function GET(request: NextRequest) {
         created_at: authUser?.created_at || uc.created_at,
         last_sign_in_at: authUser?.last_sign_in_at || uc.created_at,
         email_confirmed_at: authUser?.email_confirmed_at,
+        banned_until: authUser?.banned_until,
+        deleted_at: authUser?.deleted_at,
         phone: authUser?.phone,
         user_metadata: authUser?.user_metadata
       }
