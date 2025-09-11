@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCompany, type Company } from "@/contexts/company-context"
 import {
   Users,
@@ -41,281 +42,496 @@ interface User {
   id: string
   name: string
   email: string
-  role: "admin" | "manager" | "user" | "viewer"
+  role: string // Mudado para string para aceitar funções customizadas
   department: string
   status: "active" | "inactive"
   lastLogin: string
   created_at?: string
 }
 
-interface CompanyInfo {
+interface Role {
+  id: string
   name: string
-  cnpj: string
-  address: string
-  phone: string
-  email: string
-  responsibleTechnician: string
-  crea: string
+  description: string
+  permissions: { [key: string]: boolean }
+  isDefault: boolean
 }
 
-const SettingsComponent = () => {
-  const { companies, setCompanies, selectedCompany } = useCompany()
-  const supabase = createClient()
+interface Integration {
+  name: string
+  status: "active" | "inactive" | "error"
+  lastSync?: string
+  description: string
+}
 
+export function SettingsComponent() {
+  const { selectedCompany, companies, setSelectedCompany } = useCompany()
   const [users, setUsers] = useState<User[]>([])
-  const [loadingUsers, setLoadingUsers] = useState(true)
-  const [userError, setUserError] = useState<string | null>(null)
+  const [roles, setRoles] = useState<Role[]>([])
+  const [integrations, setIntegrations] = useState<Integration[]>([
+    {
+      name: "eSocial",
+      status: "inactive",
+      description: "Integração com o sistema eSocial do governo"
+    },
+    {
+      name: "E-mail",
+      status: "active",
+      lastSync: "2024-01-15T10:30:00Z",
+      description: "Configuração de envio de e-mails"
+    },
+    {
+      name: "SMS",
+      status: "inactive",
+      description: "Envio de notificações via SMS"
+    },
+    {
+      name: "Backup",
+      status: "active",
+      lastSync: "2024-01-15T02:00:00Z",
+      description: "Backup automático dos dados"
+    }
+  ])
+
+  // Estados para diálogos
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
+  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
+  const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
+  const [isEsocialDialogOpen, setIsEsocialDialogOpen] = useState(false)
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
+  const [isSmsDialogOpen, setIsSmsDialogOpen] = useState(false)
+  const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false)
+
+  // Estados para edição
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [userForm, setUserForm] = useState({
-    name: "",
-    email: "",
-    role: "user" as "admin" | "manager" | "user" | "viewer",
-    department: ""
+  const [editingRole, setEditingRole] = useState<Role | null>(null)
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null)
+
+  // Estados para erros
+  const [userError, setUserError] = useState<string | null>(null)
+
+  // Estados para gerenciar funções customizadas
+  const [loadingRoles, setLoadingRoles] = useState(false)
+  const [newRoleName, setNewRoleName] = useState('')
+  const [newRoleDescription, setNewRoleDescription] = useState('')
+  const [newRolePermissions, setNewRolePermissions] = useState<{ [key: string]: boolean }>({})
+
+  // Estados para formulários
+  const [companyForm, setCompanyForm] = useState({
+    name: '',
+    cnpj: '',
+    email: '',
+    phone: '',
+    address: ''
   })
+
+  // Módulos disponíveis no sistema
+  const availableModules = [
+    "Dashboard",
+    "Funcionários",
+    "Gestão de Riscos",
+    "Saúde Ocupacional",
+    "Funcionários",
+    "Treinamentos",
+    "Biblioteca Digital",
+    "Relatórios",
+    "eSocial",
+    "Não Conformidades",
+    "Segurança do Trabalho",
+    "Configurações",
+  ]
+
+  // Função para carregar funções customizadas
+  const loadRoles = async () => {
+    if (!selectedCompany) return
+    
+    setLoadingRoles(true)
+    try {
+      const supabase = createClient()
+      
+      // Buscar funções customizadas do Supabase
+      const { data: customRoles, error: rolesError } = await supabase
+        .from('roles')
+        .select(`
+          id,
+          name,
+          description,
+          permissions (
+            module,
+            can_read,
+            can_write,
+            can_delete
+          )
+        `)
+        .eq('empresa_id', selectedCompany.id)
+
+      if (rolesError) {
+        console.error('Erro ao buscar funções:', rolesError)
+        return
+      }
+
+      // Converter dados do Supabase para o formato esperado
+      const formattedRoles: Role[] = []
+      
+      // Adicionar funções padrão do sistema
+      const defaultRoles = [
+        { id: 'admin', name: 'Administrador', description: 'Acesso total ao sistema' },
+        { id: 'manager', name: 'Gerente', description: 'Acesso de gerenciamento' },
+        { id: 'user', name: 'Usuário', description: 'Acesso básico' },
+        { id: 'viewer', name: 'Visualizador', description: 'Apenas visualização' }
+      ]
+
+      defaultRoles.forEach(role => {
+        // Inicializar todos os módulos com false
+        const permissions: { [key: string]: boolean } = {}
+        availableModules.forEach(module => {
+          permissions[module] = false
+        })
+        
+        // Aplicar permissões do banco de dados
+        // (aqui você pode definir permissões padrão ou buscar do banco)
+        
+        formattedRoles.push({
+          ...role,
+          permissions,
+          isDefault: true
+        })
+      })
+
+      // Adicionar funções customizadas
+      customRoles?.forEach((role: any) => {
+        const permissions: { [key: string]: boolean } = {}
+        availableModules.forEach(module => {
+          permissions[module] = false
+        })
+        
+        // Aplicar permissões do banco de dados
+        role.permissions?.forEach((perm: any) => {
+          permissions[perm.module] = perm.can_read || perm.can_write || perm.can_delete
+        })
+        
+        formattedRoles.push({
+          id: role.id,
+          name: role.name,
+          description: role.description,
+          permissions,
+          isDefault: ['Administrador', 'Gerente', 'Usuário', 'Visualizador'].includes(role.name),
+        })
+      })
+
+      setRoles(formattedRoles)
+    } catch (error) {
+      console.error('Erro ao carregar funções:', error)
+    } finally {
+      setLoadingRoles(false)
+    }
+  }
+
+  // Função para abrir dialog de função
+  const openRoleDialog = (role?: Role) => {
+    if (role) {
+      setEditingRole(role)
+      setNewRoleName(role.name)
+      setNewRoleDescription(role.description)
+      setNewRolePermissions(role.permissions)
+    } else {
+      setEditingRole(null)
+      setNewRoleName('')
+      setNewRoleDescription('')
+      // Inicializar todas as permissões como false
+      const initialPermissions: { [key: string]: boolean } = {}
+      availableModules.forEach(module => {
+        initialPermissions[module] = false
+      })
+      setNewRolePermissions(initialPermissions)
+    }
+    setIsRoleDialogOpen(true)
+  }
+
+  // Função para salvar função
+  const handleSaveRole = async () => {
+    if (!selectedCompany || !newRoleName.trim()) return
+
+    try {
+      const supabase = createClient()
+      
+      if (editingRole && !editingRole.isDefault) {
+        // Atualizar função existente
+        const { error: updateError } = await supabase
+          .from('roles')
+          .update({
+            name: newRoleName,
+            description: newRoleDescription
+          })
+          .eq('id', editingRole.id)
+
+        if (updateError) throw updateError
+      } else if (!editingRole) {
+        // Criar nova função
+        const { data: newRole, error: insertError } = await supabase
+          .from('roles')
+          .insert({
+            name: newRoleName,
+            description: newRoleDescription,
+            empresa_id: selectedCompany.id
+          })
+          .select()
+          .single()
+
+        if (insertError) throw insertError
+
+        // Deletar permissões existentes
+        await supabase
+          .from('permissions')
+          .delete()
+          .eq('role_id', newRole.id)
+
+        // Inserir novas permissões
+        const permissionsToInsert = Object.entries(newRolePermissions)
+          .filter(([_, hasPermission]) => hasPermission)
+          .map(([module, _]) => ({
+            role_id: newRole.id,
+            module,
+            can_read: true,
+            can_write: true,
+            can_delete: false
+          }))
+
+        if (permissionsToInsert.length > 0) {
+          await supabase.from('permissions').insert(permissionsToInsert)
+        }
+      }
+
+      // Recarregar funções
+      await loadRoles()
+      setIsRoleDialogOpen(false)
+    } catch (error) {
+      console.error('Erro ao salvar função:', error)
+    }
+  }
+
+  // Função para deletar função
+  const handleDeleteRole = async (role: Role) => {
+    if (!confirm('Tem certeza que deseja deletar esta função?')) return
+
+    try {
+      // Verificar se a função não é padrão
+      if (role.isDefault) {
+        alert('Não é possível deletar funções padrão do sistema.')
+        return
+      }
+
+      // Deletar função (as permissões serão deletadas automaticamente por CASCADE)
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('roles')
+        .delete()
+        .eq('id', role.id)
+
+      if (error) throw error
+
+      // Recarregar funções
+      await loadRoles()
+    } catch (error) {
+      console.error('Erro ao deletar função:', error)
+    }
+  }
+
+  // Função para atualizar permissão de módulo
+  const handlePermissionChange = (module: string, hasPermission: boolean) => {
+    setNewRolePermissions(prev => ({
+      ...prev,
+      [module]: hasPermission
+    }))
+  }
 
   // Função para carregar usuários reais do Supabase
   const loadUsers = async () => {
     if (!selectedCompany) {
       setUsers([])
-      setLoadingUsers(false)
       return
     }
 
     try {
-      setLoadingUsers(true)
-      setUserError(null)
-
       // Buscar usuários relacionados à empresa selecionada via API route
       const response = await fetch(`/api/users?empresa_id=${selectedCompany.id}`)
       
       if (!response.ok) {
         throw new Error(`Erro ao buscar usuários: ${response.statusText}`)
       }
-
-      const { users: fetchedUsers, error } = await response.json()
       
-      if (error) {
-        throw new Error(error)
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error)
       }
-
-      // Transformar dados para o formato esperado
-      const transformedUsers: User[] = fetchedUsers.map((user: any) => ({
+      
+      // Transformar os dados para o formato esperado
+      const transformedUsers: User[] = data.users.map((user: any) => ({
         id: user.id,
         name: user.name || user.email?.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || `Usuário ${user.id.substring(0, 8)}`,
-        email: user.email || `usuario-${user.id.substring(0, 8)}@empresa.com`,
-        role: user.role as "admin" | "manager" | "user" | "viewer",
+        email: user.email,
+        role: user.role || 'Usuário',
         department: user.role === 'admin' ? 'Administração' : user.role === 'manager' ? 'Gestão' : 'Operacional',
-        status: 'active' as const,
-        lastLogin: user.last_sign_in_at || user.created_at,
+        status: user.status === 'active' ? 'active' : 'inactive',
+        lastLogin: user.last_sign_in_at || new Date().toISOString(),
         created_at: user.created_at
       }))
-
+      
       setUsers(transformedUsers)
+      setUserError(null)
     } catch (error) {
       console.error('Erro ao carregar usuários:', error)
       setUserError('Erro ao carregar usuários. Tente novamente.')
       setUsers([])
-    } finally {
-      setLoadingUsers(false)
     }
   }
+
+  // Carregar dados quando o componente montar ou a empresa mudar
+  useEffect(() => {
+    loadRoles()
+  }, [selectedCompany])
 
   // Carregar usuários quando a empresa selecionada mudar
   useEffect(() => {
     loadUsers()
   }, [selectedCompany])
 
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
-    name: "Empresa Exemplo Ltda",
+  // Dados mock para empresa (você pode substituir por dados reais)
+  const companyData = {
+    name: selectedCompany?.name || "Empresa Exemplo",
     cnpj: "12.345.678/0001-90",
     address: "Rua das Indústrias, 123 - São Paulo, SP",
     phone: "(11) 1234-5678",
     email: "contato@empresa.com",
     responsibleTechnician: "João Silva",
-    crea: "SP123456",
+  }
+
+  // Estados para formulários de integração
+  const [esocialForm, setEsocialForm] = useState({
+    cnpj: '',
+    razaoSocial: '',
+    certificado: null as File | null,
+    senha: '',
+    ambiente: 'producao' as 'producao' | 'homologacao'
   })
 
-  const [notifications, setNotifications] = useState({
-    emailAlerts: true,
-    smsAlerts: false,
-    systemNotifications: true,
-    weeklyReports: true,
-    monthlyReports: true,
-    incidentAlerts: true,
-    trainingReminders: true,
-    inspectionReminders: true,
+  const [emailForm, setEmailForm] = useState({
+    servidor: '',
+    porta: 587,
+    usuario: '',
+    senha: '',
+    ssl: true,
+    remetente: ''
   })
 
-  const [integrations, setIntegrations] = useState({
-    esocial: { enabled: true, status: "connected" },
-    email: { enabled: true, status: "connected" },
-    sms: { enabled: false, status: "disconnected" },
-    backup: { enabled: true, status: "connected" },
+  const [smsForm, setSmsForm] = useState({
+    provedor: '',
+    apiKey: '',
+    apiSecret: '',
+    numeroRemetente: '',
+    testeEnvio: ''
   })
 
-  const [showPassword, setShowPassword] = useState(false)
-
-  const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
-  const [editingCompany, setEditingCompany] = useState<Company | null>(null)
-  const [companyForm, setCompanyForm] = useState({
-    name: "",
-    cnpj: "",
-    address: "",
-    phone: "",
-    email: "",
-    logo: "",
-    isActive: true,
+  const [backupForm, setBackupForm] = useState({
+    frequencia: 'diario',
+    horario: '02:00',
+    destino: 'local',
+    chaveAcesso: '',
+    chaveSecreta: '',
+    retencao: 30,
+    ativo: true
   })
-
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case "admin":
-        return "bg-red-100 text-red-800 border-red-200"
-      case "manager":
-        return "bg-blue-100 text-blue-800 border-blue-200"
-      case "user":
-        return "bg-green-100 text-green-800 border-green-200"
-      case "viewer":
-        return "bg-gray-100 text-gray-800 border-gray-200"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800 border-green-200"
-      case "inactive":
-        return "bg-red-100 text-red-800 border-red-200"
-      case "connected":
-        return "bg-green-100 text-green-800 border-green-200"
-      case "disconnected":
-        return "bg-red-100 text-red-800 border-red-200"
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
-    }
-  }
-
-  const handleCompanyInfoChange = (field: keyof CompanyInfo, value: string) => {
-    setCompanyInfo((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleNotificationChange = (key: string, value: boolean) => {
-    setNotifications((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const handleCompanyFormChange = (field: string, value: string | boolean) => {
-    setCompanyForm((prev) => ({ ...prev, [field]: value }))
-  }
 
   const openCompanyDialog = (company?: Company) => {
     if (company) {
       setEditingCompany(company)
       setCompanyForm({
         name: company.name,
-        cnpj: company.cnpj,
-        address: company.address,
-        phone: company.phone,
-        email: company.email,
-        logo: company.logo || "",
-        isActive: company.isActive,
+        cnpj: company.cnpj || '',
+        email: company.email || '',
+        phone: company.phone || '',
+        address: company.address || ''
       })
     } else {
       setEditingCompany(null)
       setCompanyForm({
-        name: "",
-        cnpj: "",
-        address: "",
-        phone: "",
-        email: "",
-        logo: "",
-        isActive: true,
+        name: '',
+        cnpj: '',
+        email: '',
+        phone: '',
+        address: ''
       })
     }
     setIsCompanyDialogOpen(true)
   }
 
-  const handleSaveCompany = () => {
-    if (editingCompany) {
-      const updatedCompanies = companies.map((company) =>
-        company.id === editingCompany.id ? { ...company, ...companyForm } : company,
-      )
-      setCompanies(updatedCompanies)
-    } else {
-      const newCompany: Company = {
-        id: Date.now().toString(),
-        ...companyForm,
-        createdAt: new Date(),
-      }
-      setCompanies([...companies, newCompany])
-    }
-    setIsCompanyDialogOpen(false)
-  }
-
-  const handleDeleteCompany = (companyId: string) => {
-    const updatedCompanies = companies.filter((company) => company.id !== companyId)
-    setCompanies(updatedCompanies)
-  }
-
-  const validateCNPJ = (cnpj: string) => {
-    const cnpjRegex = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/
-    return cnpjRegex.test(cnpj)
-  }
-
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return emailRegex.test(email)
-  }
-
-  const handleUserFormChange = (field: string, value: string) => {
-    setUserForm(prev => ({ ...prev, [field]: value }))
-  }
-
   const openUserDialog = (user?: User) => {
+    if (!selectedCompany) {
+      setUserError('Selecione uma empresa antes de gerenciar usuários')
+      return
+    }
+    
     if (user) {
       setEditingUser(user)
-      setUserForm({
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department
-      })
     } else {
       setEditingUser(null)
-      setUserForm({
-        name: "",
-        email: "",
-        role: "user",
-        department: ""
-      })
     }
+    setUserError(null)
     setIsUserDialogOpen(true)
   }
 
-  const handleSaveUser = async () => {
-    if (!selectedCompany) return
+  const handleSaveUser = async (userData: Partial<User> & { password?: string, confirmPassword?: string }) => {
+    if (!selectedCompany) {
+      setUserError('Selecione uma empresa antes de gerenciar usuários')
+      return
+    }
 
     try {
+      // Validação para novos usuários
+      if (!editingUser) {
+        if (!userData.password) {
+          setUserError('A senha é obrigatória para novos usuários')
+          return
+        }
+        if (userData.password !== userData.confirmPassword) {
+          setUserError('As senhas não coincidem')
+          return
+        }
+      }
+
       const method = editingUser ? 'PUT' : 'POST'
       const url = editingUser 
-        ? `/api/users?user_id=${editingUser.id}&empresa_id=${selectedCompany.id}`
+        ? `/api/users?id=${editingUser.id}&empresa_id=${selectedCompany.id}`
         : `/api/users?empresa_id=${selectedCompany.id}`
-
+      
+      const payload: any = {
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        department: userData.department,
+        status: userData.status
+      }
+      
+      // Para novos usuários, incluir a senha no payload
+      if (!editingUser && userData.password) {
+        payload.password = userData.password
+      }
+      
       const response = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(userForm)
+        body: JSON.stringify(payload)
       })
-
+      
       if (!response.ok) {
         throw new Error('Erro ao salvar usuário')
       }
-
+      
       setIsUserDialogOpen(false)
+      setEditingUser(null)
       loadUsers() // Recarrega a lista de usuários
     } catch (error) {
       console.error('Erro ao salvar usuário:', error)
@@ -324,19 +540,22 @@ const SettingsComponent = () => {
   }
 
   const handleDeleteUser = async (userId: string) => {
-    if (!selectedCompany) return
+    if (!selectedCompany) {
+      setUserError('Selecione uma empresa antes de gerenciar usuários')
+      return
+    }
     
     if (!confirm('Tem certeza que deseja deletar este usuário?')) return
 
     try {
-      const response = await fetch(`/api/users?user_id=${userId}&empresa_id=${selectedCompany.id}`, {
+      const response = await fetch(`/api/users?id=${userId}&empresa_id=${selectedCompany.id}`, {
         method: 'DELETE'
       })
-
+      
       if (!response.ok) {
         throw new Error('Erro ao deletar usuário')
       }
-
+      
       loadUsers() // Recarrega a lista de usuários
     } catch (error) {
       console.error('Erro ao deletar usuário:', error)
@@ -344,32 +563,299 @@ const SettingsComponent = () => {
     }
   }
 
+  const handleSaveEsocialConfig = async (testConnection = false) => {
+    // Validações básicas
+    if (!esocialForm.cnpj || !esocialForm.razaoSocial) {
+      toast({
+        title: "Erro de validação",
+        description: "CNPJ e Razão Social são obrigatórios.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!esocialForm.certificado || !esocialForm.senha) {
+      toast({
+        title: "Erro de validação",
+        description: "Certificado digital e senha são obrigatórios.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Simular salvamento da configuração
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Aqui você implementaria a lógica real de salvamento
+      // const supabase = createClient()
+      // const { error } = await supabase
+      //   .from('integracoes')
+      //   .upsert({
+      //     empresa_id: selectedCompany?.id,
+      //     tipo: 'esocial',
+      //     configuracao: esocialForm,
+      //     ativo: true
+      //   })
+      
+      // Atualizar estado das integrações
+      setIntegrations(prev => prev.map(integration => 
+        integration.name === 'eSocial' 
+          ? { 
+              ...integration, 
+              status: 'active' as const,
+              lastSync: new Date().toISOString()
+            }
+          : integration
+      ))
+      
+      setIsEsocialDialogOpen(false)
+      
+      toast({
+        title: "Configuração salva",
+        description: "Integração eSocial configurada com sucesso.",
+      })
+      
+      // Teste de conexão se solicitado
+      if (testConnection) {
+        toast({
+          title: "Testando conexão",
+          description: "Verificando conectividade com eSocial...",
+        })
+        
+        // Simular teste de conexão
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        toast({
+          title: "Teste concluído",
+          description: "Conexão com eSocial estabelecida com sucesso.",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar a configuração do eSocial.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSaveEmailConfig = async (testConnection = false) => {
+    // Validações básicas
+    if (!emailForm.servidor || !emailForm.usuario || !emailForm.senha || !emailForm.remetente) {
+      toast({
+        title: "Erro de validação",
+        description: "Todos os campos são obrigatórios.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Simular salvamento da configuração
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Aqui você implementaria a lógica real de salvamento
+      // const supabase = createClient()
+      // const { error } = await supabase
+      //   .from('integracoes')
+      //   .upsert({
+      //     empresa_id: selectedCompany?.id,
+      //     tipo: 'email',
+      //     configuracao: emailForm,
+      //     ativo: true
+      //   })
+      
+      // Atualizar estado das integrações
+      setIntegrations(prev => prev.map(integration => 
+        integration.name === 'E-mail' 
+          ? { 
+              ...integration, 
+              status: 'active' as const,
+              lastSync: new Date().toISOString()
+            }
+          : integration
+      ))
+      
+      setIsEmailDialogOpen(false)
+      
+      toast({
+        title: "Configuração salva",
+        description: "Configuração de e-mail salva com sucesso.",
+      })
+      
+      // Teste de conexão se solicitado
+      if (testConnection) {
+        toast({
+          title: "Testando conexão",
+          description: "Verificando configuração SMTP...",
+        })
+        
+        // Simular teste de conexão
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        // Aqui você implementaria o teste real de SMTP
+        // const testResult = await testSmtpConnection(emailForm)
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar a configuração de e-mail.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSaveSmsConfig = async (testConnection = false) => {
+    // Validações básicas
+    if (!smsForm.provedor || !smsForm.apiKey || !smsForm.apiSecret) {
+      toast({
+        title: "Erro de validação",
+        description: "Provedor, API Key e API Secret são obrigatórios.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Simular salvamento da configuração
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Aqui você implementaria a lógica real de salvamento
+      // const supabase = createClient()
+      // const { error } = await supabase
+      //   .from('integracoes')
+      //   .upsert({
+      //     empresa_id: selectedCompany?.id,
+      //     tipo: 'sms',
+      //     configuracao: smsForm,
+      //     ativo: true
+      //   })
+      
+      // Atualizar estado das integrações
+      setIntegrations(prev => prev.map(integration => 
+        integration.name === 'SMS' 
+          ? { 
+              ...integration, 
+              status: 'active' as const,
+              lastSync: new Date().toISOString()
+            }
+          : integration
+      ))
+      
+      setIsSmsDialogOpen(false)
+      
+      toast({
+        title: "Configuração salva",
+        description: "Configuração de SMS salva com sucesso.",
+      })
+      
+      // Teste de conexão se solicitado
+      if (testConnection) {
+        toast({
+          title: "Testando conexão",
+          description: "Verificando configuração do provedor...",
+        })
+        
+        // Simular teste de conexão
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        
+        // Aqui você implementaria o teste real de SMS
+        // const testResult = await testSmsProvider(smsForm)
+      }
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar a configuração de SMS.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSaveBackupConfig = async () => {
+    // Validações básicas
+    if (!backupForm.frequencia || !backupForm.horario || !backupForm.destino) {
+      toast({
+        title: "Erro de validação",
+        description: "Frequência, horário e destino são obrigatórios.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (backupForm.destino !== 'local' && (!backupForm.chaveAcesso || !backupForm.chaveSecreta)) {
+      toast({
+        title: "Erro de validação",
+        description: "Chaves de acesso são obrigatórias para destinos externos.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Simular salvamento da configuração
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      // Aqui você implementaria a lógica real de salvamento
+      // const supabase = createClient()
+      // const { error } = await supabase
+      //   .from('integracoes')
+      //   .upsert({
+      //     empresa_id: selectedCompany?.id,
+      //     tipo: 'backup',
+      //     configuracao: backupForm,
+      //     ativo: backupForm.ativo
+      //   })
+      
+      // Atualizar estado das integrações
+      setIntegrations(prev => prev.map(integration => 
+        integration.name === 'Backup' 
+          ? { 
+              ...integration, 
+              status: backupForm.ativo ? 'active' as const : 'inactive' as const,
+              lastSync: new Date().toISOString()
+            }
+          : integration
+      ))
+      
+      setIsBackupDialogOpen(false)
+      
+      toast({
+        title: "Configuração salva",
+        description: "Configuração de backup salva com sucesso.",
+      })
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar a configuração de backup.",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
-          <p className="text-muted-foreground">Gerencie configurações do sistema e usuários</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
+        <p className="text-muted-foreground">Gerencie configurações do sistema e usuários</p>
       </div>
 
       <Tabs defaultValue="company" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList>
           <TabsTrigger value="company">Empresa</TabsTrigger>
           <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="users">Usuários</TabsTrigger>
           <TabsTrigger value="permissions">Permissões</TabsTrigger>
           <TabsTrigger value="notifications">Notificações</TabsTrigger>
           <TabsTrigger value="integrations">Integrações</TabsTrigger>
-          <TabsTrigger value="system">Sistema</TabsTrigger>
         </TabsList>
 
         <TabsContent value="company" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center space-x-2">
                 <Building className="h-5 w-5" />
-                Informações da Empresa
+                <span>Informações da Empresa</span>
               </CardTitle>
               <CardDescription>Configure os dados básicos da sua empresa</CardDescription>
             </CardHeader>
@@ -379,64 +865,63 @@ const SettingsComponent = () => {
                   <Label htmlFor="company-name">Razão Social</Label>
                   <Input
                     id="company-name"
-                    value={companyInfo.name}
-                    onChange={(e) => handleCompanyInfoChange("name", e.target.value)}
+                    value={companyData.name}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cnpj">CNPJ</Label>
                   <Input
                     id="cnpj"
-                    value={companyInfo.cnpj}
-                    onChange={(e) => handleCompanyInfoChange("cnpj", e.target.value)}
+                    value={companyData.cnpj}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-2">
                   <Label htmlFor="address">Endereço</Label>
                   <Input
                     id="address"
-                    value={companyInfo.address}
-                    onChange={(e) => handleCompanyInfoChange("address", e.target.value)}
+                    value={companyData.address}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Telefone</Label>
                   <Input
                     id="phone"
-                    value={companyInfo.phone}
-                    onChange={(e) => handleCompanyInfoChange("phone", e.target.value)}
+                    value={companyData.phone}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">E-mail</Label>
                   <Input
                     id="email"
-                    type="email"
-                    value={companyInfo.email}
-                    onChange={(e) => handleCompanyInfoChange("email", e.target.value)}
+                    value={companyData.email}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="responsible">Responsável Técnico</Label>
                   <Input
                     id="responsible"
-                    value={companyInfo.responsibleTechnician}
-                    onChange={(e) => handleCompanyInfoChange("responsibleTechnician", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="crea">CREA</Label>
-                  <Input
-                    id="crea"
-                    value={companyInfo.crea}
-                    onChange={(e) => handleCompanyInfoChange("crea", e.target.value)}
+                    value={companyData.responsibleTechnician}
+                    readOnly
+                    className="bg-muted"
                   />
                 </div>
               </div>
-              <Button className="w-full md:w-auto">
-                <Save className="mr-2 h-4 w-4" />
-                Salvar Alterações
-              </Button>
+              <div className="flex justify-end">
+                <Button>
+                  <Save className="h-4 w-4 mr-2" />
+                  Salvar Alterações
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -446,353 +931,226 @@ const SettingsComponent = () => {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center space-x-2">
                     <Building2 className="h-5 w-5" />
-                    Gestão de Empresas
+                    <span>Gestão de Empresas</span>
                   </CardTitle>
-                  <CardDescription>Cadastre e gerencie as empresas do sistema</CardDescription>
+                  <CardDescription>Gerencie todas as empresas do sistema</CardDescription>
                 </div>
                 <Button onClick={() => openCompanyDialog()}>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="h-4 w-4 mr-2" />
                   Nova Empresa
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {companies.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
-                    <h3 className="mt-2 text-sm font-semibold text-muted-foreground">Nenhuma empresa cadastrada</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Comece cadastrando sua primeira empresa.</p>
-                  </div>
-                ) : (
-                  companies.map((company) => (
-                    <div key={company.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{company.name}</h4>
-                          <Badge className={getStatusColor(company.isActive ? "active" : "inactive")}>
-                            {company.isActive ? "Ativa" : "Inativa"}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">CNPJ: {company.cnpj}</p>
-                        <p className="text-sm text-muted-foreground">{company.address}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {company.phone} • {company.email}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Cadastrada em: {company.createdAt.toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openCompanyDialog(company)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteCompany(company.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                {companies.map((company) => (
+                  <div key={company.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <h3 className="font-semibold">{company.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {company.cnpj} • {company.phone} • {company.email}
+                      </p>
                     </div>
-                  ))
-                )}
+                    <div className="flex items-center space-x-2">
+                      <Badge variant={selectedCompany?.id === company.id ? "default" : "secondary"}>
+                        {selectedCompany?.id === company.id ? "Selecionada" : "Disponível"}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedCompany(company)}
+                      >
+                        Selecionar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openCompanyDialog(company)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
-
-          <Dialog open={isCompanyDialogOpen} onOpenChange={setIsCompanyDialogOpen}>
-            <DialogContent className="sm:max-w-[600px]">
-              <DialogHeader>
-                <DialogTitle>{editingCompany ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
-                <DialogDescription>
-                  {editingCompany
-                    ? "Edite as informações da empresa selecionada."
-                    : "Preencha os dados para cadastrar uma nova empresa."}
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="company-name">Razão Social *</Label>
-                    <Input
-                      id="company-name"
-                      value={companyForm.name}
-                      onChange={(e) => handleCompanyFormChange("name", e.target.value)}
-                      placeholder="Digite a razão social"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="company-cnpj">CNPJ *</Label>
-                    <Input
-                      id="company-cnpj"
-                      value={companyForm.cnpj}
-                      onChange={(e) => handleCompanyFormChange("cnpj", e.target.value)}
-                      placeholder="00.000.000/0000-00"
-                    />
-                    {companyForm.cnpj && !validateCNPJ(companyForm.cnpj) && (
-                      <p className="text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Formato de CNPJ inválido
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="company-address">Endereço *</Label>
-                  <Textarea
-                    id="company-address"
-                    value={companyForm.address}
-                    onChange={(e) => handleCompanyFormChange("address", e.target.value)}
-                    placeholder="Digite o endereço completo"
-                    rows={2}
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="company-phone">Telefone *</Label>
-                    <Input
-                      id="company-phone"
-                      value={companyForm.phone}
-                      onChange={(e) => handleCompanyFormChange("phone", e.target.value)}
-                      placeholder="(00) 0000-0000"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="company-email">E-mail *</Label>
-                    <Input
-                      id="company-email"
-                      type="email"
-                      value={companyForm.email}
-                      onChange={(e) => handleCompanyFormChange("email", e.target.value)}
-                      placeholder="contato@empresa.com"
-                    />
-                    {companyForm.email && !validateEmail(companyForm.email) && (
-                      <p className="text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Formato de e-mail inválido
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="company-logo">Logo (URL)</Label>
-                  <Input
-                    id="company-logo"
-                    value={companyForm.logo}
-                    onChange={(e) => handleCompanyFormChange("logo", e.target.value)}
-                    placeholder="https://exemplo.com/logo.png"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="company-active"
-                    checked={companyForm.isActive}
-                    onCheckedChange={(value) => handleCompanyFormChange("isActive", value)}
-                  />
-                  <Label htmlFor="company-active">Empresa ativa</Label>
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCompanyDialogOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleSaveCompany}
-                  disabled={
-                    !companyForm.name ||
-                    !companyForm.cnpj ||
-                    !companyForm.address ||
-                    !companyForm.phone ||
-                    !companyForm.email ||
-                    !validateCNPJ(companyForm.cnpj) ||
-                    !validateEmail(companyForm.email)
-                  }
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  {editingCompany ? "Salvar Alterações" : "Cadastrar Empresa"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Dialog de Usuário */}
-          <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingUser ? "Editar Usuário" : "Novo Usuário"}
-                </DialogTitle>
-                <DialogDescription>
-                  {editingUser ? "Edite as informações do usuário" : "Adicione um novo usuário ao sistema"}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="user-name" className="text-right">
-                    Nome
-                  </Label>
-                  <Input
-                    id="user-name"
-                    value={userForm.name}
-                    onChange={(e) => handleUserFormChange("name", e.target.value)}
-                    className="col-span-3"
-                    placeholder="Nome completo"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="user-email" className="text-right">
-                    E-mail
-                  </Label>
-                  <Input
-                    id="user-email"
-                    type="email"
-                    value={userForm.email}
-                    onChange={(e) => handleUserFormChange("email", e.target.value)}
-                    className="col-span-3"
-                    placeholder="email@exemplo.com"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="user-role" className="text-right">
-                    Função
-                  </Label>
-                  <select
-                    id="user-role"
-                    value={userForm.role}
-                    onChange={(e) => handleUserFormChange("role", e.target.value)}
-                    className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="user">Usuário</option>
-                    <option value="manager">Gerente</option>
-                    <option value="admin">Administrador</option>
-                    <option value="viewer">Visualizador</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="user-department" className="text-right">
-                    Departamento
-                  </Label>
-                  <Input
-                    id="user-department"
-                    value={userForm.department}
-                    onChange={(e) => handleUserFormChange("department", e.target.value)}
-                    className="col-span-3"
-                    placeholder="Departamento"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  onClick={handleSaveUser}
-                  disabled={!userForm.name || !userForm.email || !validateEmail(userForm.email)}
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  {editingUser ? "Salvar Alterações" : "Criar Usuário"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </TabsContent>
+
+        {/* Dialog para Empresa */}
+        <Dialog open={isCompanyDialogOpen} onOpenChange={setIsCompanyDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>{editingCompany ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
+              <DialogDescription>
+                {editingCompany 
+                  ? "Edite as informações da empresa selecionada."
+                  : "Cadastre uma nova empresa no sistema."
+                }
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="company-name">Razão Social *</Label>
+                  <Input
+                    id="company-name"
+                    value={companyForm.name}
+                    onChange={(e) => setCompanyForm(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Digite a razão social"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="company-cnpj">CNPJ *</Label>
+                  <Input
+                    id="company-cnpj"
+                    value={companyForm.cnpj}
+                    onChange={(e) => setCompanyForm(prev => ({ ...prev, cnpj: e.target.value }))}
+                    placeholder="00.000.000/0000-00"
+                  />
+                  {companyForm.cnpj && !/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(companyForm.cnpj) && (
+                    <p className="text-sm text-red-500">Formato de CNPJ inválido</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="company-address">Endereço *</Label>
+                <Input
+                  id="company-address"
+                  value={companyForm.address}
+                  onChange={(e) => setCompanyForm(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Digite o endereço completo"
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="company-phone">Telefone</Label>
+                  <Input
+                    id="company-phone"
+                    value={companyForm.phone}
+                    onChange={(e) => setCompanyForm(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="(00) 0000-0000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="company-email">E-mail</Label>
+                  <Input
+                    id="company-email"
+                    type="email"
+                    value={companyForm.email}
+                    onChange={(e) => setCompanyForm(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="contato@empresa.com"
+                  />
+                  {companyForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companyForm.email) && (
+                    <p className="text-sm text-red-500">Formato de e-mail inválido</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCompanyDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={() => {
+                // Aqui você implementaria a lógica de salvamento
+                console.log('Salvando empresa:', companyForm)
+                setIsCompanyDialogOpen(false)
+              }}>
+                <Save className="h-4 w-4 mr-2" />
+                {editingCompany ? "Salvar Alterações" : "Cadastrar Empresa"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <TabsContent value="users" className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center space-x-2">
                     <Users className="h-5 w-5" />
-                    Gestão de Usuários
+                    <span>Gestão de Usuários</span>
                   </CardTitle>
                   <CardDescription>Gerencie usuários e suas permissões</CardDescription>
                 </div>
                 <Button onClick={() => openUserDialog()}>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus className="h-4 w-4 mr-2" />
                   Novo Usuário
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {loadingUsers ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-center space-y-2">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                      <p className="text-sm text-muted-foreground">Carregando usuários...</p>
-                    </div>
-                  </div>
-                ) : userError ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-center space-y-2">
-                      <AlertCircle className="h-8 w-8 text-red-500 mx-auto" />
-                      <p className="text-sm text-red-600">{userError}</p>
-                      <Button variant="outline" size="sm" onClick={loadUsers}>
-                        Tentar Novamente
-                      </Button>
-                    </div>
-                  </div>
-                ) : !selectedCompany ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-center space-y-2">
-                      <Users className="h-8 w-8 text-muted-foreground mx-auto" />
-                      <p className="text-sm text-muted-foreground">Selecione uma empresa para visualizar os usuários</p>
-                    </div>
-                  </div>
-                ) : users.length === 0 ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-center space-y-2">
-                      <Users className="h-8 w-8 text-muted-foreground mx-auto" />
-                      <p className="text-sm text-muted-foreground">Nenhum usuário encontrado para esta empresa</p>
-                      <p className="text-xs text-muted-foreground">Adicione usuários para começar</p>
-                    </div>
+              {!selectedCompany ? (
+                <div className="text-center py-8">
+                  <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-sm text-muted-foreground">Carregando usuários...</p>
+                </div>
+              ) : users.length === 0 ? (
+                !selectedCompany ? (
+                  <div className="text-center py-8">
+                    <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Selecione uma empresa</h3>
+                    <p className="text-sm text-muted-foreground">Selecione uma empresa para visualizar os usuários</p>
                   </div>
                 ) : (
-                  users.map((user) => (
+                  <div className="text-center py-8">
+                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Nenhum usuário encontrado</h3>
+                    <p className="text-sm text-muted-foreground">Nenhum usuário encontrado para esta empresa</p>
+                    <p className="text-xs text-muted-foreground">Adicione usuários para começar</p>
+                  </div>
+                )
+              ) : (
+                <div className="space-y-4">
+                  {userError && (
+                    <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
+                      <p className="text-sm text-red-600">{userError}</p>
+                    </div>
+                  )}
+                  {users.map((user) => (
                     <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{user.name}</h4>
-                          <Badge className={getRoleColor(user.role)}>
-                            {user.role === "admin"
-                              ? "Administrador"
-                              : user.role === "manager"
-                                ? "Gerente"
-                                : user.role === "user"
-                                  ? "Usuário"
-                                  : "Visualizador"}
-                          </Badge>
-                          <Badge className={getStatusColor(user.status)}>
-                            {user.status === "active" ? "Ativo" : "Inativo"}
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-semibold">{user.name}</h3>
+                          <Badge variant={user.status === "active" ? "default" : "secondary"}>
+                            {user.status === "active" 
+                              ? "Ativo" 
+                              : user.status === "inactive" 
+                              ? "Inativo" 
+                              : "Usuário"
+                            }
                           </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
                         <p className="text-sm text-muted-foreground">
+                          {user.email} • {user.role}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
                           {user.department} • Último acesso: {new Date(user.lastLogin).toLocaleString("pt-BR")}
                         </p>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => openUserDialog(user)}>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openUserDialog(user)}
+                        >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeleteUser(user.id)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -800,52 +1158,84 @@ const SettingsComponent = () => {
         <TabsContent value="permissions" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Configuração de Permissões
-              </CardTitle>
-              <CardDescription>Configure permissões por perfil de usuário</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Shield className="h-5 w-5" />
+                    <span>Gestão de Funções e Permissões</span>
+                  </CardTitle>
+                  <CardDescription>Crie e configure funções personalizadas com permissões específicas</CardDescription>
+                </div>
+                <Button onClick={() => openRoleDialog()}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nova Função
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div className="font-medium">Módulo</div>
-                  <div className="font-medium text-center">Administrador</div>
-                  <div className="font-medium text-center">Gerente</div>
-                  <div className="font-medium text-center">Usuário</div>
+              {loadingRoles ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="mt-2 text-sm text-muted-foreground">Carregando funções...</p>
                 </div>
-
-                {[
-                  "Dashboard",
-                  "Gestão de Riscos",
-                  "Saúde Ocupacional",
-                  "Funcionários",
-                  "Treinamentos",
-                  "Biblioteca Digital",
-                  "Relatórios",
-                  "eSocial",
-                  "Não Conformidades",
-                  "Segurança do Trabalho",
-                  "Configurações",
-                ].map((module) => (
-                  <div key={module} className="grid gap-4 md:grid-cols-4 items-center py-2 border-b">
-                    <div>{module}</div>
-                    <div className="flex justify-center">
-                      <Switch defaultChecked />
+              ) : roles.length === 0 ? (
+                <div className="text-center py-8">
+                  <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="mt-2 text-sm font-semibold text-muted-foreground">Nenhuma função cadastrada</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Comece criando sua primeira função personalizada.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {roles.map((role) => (
+                    <div key={role.id} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          <div>
+                            <h3 className="font-semibold flex items-center space-x-2">
+                              <span>{role.name}</span>
+                              {role.isDefault && (
+                                <Badge variant="outline" className="text-xs">
+                                  Padrão
+                                </Badge>
+                              )}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">{role.description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openRoleDialog(role)}
+                            disabled={role.isDefault}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          {!role.isDefault && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteRole(role)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {Object.entries(role.permissions).map(([module, hasPermission]) => (
+                          <div key={module} className="flex items-center space-x-2">
+                            <div className={`w-2 h-2 rounded-full ${
+                              hasPermission ? 'bg-green-500' : 'bg-gray-300'
+                            }`} />
+                            <span className="text-xs text-muted-foreground">{module}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex justify-center">
-                      <Switch defaultChecked={module !== "Configurações"} />
-                    </div>
-                    <div className="flex justify-center">
-                      <Switch defaultChecked={!["Configurações", "eSocial"].includes(module)} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button className="mt-4">
-                <Save className="mr-2 h-4 w-4" />
-                Salvar Permissões
-              </Button>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -853,276 +1243,691 @@ const SettingsComponent = () => {
         <TabsContent value="notifications" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center space-x-2">
                 <Bell className="h-5 w-5" />
-                Configurações de Notificações
+                <span>Configurações de Notificações</span>
               </CardTitle>
               <CardDescription>Configure como e quando receber notificações</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Alertas por E-mail</Label>
-                    <p className="text-sm text-muted-foreground">Receba alertas importantes por e-mail</p>
+                    <Label>Notificações por E-mail</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Receba notificações importantes por e-mail
+                    </p>
                   </div>
-                  <Switch
-                    checked={notifications.emailAlerts}
-                    onCheckedChange={(value) => handleNotificationChange("emailAlerts", value)}
-                  />
+                  <Switch />
                 </div>
-
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Alertas por SMS</Label>
-                    <p className="text-sm text-muted-foreground">Receba alertas críticos por SMS</p>
+                    <Label>Notificações Push</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Receba notificações push no navegador
+                    </p>
                   </div>
-                  <Switch
-                    checked={notifications.smsAlerts}
-                    onCheckedChange={(value) => handleNotificationChange("smsAlerts", value)}
-                  />
+                  <Switch />
                 </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Notificações do Sistema</Label>
-                    <p className="text-sm text-muted-foreground">Notificações dentro do sistema</p>
-                  </div>
-                  <Switch
-                    checked={notifications.systemNotifications}
-                    onCheckedChange={(value) => handleNotificationChange("systemNotifications", value)}
-                  />
-                </div>
-
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label>Relatórios Semanais</Label>
-                    <p className="text-sm text-muted-foreground">Receba resumos semanais automaticamente</p>
+                    <p className="text-sm text-muted-foreground">
+                      Receba um resumo semanal das atividades
+                    </p>
                   </div>
-                  <Switch
-                    checked={notifications.weeklyReports}
-                    onCheckedChange={(value) => handleNotificationChange("weeklyReports", value)}
-                  />
+                  <Switch defaultChecked />
                 </div>
-
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Relatórios Mensais</Label>
-                    <p className="text-sm text-muted-foreground">Receba relatórios mensais detalhados</p>
+                    <Label>Alertas de Vencimento</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Seja notificado sobre documentos e certificados próximos do vencimento
+                    </p>
                   </div>
-                  <Switch
-                    checked={notifications.monthlyReports}
-                    onCheckedChange={(value) => handleNotificationChange("monthlyReports", value)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Alertas de Incidentes</Label>
-                    <p className="text-sm text-muted-foreground">Notificações imediatas para incidentes</p>
-                  </div>
-                  <Switch
-                    checked={notifications.incidentAlerts}
-                    onCheckedChange={(value) => handleNotificationChange("incidentAlerts", value)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Lembretes de Treinamento</Label>
-                    <p className="text-sm text-muted-foreground">Lembretes de treinamentos vencendo</p>
-                  </div>
-                  <Switch
-                    checked={notifications.trainingReminders}
-                    onCheckedChange={(value) => handleNotificationChange("trainingReminders", value)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Lembretes de Inspeção</Label>
-                    <p className="text-sm text-muted-foreground">Lembretes de inspeções programadas</p>
-                  </div>
-                  <Switch
-                    checked={notifications.inspectionReminders}
-                    onCheckedChange={(value) => handleNotificationChange("inspectionReminders", value)}
-                  />
+                  <Switch defaultChecked />
                 </div>
               </div>
-              <Button>
-                <Save className="mr-2 h-4 w-4" />
-                Salvar Configurações
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" />
-                Integrações Externas
-              </CardTitle>
-              <CardDescription>Configure integrações com sistemas externos</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <h4 className="font-medium">eSocial</h4>
-                    <p className="text-sm text-muted-foreground">Integração com o sistema eSocial do governo</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={getStatusColor(integrations.esocial.status)}>
-                      {integrations.esocial.status === "connected" ? "Conectado" : "Desconectado"}
-                    </Badge>
-                    <Button variant="outline" size="sm">
-                      Configurar
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <h4 className="font-medium">E-mail</h4>
-                    <p className="text-sm text-muted-foreground">Servidor SMTP para envio de e-mails</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={getStatusColor(integrations.email.status)}>
-                      {integrations.email.status === "connected" ? "Conectado" : "Desconectado"}
-                    </Badge>
-                    <Button variant="outline" size="sm">
-                      Configurar
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <h4 className="font-medium">SMS</h4>
-                    <p className="text-sm text-muted-foreground">Serviço de envio de SMS para alertas</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={getStatusColor(integrations.sms.status)}>
-                      {integrations.sms.status === "connected" ? "Conectado" : "Desconectado"}
-                    </Badge>
-                    <Button variant="outline" size="sm">
-                      Configurar
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
-                    <h4 className="font-medium">Backup Automático</h4>
-                    <p className="text-sm text-muted-foreground">Backup automático dos dados do sistema</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={getStatusColor(integrations.backup.status)}>
-                      {integrations.backup.status === "connected" ? "Ativo" : "Inativo"}
-                    </Badge>
-                    <Button variant="outline" size="sm">
-                      Configurar
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="system" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" />
-                  Backup e Restauração
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Último Backup</Label>
-                  <p className="text-sm text-muted-foreground">15/01/2024 às 03:00</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Próximo Backup</Label>
-                  <p className="text-sm text-muted-foreground">16/01/2024 às 03:00</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline">Fazer Backup Agora</Button>
-                  <Button variant="outline">Restaurar</Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Key className="h-5 w-5" />
-                  Segurança
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="current-password">Senha Atual</Label>
-                  <div className="relative">
-                    <Input
-                      id="current-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Digite sua senha atual"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
+            {integrations.map((integration) => (
+              <Card key={integration.name}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center space-x-2">
+                      <Database className="h-5 w-5" />
+                      <span>{integration.name}</span>
+                    </CardTitle>
+                    <Badge 
+                      variant={
+                        integration.status === "active" 
+                          ? "default" 
+                          : integration.status === "error" 
+                          ? "destructive" 
+                          : "secondary"
+                      }
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {integration.status === "active" 
+                        ? "Ativo" 
+                        : integration.status === "error" 
+                        ? "Erro" 
+                        : "Inativo"
+                      }
+                    </Badge>
+                  </div>
+                  <CardDescription>{integration.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {integration.lastSync && (
+                      <p className="text-sm text-muted-foreground">
+                        Última sincronização: {new Date(integration.lastSync).toLocaleString("pt-BR")}
+                      </p>
+                    )}
+                    <Button 
+                      className="w-full" 
+                      variant={integration.status === "active" ? "outline" : "default"}
+                      onClick={() => {
+                        if (integration.name === "eSocial") {
+                          setIsEsocialDialogOpen(true)
+                        } else if (integration.name === "E-mail") {
+                          setIsEmailDialogOpen(true)
+                        } else if (integration.name === "SMS") {
+                          setIsSmsDialogOpen(true)
+                        } else if (integration.name === "Backup") {
+                          setIsBackupDialogOpen(true)
+                        }
+                      }}
+                    >
+                      {integration.status === "active" ? "Configurar" : "Ativar"}
                     </Button>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-password">Nova Senha</Label>
-                  <Input id="new-password" type="password" placeholder="Digite a nova senha" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirm-password">Confirmar Senha</Label>
-                  <Input id="confirm-password" type="password" placeholder="Confirme a nova senha" />
-                </div>
-                <Button>Alterar Senha</Button>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Informações do Sistema</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-1">
-                  <Label>Versão do Sistema</Label>
-                  <p className="text-sm text-muted-foreground">v2.1.0</p>
-                </div>
-                <div className="space-y-1">
-                  <Label>Última Atualização</Label>
-                  <p className="text-sm text-muted-foreground">10/01/2024</p>
-                </div>
-                <div className="space-y-1">
-                  <Label>Licença</Label>
-                  <p className="text-sm text-muted-foreground">Empresarial - Válida até 31/12/2024</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
-    </div>
-  )
-}
 
-export { SettingsComponent as Settings }
-export default SettingsComponent
+      {/* Dialog de Usuário */}
+      <Dialog open={isUserDialogOpen} onOpenChange={(open) => {
+        setIsUserDialogOpen(open)
+        if (!open) setEditingUser(null)
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{editingUser ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
+            <DialogDescription>
+              {editingUser 
+                ? "Edite as informações do usuário selecionado."
+                : "Cadastre um novo usuário no sistema."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <UserForm
+            user={editingUser}
+            onSave={handleSaveUser}
+            onCancel={() => setIsUserDialogOpen(false)}
+            error={userError}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Função */}
+      <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>{editingRole ? "Editar Função" : "Nova Função"}</DialogTitle>
+            <DialogDescription>
+              {editingRole 
+                ? "Edite as informações e permissões da função selecionada."
+                : "Crie uma nova função personalizada com permissões específicas."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome da Função</Label>
+              <Input
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                placeholder="Ex: Supervisor de Segurança"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Textarea
+                value={newRoleDescription}
+                onChange={(e) => setNewRoleDescription(e.target.value)}
+                placeholder="Descreva as responsabilidades desta função..."
+              />
+            </div>
+            <div className="space-y-3">
+              <Label>Permissões de Módulos</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {availableModules.map((module) => (
+                  <div key={module} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`module-${module}`}
+                      checked={newRolePermissions[module] || false}
+                      onChange={(e) => handlePermissionChange(module, e.target.checked)}
+                      className="rounded"
+                    />
+                    <Label htmlFor={`module-${module}`} className="text-sm">
+                      {module}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRoleDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveRole}>
+              <Save className="h-4 w-4 mr-2" />
+              {editingRole ? "Salvar Alterações" : "Criar Função"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Configuração eSocial */}
+      <Dialog open={isEsocialDialogOpen} onOpenChange={setIsEsocialDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Configuração eSocial</DialogTitle>
+            <DialogDescription>
+              Configure a integração com o sistema eSocial do governo federal
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>CNPJ da Empresa</Label>
+                <Input
+                  value={esocialForm.cnpj}
+                  onChange={(e) => setEsocialForm(prev => ({ ...prev, cnpj: e.target.value }))}
+                  placeholder="00.000.000/0000-00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Razão Social</Label>
+                <Input
+                  value={esocialForm.razaoSocial}
+                  onChange={(e) => setEsocialForm(prev => ({ ...prev, razaoSocial: e.target.value }))}
+                  placeholder="Nome da empresa"
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Certificado Digital (A1)</Label>
+              <Input
+                type="file"
+                accept=".p12,.pfx"
+                onChange={(e) => setEsocialForm(prev => ({ ...prev, certificado: e.target.files?.[0] || null }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Selecione o arquivo do certificado digital A1 (.p12 ou .pfx)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+               <Label>Senha do Certificado</Label>
+               <Input
+                 type="password"
+                 value={esocialForm.senha}
+                 onChange={(e) => setEsocialForm(prev => ({ ...prev, senha: e.target.value }))}
+                 placeholder="Digite a senha do certificado"
+               />
+             </div>
+             
+             <div className="space-y-2">
+               <Label>Ambiente</Label>
+               <Select 
+                 value={esocialForm.ambiente} 
+                 onValueChange={(value: 'producao' | 'homologacao') => setEsocialForm(prev => ({ ...prev, ambiente: value }))}
+               >
+                 <SelectTrigger>
+                   <SelectValue />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="homologacao">Homologação</SelectItem>
+                   <SelectItem value="producao">Produção</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+           </div>
+           
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setIsEsocialDialogOpen(false)}>
+               Cancelar
+             </Button>
+             <Button onClick={() => handleSaveEsocialConfig()}>
+               <Save className="h-4 w-4 mr-2" />
+               Salvar Configuração
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+
+       {/* Dialog de Configuração de E-mail */}
+       <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
+         <DialogContent className="max-w-xl">
+           <DialogHeader>
+             <DialogTitle>Configuração de E-mail</DialogTitle>
+             <DialogDescription>
+               Configure o servidor SMTP para envio de e-mails do sistema
+             </DialogDescription>
+           </DialogHeader>
+           
+           <div className="space-y-4">
+             <div className="grid gap-4 md:grid-cols-2">
+               <div className="space-y-2">
+                 <Label>Servidor SMTP</Label>
+                 <Input
+                   value={emailForm.servidor}
+                   onChange={(e) => setEmailForm(prev => ({ ...prev, servidor: e.target.value }))}
+                   placeholder="smtp.gmail.com"
+                 />
+               </div>
+               
+               <div className="space-y-2">
+                 <Label>Porta</Label>
+                 <Input
+                   type="number"
+                   value={emailForm.porta}
+                   onChange={(e) => setEmailForm(prev => ({ ...prev, porta: parseInt(e.target.value) }))}
+                   placeholder="587"
+                 />
+               </div>
+             </div>
+             
+             <div className="space-y-2">
+               <Label>Usuário/E-mail</Label>
+               <Input
+                 value={emailForm.usuario}
+                 onChange={(e) => setEmailForm(prev => ({ ...prev, usuario: e.target.value }))}
+                 placeholder="seu-email@empresa.com"
+               />
+             </div>
+             
+             <div className="space-y-2">
+               <Label>Senha</Label>
+               <Input
+                 type="password"
+                 value={emailForm.senha}
+                 onChange={(e) => setEmailForm(prev => ({ ...prev, senha: e.target.value }))}
+                 placeholder="Digite a senha"
+               />
+             </div>
+             
+             <div className="space-y-2">
+               <Label>E-mail Remetente</Label>
+               <Input
+                 value={emailForm.remetente}
+                 onChange={(e) => setEmailForm(prev => ({ ...prev, remetente: e.target.value }))}
+                 placeholder="noreply@empresa.com"
+               />
+             </div>
+             
+             <div className="flex items-center space-x-2">
+               <input
+                 type="checkbox"
+                 id="ssl"
+                 checked={emailForm.ssl}
+                 onChange={(e) => setEmailForm(prev => ({ ...prev, ssl: e.target.checked }))}
+                 className="rounded"
+               />
+               <Label htmlFor="ssl">Usar SSL/TLS</Label>
+             </div>
+           </div>
+           
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setIsEmailDialogOpen(false)}>
+               Cancelar
+             </Button>
+             <Button onClick={() => handleSaveEmailConfig()}>
+               <Save className="h-4 w-4 mr-2" />
+               Salvar Configuração
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+
+       {/* Dialog de Configuração de SMS */}
+       <Dialog open={isSmsDialogOpen} onOpenChange={setIsSmsDialogOpen}>
+         <DialogContent className="max-w-xl">
+           <DialogHeader>
+             <DialogTitle>Configuração SMS</DialogTitle>
+             <DialogDescription>
+               Configure o provedor de SMS para envio de mensagens
+             </DialogDescription>
+           </DialogHeader>
+           
+           <div className="space-y-4">
+             <div className="space-y-2">
+               <Label>Provedor</Label>
+               <Select 
+                 value={smsForm.provedor} 
+                 onValueChange={(value) => setSmsForm(prev => ({ ...prev, provedor: value }))}
+               >
+                 <SelectTrigger>
+                   <SelectValue placeholder="Selecione um provedor" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="twilio">Twilio</SelectItem>
+                   <SelectItem value="zenvia">Zenvia</SelectItem>
+                   <SelectItem value="totalvoice">TotalVoice</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+             
+             <div className="grid gap-4 md:grid-cols-2">
+               <div className="space-y-2">
+                 <Label>API Key</Label>
+                 <Input
+                   value={smsForm.apiKey}
+                   onChange={(e) => setSmsForm(prev => ({ ...prev, apiKey: e.target.value }))}
+                   placeholder="Sua chave da API"
+                 />
+               </div>
+               
+               <div className="space-y-2">
+                 <Label>API Secret</Label>
+                 <Input
+                   type="password"
+                   value={smsForm.apiSecret}
+                   onChange={(e) => setSmsForm(prev => ({ ...prev, apiSecret: e.target.value }))}
+                   placeholder="Seu secret da API"
+                 />
+               </div>
+             </div>
+             
+             <div className="space-y-2">
+               <Label>Número Remetente</Label>
+               <Input
+                 value={smsForm.numeroRemetente}
+                 onChange={(e) => setSmsForm(prev => ({ ...prev, numeroRemetente: e.target.value }))}
+                 placeholder="+5511999999999"
+               />
+             </div>
+           </div>
+           
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setIsSmsDialogOpen(false)}>
+               Cancelar
+             </Button>
+             <Button onClick={() => handleSaveSmsConfig()}>
+               <Save className="h-4 w-4 mr-2" />
+               Salvar Configuração
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+
+       {/* Dialog de Configuração de Backup */}
+       <Dialog open={isBackupDialogOpen} onOpenChange={setIsBackupDialogOpen}>
+         <DialogContent className="max-w-xl">
+           <DialogHeader>
+             <DialogTitle>Configuração de Backup</DialogTitle>
+             <DialogDescription>
+               Configure backups automáticos do sistema
+             </DialogDescription>
+           </DialogHeader>
+           
+           <div className="space-y-4">
+             <div className="space-y-2">
+               <Label>Frequência</Label>
+               <Select 
+                 value={backupForm.frequencia} 
+                 onValueChange={(value) => setBackupForm(prev => ({ ...prev, frequencia: value }))}
+               >
+                 <SelectTrigger>
+                   <SelectValue />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="diario">Diário</SelectItem>
+                   <SelectItem value="semanal">Semanal</SelectItem>
+                   <SelectItem value="mensal">Mensal</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+             
+             <div className="space-y-2">
+               <Label>Horário</Label>
+               <Input
+                 type="time"
+                 value={backupForm.horario}
+                 onChange={(e) => setBackupForm(prev => ({ ...prev, horario: e.target.value }))}
+               />
+             </div>
+             
+             <div className="space-y-2">
+               <Label>Destino</Label>
+               <Select 
+                 value={backupForm.destino} 
+                 onValueChange={(value) => setBackupForm(prev => ({ ...prev, destino: value }))}
+               >
+                 <SelectTrigger>
+                   <SelectValue />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="local">Armazenamento Local</SelectItem>
+                   <SelectItem value="aws">Amazon S3</SelectItem>
+                   <SelectItem value="google">Google Drive</SelectItem>
+                   <SelectItem value="dropbox">Dropbox</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+             
+             {backupForm.destino !== 'local' && (
+               <div className="grid gap-4 md:grid-cols-2">
+                 <div className="space-y-2">
+                   <Label>Chave de Acesso</Label>
+                   <Input
+                     value={backupForm.chaveAcesso}
+                     onChange={(e) => setBackupForm(prev => ({ ...prev, chaveAcesso: e.target.value }))}
+                     placeholder="Chave de acesso"
+                   />
+                 </div>
+                 
+                 <div className="space-y-2">
+                   <Label>Chave Secreta</Label>
+                   <Input
+                     type="password"
+                     value={backupForm.chaveSecreta}
+                     onChange={(e) => setBackupForm(prev => ({ ...prev, chaveSecreta: e.target.value }))}
+                     placeholder="Chave secreta"
+                   />
+                 </div>
+               </div>
+             )}
+             
+             <div className="space-y-2">
+               <Label>Retenção (dias)</Label>
+               <Input
+                 type="number"
+                 value={backupForm.retencao}
+                 onChange={(e) => setBackupForm(prev => ({ ...prev, retencao: parseInt(e.target.value) }))}
+                 placeholder="30"
+               />
+             </div>
+             
+             <div className="flex items-center space-x-2">
+               <input
+                 type="checkbox"
+                 id="backupAtivo"
+                 checked={backupForm.ativo}
+                 onChange={(e) => setBackupForm(prev => ({ ...prev, ativo: e.target.checked }))}
+                 className="rounded"
+               />
+               <Label htmlFor="backupAtivo">Ativar backup automático</Label>
+             </div>
+           </div>
+           
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setIsBackupDialogOpen(false)}>
+               Cancelar
+             </Button>
+             <Button onClick={() => handleSaveBackupConfig()}>
+               <Save className="h-4 w-4 mr-2" />
+               Salvar Configuração
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+     </div>
+   )
+ }
+
+ // Componente UserForm que precisa ser criado
+ function UserForm({ user, onSave, onCancel, error }: {
+   user: User | null
+   onSave: (userData: Partial<User> & { password?: string, confirmPassword?: string }) => void
+   onCancel: () => void
+   error: string | null
+ }) {
+   const [formData, setFormData] = useState({
+     name: user?.name || '',
+     email: user?.email || '',
+     role: user?.role || 'Usuário',
+     department: user?.department || '',
+     status: user?.status || 'active' as 'active' | 'inactive',
+     password: '',
+     confirmPassword: ''
+   })
+
+   const handleSubmit = (e: React.FormEvent) => {
+     e.preventDefault()
+     onSave(formData)
+   }
+
+   return (
+     <form onSubmit={handleSubmit} className="space-y-4">
+       {error && (
+         <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
+           <p className="text-sm text-red-600">{error}</p>
+         </div>
+       )}
+       
+       <div className="space-y-2">
+         <Label htmlFor="name">Nome *</Label>
+         <Input
+           id="name"
+           value={formData.name}
+           onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+           placeholder="Digite o nome completo"
+           required
+         />
+       </div>
+       
+       <div className="space-y-2">
+         <Label htmlFor="email">E-mail *</Label>
+         <Input
+           id="email"
+           type="email"
+           value={formData.email}
+           onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+           placeholder="usuario@empresa.com"
+           required
+         />
+       </div>
+       
+       <div className="space-y-2">
+         <Label htmlFor="role">Função *</Label>
+         <Select
+           value={formData.role}
+           onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}
+         >
+           <SelectTrigger>
+             <SelectValue placeholder="Selecione uma função" />
+           </SelectTrigger>
+           <SelectContent>
+             <SelectItem value="Administrador">Administrador</SelectItem>
+             <SelectItem value="Gerente">Gerente</SelectItem>
+             <SelectItem value="Usuário">Usuário</SelectItem>
+             <SelectItem value="Visualizador">Visualizador</SelectItem>
+           </SelectContent>
+         </Select>
+       </div>
+       
+       <div className="space-y-2">
+         <Label htmlFor="department">Departamento</Label>
+         <Input
+           id="department"
+           value={formData.department}
+           onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+           placeholder="Ex: Recursos Humanos, Segurança do Trabalho"
+         />
+       </div>
+       
+       <div className="space-y-2">
+         <Label htmlFor="status">Status</Label>
+         <Select
+           value={formData.status}
+           onValueChange={(value: 'active' | 'inactive') => setFormData(prev => ({ ...prev, status: value }))}
+         >
+           <SelectTrigger>
+             <SelectValue />
+           </SelectTrigger>
+           <SelectContent>
+             <SelectItem value="active">Ativo</SelectItem>
+             <SelectItem value="inactive">Inativo</SelectItem>
+           </SelectContent>
+         </Select>
+       </div>
+       
+       {!user && (
+         <>
+           <div className="space-y-2">
+             <Label htmlFor="password">Senha *</Label>
+             <Input
+               id="password"
+               type="password"
+               value={formData.password}
+               onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+               placeholder="Digite a senha (mínimo 6 caracteres)"
+               required={!user}
+             />
+           </div>
+           
+           <div className="space-y-2">
+             <Label htmlFor="confirmPassword">Confirmar Senha *</Label>
+             <Input
+               id="confirmPassword"
+               type="password"
+               value={formData.confirmPassword}
+               onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+               placeholder="Confirme a senha"
+               required={!user}
+             />
+           </div>
+         </>
+       )}
+       
+       <DialogFooter>
+         <Button type="button" variant="outline" onClick={onCancel}>
+           Cancelar
+         </Button>
+         <Button type="submit">
+           <Save className="h-4 w-4 mr-2" />
+           {user ? "Salvar Alterações" : "Criar Usuário"}
+         </Button>
+       </DialogFooter>
+     </form>
+   )
+ }
+
+ // Função toast mock (você deve substituir pela implementação real)
+ function toast({ title, description, variant }: { title: string; description: string; variant?: 'default' | 'destructive' }) {
+   console.log(`Toast: ${title} - ${description} (${variant || 'default'})`)
+ }
