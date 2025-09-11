@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { FileUpload } from "@/components/ui/file-upload"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -34,11 +36,14 @@ interface SafetyInspection {
   id: string
   empresa_id: string
   setor: string
+  local_inspecao?: string
   responsavel: string
   data_inspecao: string
   status: string
   observacoes?: string
+  agendar_proxima?: string
   created_at: string
+  updated_at?: string
 }
 
 interface Incident {
@@ -49,7 +54,7 @@ interface Incident {
   data_ocorrencia: string
   gravidade: string
   status: string
-  evidencia_url?: string
+  evidencias_url?: string
   created_at: string
 }
 
@@ -171,6 +176,10 @@ export function WorkplaceSafety() {
   const [isInspectDialogOpen, setIsInspectDialogOpen] = useState(false)
   const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false)
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false)
+  
+  // Estados para agendamento da próxima inspeção
+  const [nextInspectionDate, setNextInspectionDate] = useState("")
+  const [nextInspectionObservations, setNextInspectionObservations] = useState("")
 
   const supabase = createBrowserClient()
 
@@ -330,7 +339,7 @@ export function WorkplaceSafety() {
           data_ocorrencia: data.data_ocorrencia,
           gravidade: data.gravidade,
           status: data.status || "aberto",
-          evidencia_url: data.evidencia_url,
+          evidencias_url: data.evidencias_url,
         },
       ])
 
@@ -439,7 +448,62 @@ export function WorkplaceSafety() {
 
   const handleScheduleNextInspection = (inspection: SafetyInspection) => {
     setSelectedInspection(inspection)
+    // Limpar campos do formulário
+    setNextInspectionDate("")
+    setNextInspectionObservations("")
     setIsScheduleDialogOpen(true)
+  }
+
+  const handleSaveNextInspection = async () => {
+    if (!selectedInspection || !nextInspectionDate) {
+      toast({
+        title: "Erro",
+        description: "Por favor, preencha a data da próxima inspeção.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from("inspecoes_seguranca")
+        .update({ agendar_proxima: nextInspectionDate })
+        .eq("id", selectedInspection.id)
+
+      if (error) throw error
+
+      // Criar nova inspeção agendada
+      const { error: insertError } = await supabase
+        .from("inspecoes_seguranca")
+        .insert([
+          {
+            empresa_id: selectedInspection.empresa_id,
+            setor: selectedInspection.setor,
+            local_inspecao: selectedInspection.local_inspecao,
+            responsavel: selectedInspection.responsavel,
+            data_inspecao: nextInspectionDate,
+            status: "scheduled",
+            observacoes: nextInspectionObservations || "Inspeção agendada automaticamente",
+          },
+        ])
+
+      if (insertError) throw insertError
+
+      toast({
+        title: "Sucesso",
+        description: "Próxima inspeção agendada com sucesso.",
+      })
+
+      setIsScheduleDialogOpen(false)
+      loadData()
+    } catch (error) {
+      console.error("Erro ao agendar próxima inspeção:", error)
+      toast({
+        title: "Erro",
+        description: "Não foi possível agendar a próxima inspeção.",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleViewIncidentDetails = (incident: Incident) => {
@@ -731,7 +795,7 @@ export function WorkplaceSafety() {
                           <Upload className="h-4 w-4 mr-1" />
                           Adicionar Evidência
                         </Button>
-                        {incident.evidencia_url && (
+                        {incident.evidencias_url && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -897,36 +961,657 @@ export function WorkplaceSafety() {
         </TabsContent>
       </Tabs>
 
+      {/* Diálogo de Detalhes da Inspeção */}
+      <Dialog open={isInspectionDialogOpen} onOpenChange={setIsInspectionDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Inspeção</DialogTitle>
+            <DialogDescription>
+              Informações completas da inspeção de segurança
+            </DialogDescription>
+          </DialogHeader>
+          {selectedInspection && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Setor</Label>
+                  <p className="text-sm text-muted-foreground">{selectedInspection.setor}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Local da Inspeção</Label>
+                  <p className="text-sm text-muted-foreground">{selectedInspection.local_inspecao || "Não informado"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Responsável</Label>
+                  <p className="text-sm text-muted-foreground">{selectedInspection.responsavel}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Data da Inspeção</Label>
+                  <p className="text-sm text-muted-foreground">{formatDateSafe(selectedInspection.data_inspecao)}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <Badge variant={getStatusColor(selectedInspection.status) as any}>
+                    {selectedInspection.status === "done"
+                      ? "Concluída"
+                      : selectedInspection.status === "scheduled"
+                        ? "Agendada"
+                        : selectedInspection.status === "critical"
+                          ? "Crítica"
+                          : selectedInspection.status}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Próxima Inspeção</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedInspection.agendar_proxima ? formatDateSafe(selectedInspection.agendar_proxima) : "Não agendada"}
+                  </p>
+                </div>
+              </div>
+              {selectedInspection.observacoes && (
+                <div>
+                  <Label className="text-sm font-medium">Observações</Label>
+                  <p className="text-sm text-muted-foreground mt-1">{selectedInspection.observacoes}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-muted-foreground">
+                <div>
+                  <Label className="text-xs font-medium">Criado em</Label>
+                  <p>{formatDateSafe(selectedInspection.created_at, "dd/MM/yyyy HH:mm")}</p>
+                </div>
+                {selectedInspection.updated_at && (
+                  <div>
+                    <Label className="text-xs font-medium">Atualizado em</Label>
+                    <p>{formatDateSafe(selectedInspection.updated_at, "dd/MM/yyyy HH:mm")}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsInspectionDialogOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Agendamento da Próxima Inspeção */}
+      <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agendar Próxima Inspeção</DialogTitle>
+            <DialogDescription>
+              Defina a data e observações para a próxima inspeção de segurança
+            </DialogDescription>
+          </DialogHeader>
+          {selectedInspection && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">Inspeção Atual</h4>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Setor:</strong> {selectedInspection.setor}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Responsável:</strong> {selectedInspection.responsavel}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Data:</strong> {formatDateSafe(selectedInspection.data_inspecao)}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="nextDate">Data da Próxima Inspeção *</Label>
+                <Input
+                  id="nextDate"
+                  type="date"
+                  value={nextInspectionDate}
+                  onChange={(e) => setNextInspectionDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <Label htmlFor="nextObservations">Observações</Label>
+                <Textarea
+                  id="nextObservations"
+                  placeholder="Observações para a próxima inspeção..."
+                  value={nextInspectionObservations}
+                  onChange={(e) => setNextInspectionObservations(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsScheduleDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveNextInspection}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Agendar Inspeção
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Detalhes do Incidente */}
+      <Dialog open={isIncidentDialogOpen} onOpenChange={setIsIncidentDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Incidente</DialogTitle>
+            <DialogDescription>
+              Informações completas do incidente registrado
+            </DialogDescription>
+          </DialogHeader>
+          {selectedIncident && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Tipo</Label>
+                  <p className="text-sm text-muted-foreground">{selectedIncident.tipo}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Gravidade</Label>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant={getSeverityColor(selectedIncident.gravidade) as any}>
+                      {selectedIncident.gravidade}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Data da Ocorrência</Label>
+                  <p className="text-sm text-muted-foreground">{formatDateSafe(selectedIncident.data_ocorrencia)}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Status</Label>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant={getStatusColor(selectedIncident.status) as any}>
+                      {selectedIncident.status === "aberto"
+                        ? "Aberto"
+                        : selectedIncident.status === "em análise"
+                          ? "Em Análise"
+                          : selectedIncident.status === "resolvido"
+                            ? "Resolvido"
+                            : selectedIncident.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Descrição</Label>
+                <div className="mt-1 p-3 bg-muted rounded-lg">
+                  <p className="text-sm">{selectedIncident.descricao}</p>
+                </div>
+              </div>
+              {selectedIncident.evidencias_url && (
+                 <div>
+                   <Label className="text-sm font-medium">Evidências</Label>
+                   <div className="mt-1 p-3 bg-muted rounded-lg">
+                     <div className="flex items-center space-x-2">
+                       <FileText className="h-4 w-4" />
+                       <span className="text-sm">Arquivo de evidência disponível</span>
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         onClick={() => window.open(selectedIncident.evidencias_url, '_blank')}
+                       >
+                         <Download className="h-4 w-4 mr-1" />
+                         Baixar
+                       </Button>
+                     </div>
+                   </div>
+                 </div>
+               )}
+              <div>
+                <Label className="text-sm font-medium">Data de Registro</Label>
+                <p className="text-sm text-muted-foreground">{formatDateSafe(selectedIncident.created_at)}</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsIncidentDialogOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Adicionar Evidência */}
       <Dialog open={isEvidenceDialogOpen} onOpenChange={setIsEvidenceDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Adicionar Evidência</DialogTitle>
-            <DialogDescription>Anexe fotos, documentos ou outras evidências</DialogDescription>
+            <DialogDescription>
+              Anexe imagens, vídeos, áudios ou documentos relacionados ao incidente
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Arquivo de Evidência</Label>
-              <FileUpload
-                type="evidencias"
-                onUploadComplete={(url, path) => {
-                  if (selectedIncident && path) {
-                    // Update incident with evidence URL
-                    supabase.from("incidentes").update({ evidencia_url: path }).eq("id", selectedIncident.id)
-                    setIsEvidenceDialogOpen(false)
-                  }
-                }}
-                onUploadError={(error) => {
-                  console.error("Erro no upload:", error)
-                }}
-                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                maxSizeMB={10}
-              />
+          {selectedIncident && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">Incidente</h4>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Tipo:</strong> {selectedIncident.tipo}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Data:</strong> {formatDateSafe(selectedIncident.data_ocorrencia)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Descrição:</strong> {selectedIncident.descricao}
+                </p>
+              </div>
+              <div>
+                <Label>Arquivo de Evidência</Label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Formatos aceitos: Imagens (JPG, PNG), Vídeos (MP4, AVI), Áudios (MP3, WAV), Documentos (PDF, DOC)
+                </p>
+                <FileUpload
+                  type="evidencias-incidentes"
+                  onUploadComplete={async (url, path) => {
+                    if (selectedIncident && path) {
+                      try {
+                        const { error } = await supabase
+                          .from("incidentes")
+                          .update({ evidencias_url: path })
+                          .eq("id", selectedIncident.id)
+                        
+                        if (error) throw error
+                        
+                        toast({
+                          title: "Sucesso",
+                          description: "Evidência adicionada com sucesso.",
+                        })
+                        
+                        loadData()
+                        setIsEvidenceDialogOpen(false)
+                      } catch (error) {
+                        console.error("Erro ao salvar evidência:", error)
+                        toast({
+                          title: "Erro",
+                          description: "Não foi possível salvar a evidência.",
+                          variant: "destructive",
+                        })
+                      }
+                    }
+                  }}
+                  onUploadError={(error) => {
+                    console.error("Erro no upload:", error)
+                    toast({
+                      title: "Erro",
+                      description: "Erro no upload do arquivo.",
+                      variant: "destructive",
+                    })
+                  }}
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.mp4,.avi,.mov,.mp3,.wav,.m4a"
+                  maxSizeMB={100}
+                />
+              </div>
             </div>
-          </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEvidenceDialogOpen(false)}>
+              Cancelar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ... existing dialogs ... */}
+      {/* Diálogo de Detalhes do Equipamento */}
+      <Dialog open={isEquipmentDialogOpen} onOpenChange={setIsEquipmentDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Equipamento</DialogTitle>
+            <DialogDescription>
+              Informações completas do equipamento de segurança
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEquipment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Nome</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-lg">
+                    <p className="text-sm font-semibold">{selectedEquipment.nome}</p>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Tipo</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-lg">
+                    <p className="text-sm">{selectedEquipment.tipo}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Quantidade</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-lg">
+                    <p className="text-sm">{selectedEquipment.quantidade} unidades</p>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Validade</Label>
+                  <div className="mt-1 p-3 bg-muted rounded-lg flex items-center justify-between">
+                    <p className="text-sm">{formatDateSafe(selectedEquipment.validade)}</p>
+                    <Badge variant={new Date(selectedEquipment.validade) > new Date() ? "default" : "destructive"}>
+                      {new Date(selectedEquipment.validade) > new Date() ? "Válido" : "Vencido"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Data de Cadastro</Label>
+                <div className="mt-1 p-3 bg-muted rounded-lg">
+                  <p className="text-sm">{formatDateSafe(selectedEquipment.created_at)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEquipmentDialogOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Inspeção do Equipamento */}
+      <Dialog open={isInspectDialogOpen} onOpenChange={setIsInspectDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Inspecionar Equipamento</DialogTitle>
+            <DialogDescription>
+              Registre uma nova inspeção do equipamento de segurança
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEquipment && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">Equipamento</h4>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Nome:</strong> {selectedEquipment.nome}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Tipo:</strong> {selectedEquipment.tipo}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="inspection-date">Data da Inspeção</Label>
+                  <Input
+                    id="inspection-date"
+                    type="date"
+                    defaultValue={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="inspection-result">Resultado</Label>
+                  <select
+                    id="inspection-result"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="aprovado">Aprovado</option>
+                    <option value="reprovado">Reprovado</option>
+                    <option value="condicional">Condicional</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="inspection-observations">Observações</Label>
+                <Textarea
+                  id="inspection-observations"
+                  placeholder="Descreva os detalhes da inspeção..."
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsInspectDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={async () => {
+              if (!selectedEquipment) return
+              
+              const dateInput = document.getElementById('inspection-date') as HTMLInputElement
+              const resultSelect = document.getElementById('inspection-result') as HTMLSelectElement
+              const observationsTextarea = document.getElementById('inspection-observations') as HTMLTextAreaElement
+              
+              try {
+                const { error } = await supabase
+                  .from("inspecoes_epi")
+                  .insert({
+                    empresa_id: selectedCompany?.id,
+                    epi_id: selectedEquipment.id,
+                    data_inspecao: dateInput.value,
+                    resultado: resultSelect.value,
+                    observacoes: observationsTextarea.value
+                  })
+                
+                if (error) throw error
+                
+                toast({
+                  title: "Sucesso",
+                  description: "Inspeção registrada com sucesso.",
+                })
+                
+                loadData()
+                setIsInspectDialogOpen(false)
+              } catch (error) {
+                console.error("Erro ao registrar inspeção:", error)
+                toast({
+                  title: "Erro",
+                  description: "Não foi possível registrar a inspeção.",
+                  variant: "destructive",
+                })
+              }
+            }}>
+              Registrar Inspeção
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Manutenção do Equipamento */}
+      <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Agendar Manutenção</DialogTitle>
+            <DialogDescription>
+              Registre uma manutenção do equipamento de segurança
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEquipment && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">Equipamento</h4>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Nome:</strong> {selectedEquipment.nome}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Tipo:</strong> {selectedEquipment.tipo}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="maintenance-date">Data da Manutenção</Label>
+                  <Input
+                    id="maintenance-date"
+                    type="date"
+                    defaultValue={new Date().toISOString().split('T')[0]}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="maintenance-type">Tipo de Manutenção</Label>
+                  <select
+                    id="maintenance-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="preventiva">Preventiva</option>
+                    <option value="corretiva">Corretiva</option>
+                    <option value="preditiva">Preditiva</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="maintenance-description">Descrição da Manutenção</Label>
+                <Textarea
+                  id="maintenance-description"
+                  placeholder="Descreva os procedimentos realizados..."
+                  rows={4}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsMaintenanceDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={async () => {
+              if (!selectedEquipment) return
+              
+              const dateInput = document.getElementById('maintenance-date') as HTMLInputElement
+              const typeSelect = document.getElementById('maintenance-type') as HTMLSelectElement
+              const descriptionTextarea = document.getElementById('maintenance-description') as HTMLTextAreaElement
+              
+              try {
+                const { error } = await supabase
+                  .from("manutencoes_epi")
+                  .insert({
+                    empresa_id: selectedCompany?.id,
+                    epi_id: selectedEquipment.id,
+                    data_manutencao: dateInput.value,
+                    tipo: typeSelect.value,
+                    descricao: descriptionTextarea.value
+                  })
+                
+                if (error) throw error
+                
+                toast({
+                  title: "Sucesso",
+                  description: "Manutenção registrada com sucesso.",
+                })
+                
+                loadData()
+                setIsMaintenanceDialogOpen(false)
+              } catch (error) {
+                console.error("Erro ao registrar manutenção:", error)
+                toast({
+                  title: "Erro",
+                  description: "Não foi possível registrar a manutenção.",
+                  variant: "destructive",
+                })
+              }
+            }}>
+              Registrar Manutenção
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Histórico do Equipamento */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Histórico do Equipamento</DialogTitle>
+            <DialogDescription>
+              Timeline completo de inspeções e manutenções
+            </DialogDescription>
+          </DialogHeader>
+          {selectedEquipment && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">Equipamento</h4>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Nome:</strong> {selectedEquipment.nome} • <strong>Tipo:</strong> {selectedEquipment.tipo}
+                </p>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Inspeções */}
+                <div>
+                  <h4 className="font-medium mb-3 flex items-center">
+                    <Search className="h-4 w-4 mr-2" />
+                    Inspeções ({epiInspections.filter(i => i.epi_id === selectedEquipment.id).length})
+                  </h4>
+                  <div className="space-y-3">
+                    {epiInspections
+                      .filter(inspection => inspection.epi_id === selectedEquipment.id)
+                      .map((inspection) => (
+                        <div key={inspection.id} className="border rounded-lg p-3">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-medium text-sm">
+                                Inspeção - {formatDateSafe(inspection.data_inspecao)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Resultado: {inspection.resultado}
+                              </p>
+                            </div>
+                            <Badge variant={inspection.resultado === 'aprovado' ? 'default' : inspection.resultado === 'reprovado' ? 'destructive' : 'secondary'}>
+                              {inspection.resultado}
+                            </Badge>
+                          </div>
+                          {inspection.observacoes && (
+                            <p className="text-sm text-muted-foreground">
+                              {inspection.observacoes}
+                            </p>
+                          )}
+                        </div>
+                      ))
+                    }
+                    {epiInspections.filter(i => i.epi_id === selectedEquipment.id).length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhuma inspeção registrada
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Manutenções */}
+                <div>
+                  <h4 className="font-medium mb-3 flex items-center">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Manutenções ({epiMaintenances.filter(m => m.epi_id === selectedEquipment.id).length})
+                  </h4>
+                  <div className="space-y-3">
+                    {epiMaintenances
+                      .filter(maintenance => maintenance.epi_id === selectedEquipment.id)
+                      .map((maintenance) => (
+                        <div key={maintenance.id} className="border rounded-lg p-3">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-medium text-sm">
+                                Manutenção - {formatDateSafe(maintenance.data_manutencao)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Tipo: {maintenance.tipo}
+                              </p>
+                            </div>
+                            <Badge variant="outline">
+                              {maintenance.tipo}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {maintenance.descricao}
+                          </p>
+                        </div>
+                      ))
+                    }
+                    {epiMaintenances.filter(m => m.epi_id === selectedEquipment.id).length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhuma manutenção registrada
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHistoryDialogOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -91,6 +91,16 @@ export function RiskManagement() {
     medidasControle: "",
     responsavel: "",
   })
+  
+  // Estados para o formulário de novo risco
+  const [newRiskForm, setNewRiskForm] = useState({
+    setor: "",
+    funcao: "",
+    risco: "",
+    probabilidade: "",
+    severidade: "",
+    medidas: "",
+  })
   const { selectedCompany } = useCompany()
   const supabase = createBrowserClient()
 
@@ -253,9 +263,23 @@ export function RiskManagement() {
   }
 
   const calculateRiskLevel = (probabilidade: string, severidade: string): number => {
-    const probValue = probabilidade === "Alta" ? 3 : probabilidade === "Média" ? 2 : 1
-    const sevValue = severidade === "Alta" ? 3 : severidade === "Média" ? 2 : 1
+    const probValue = probabilidade === "Alta" || probabilidade === "alta" ? 3 : 
+                     probabilidade === "Média" || probabilidade === "media" ? 2 : 1
+    const sevValue = severidade === "Alta" || severidade === "alta" ? 3 : 
+                    severidade === "Média" || severidade === "media" ? 2 : 1
     return probValue * sevValue
+  }
+
+  const getRiskLevelText = (nivel: number): string => {
+    if (nivel >= 6) return "Alto"
+    if (nivel >= 3) return "Médio"
+    return "Baixo"
+  }
+
+  const getRiskLevelColor = (nivel: number): string => {
+    if (nivel >= 6) return "text-red-600 font-semibold"
+    if (nivel >= 3) return "text-yellow-600 font-semibold"
+    return "text-green-600 font-semibold"
   }
 
   const handleCancelEdit = () => {
@@ -270,6 +294,51 @@ export function RiskManagement() {
       medidasControle: "",
       responsavel: "",
     })
+  }
+
+  const clearNewRiskForm = () => {
+    setNewRiskForm({
+      setor: "",
+      funcao: "",
+      risco: "",
+      probabilidade: "",
+      severidade: "",
+      medidas: "",
+    })
+  }
+
+  const handleSaveNewRisk = async () => {
+    if (!selectedCompany || !newRiskForm.setor || !newRiskForm.risco || !newRiskForm.probabilidade || !newRiskForm.severidade) {
+      alert("Por favor, preencha todos os campos obrigatórios")
+      return
+    }
+
+    try {
+      const nivelRisco = calculateRiskLevel(newRiskForm.probabilidade, newRiskForm.severidade)
+      
+      const { error } = await supabase
+        .from('risks')
+        .insert({
+          empresa_id: selectedCompany.id,
+          setor: newRiskForm.setor,
+          risco: newRiskForm.risco,
+          probabilidade: newRiskForm.probabilidade,
+          severidade: newRiskForm.severidade,
+          nivel_risco: nivelRisco,
+          descricao: newRiskForm.funcao,
+          medidas_controle: newRiskForm.medidas,
+          status: 'ativo'
+        })
+
+      if (error) throw error
+
+      await loadRisks()
+      clearNewRiskForm()
+      alert("Risco cadastrado com sucesso!")
+    } catch (error) {
+      console.error("Erro ao salvar risco:", error)
+      alert("Erro ao salvar risco. Tente novamente.")
+    }
   }
 
   if (!selectedCompany) {
@@ -332,7 +401,7 @@ export function RiskManagement() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="setor">Setor</Label>
-                  <Select>
+                  <Select value={newRiskForm.setor} onValueChange={(value) => setNewRiskForm(prev => ({...prev, setor: value}))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o setor" />
                     </SelectTrigger>
@@ -346,19 +415,28 @@ export function RiskManagement() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="funcao">Função</Label>
-                  <Input placeholder="Ex: Operador de máquina" />
+                  <Input 
+                    placeholder="Ex: Operador de máquina" 
+                    value={newRiskForm.funcao}
+                    onChange={(e) => setNewRiskForm(prev => ({...prev, funcao: e.target.value}))}
+                  />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="risco">Descrição do Risco</Label>
-                <Textarea placeholder="Descreva detalhadamente o risco identificado" className="min-h-[80px]" />
+                <Textarea 
+                  placeholder="Descreva detalhadamente o risco identificado" 
+                  className="min-h-[80px]"
+                  value={newRiskForm.risco}
+                  onChange={(e) => setNewRiskForm(prev => ({...prev, risco: e.target.value}))}
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Probabilidade</Label>
-                  <Select>
+                  <Select value={newRiskForm.probabilidade} onValueChange={(value) => setNewRiskForm(prev => ({...prev, probabilidade: value}))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
@@ -371,7 +449,7 @@ export function RiskManagement() {
                 </div>
                 <div className="space-y-2">
                   <Label>Severidade</Label>
-                  <Select>
+                  <Select value={newRiskForm.severidade} onValueChange={(value) => setNewRiskForm(prev => ({...prev, severidade: value}))}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
@@ -384,7 +462,15 @@ export function RiskManagement() {
                 </div>
                 <div className="space-y-2">
                   <Label>Nível de Risco</Label>
-                  <Input value="Calculado automaticamente" disabled />
+                  <Input 
+                    value={newRiskForm.probabilidade && newRiskForm.severidade ? 
+                      `${getRiskLevelText(calculateRiskLevel(newRiskForm.probabilidade, newRiskForm.severidade))} (${calculateRiskLevel(newRiskForm.probabilidade, newRiskForm.severidade)})` : 
+                      "Selecione probabilidade e severidade"} 
+                    disabled 
+                    className={newRiskForm.probabilidade && newRiskForm.severidade ? 
+                      getRiskLevelColor(calculateRiskLevel(newRiskForm.probabilidade, newRiskForm.severidade)) : 
+                      ""}
+                  />
                 </div>
               </div>
 
@@ -393,14 +479,18 @@ export function RiskManagement() {
                 <Textarea
                   placeholder="Descreva as medidas de controle implementadas ou planejadas"
                   className="min-h-[80px]"
+                  value={newRiskForm.medidas}
+                  onChange={(e) => setNewRiskForm(prev => ({...prev, medidas: e.target.value}))}
                 />
               </div>
             </div>
             <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
-              <Button variant="outline" className="w-full sm:w-auto bg-transparent">
+              <Button variant="outline" className="w-full sm:w-auto bg-transparent" onClick={clearNewRiskForm}>
                 Cancelar
               </Button>
-              <Button className="w-full sm:w-auto">Salvar Risco</Button>
+              <Button className="w-full sm:w-auto" onClick={handleSaveNewRisk}>
+                Salvar Risco
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
