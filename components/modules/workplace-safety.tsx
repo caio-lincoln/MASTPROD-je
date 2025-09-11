@@ -998,7 +998,7 @@ export function WorkplaceSafety() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(incident.evidencia_url, "_blank")}
+                            onClick={() => window.open(incident.evidencias_url, "_blank")}
                           >
                             <Download className="h-4 w-4 mr-1" />
                             Download
@@ -1403,7 +1403,7 @@ export function WorkplaceSafety() {
                   Formatos aceitos: Imagens (JPG, PNG), Vídeos (MP4, AVI), Áudios (MP3, WAV), Documentos (PDF, DOC)
                 </p>
                 <FileUpload
-                  type="evidencias-incidentes"
+                  type="evidencias"
                   onUploadComplete={async (url, path) => {
                     if (selectedIncident && path) {
                       try {
