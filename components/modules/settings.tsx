@@ -65,7 +65,7 @@ interface Integration {
 }
 
 export function SettingsComponent() {
-  const { selectedCompany, companies, setSelectedCompany, addCompany, updateCompany, deleteCompany } = useCompany()
+  const { selectedCompany, companies, setSelectedCompany, addCompany, updateCompany, deleteCompany, loadAllCompanies, showAllCompanies } = useCompany()
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [integrations, setIntegrations] = useState<Integration[]>([
@@ -127,7 +127,7 @@ export function SettingsComponent() {
 
   // Estados para paginação de empresas
   const [currentPage, setCurrentPage] = useState(1)
-  const companiesPerPage = 3
+  const companiesPerPage = 5 // Voltando ao valor original
 
   // Funções de paginação
   const totalPages = Math.ceil(companies.length / companiesPerPage)
@@ -1080,51 +1080,21 @@ export function SettingsComponent() {
                   <CardDescription>Gerencie todas as empresas do sistema</CardDescription>
                 </div>
                 <div className="flex items-center space-x-2">
+                  {!showAllCompanies && (
+                    <Button 
+                      variant="outline" 
+                      onClick={loadAllCompanies}
+                      className="mr-2"
+                    >
+                      <Building2 className="h-4 w-4 mr-2" />
+                      Ver Todas as Empresas
+                    </Button>
+                  )}
                   <Button onClick={() => openCompanyDialog()}>
                     <Plus className="h-4 w-4 mr-2" />
                     Nova Empresa
                   </Button>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {currentCompanies.map((company) => (
-                  <div key={company.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{company.name}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {company.cnpj} • {company.phone} • {company.email}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant={selectedCompany?.id === company.id ? "default" : "secondary"}>
-                        {selectedCompany?.id === company.id ? "Selecionada" : "Disponível"}
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedCompany(company)}
-                      >
-                        Selecionar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openCompanyDialog(company)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteCompany(company)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
               </div>
               
               {/* Controles de Paginação */}
@@ -1170,6 +1140,46 @@ export function SettingsComponent() {
                   </div>
                 </div>
               )}
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {currentCompanies.map((company) => (
+                  <div key={company.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <h3 className="font-semibold">{company.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {company.cnpj} • {company.phone} • {company.email}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Badge variant={selectedCompany?.id === company.id ? "default" : "secondary"}>
+                        {selectedCompany?.id === company.id ? "Selecionada" : "Disponível"}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedCompany(company)}
+                      >
+                        Selecionar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openCompanyDialog(company)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteCompany(company)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
