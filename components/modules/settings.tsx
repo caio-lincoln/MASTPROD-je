@@ -32,7 +32,6 @@ import {
   Plus,
   Edit,
   Trash2,
-  Eye,
   EyeOff,
   Building2,
   AlertCircle,
@@ -66,7 +65,7 @@ interface Integration {
 }
 
 export function SettingsComponent() {
-  const { selectedCompany, companies, setSelectedCompany } = useCompany()
+  const { selectedCompany, companies, setSelectedCompany, addCompany, updateCompany, deleteCompany } = useCompany()
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [integrations, setIntegrations] = useState<Integration[]>([
@@ -125,6 +124,28 @@ export function SettingsComponent() {
     phone: '',
     address: ''
   })
+
+  // Estados para paginação de empresas
+  const [currentPage, setCurrentPage] = useState(1)
+  const companiesPerPage = 3
+
+  // Funções de paginação
+  const totalPages = Math.ceil(companies.length / companiesPerPage)
+  const startIndex = (currentPage - 1) * companiesPerPage
+  const endIndex = startIndex + companiesPerPage
+  const currentCompanies = companies.slice(startIndex, endIndex)
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)))
+  }
+
+  const goToPreviousPage = () => {
+    setCurrentPage(prev => Math.max(1, prev - 1))
+  }
+
+  const goToNextPage = () => {
+    setCurrentPage(prev => Math.min(totalPages, prev + 1))
+  }
 
   // Módulos disponíveis no sistema
   const availableModules = [
@@ -464,6 +485,121 @@ export function SettingsComponent() {
       })
     }
     setIsCompanyDialogOpen(true)
+  }
+
+  const handleSaveCompany = async () => {
+    if (!companyForm.name.trim() || !companyForm.cnpj.trim() || !companyForm.address.trim()) {
+      toast({
+        title: "Erro de validação",
+        description: "Nome, CNPJ e endereço são obrigatórios",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Validar formato do CNPJ
+    if (!/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(companyForm.cnpj)) {
+      toast({
+        title: "Erro de validação",
+        description: "Formato de CNPJ inválido",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Validar formato do e-mail se fornecido
+    if (companyForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(companyForm.email)) {
+      toast({
+        title: "Erro de validação",
+        description: "Formato de e-mail inválido",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      const companyData = {
+        name: companyForm.name,
+        cnpj: companyForm.cnpj,
+        address: companyForm.address,
+        phone: companyForm.phone,
+        email: companyForm.email,
+        isActive: true
+      }
+
+      let success = false
+
+      if (editingCompany) {
+        // Atualizar empresa existente
+        success = await updateCompany(editingCompany.id, companyData)
+      } else {
+        // Criar nova empresa
+        const newCompany = await addCompany(companyData)
+        success = newCompany !== null
+      }
+
+      if (success) {
+        toast({
+          title: "Sucesso",
+          description: editingCompany ? "Empresa atualizada com sucesso" : "Empresa criada com sucesso",
+          variant: "default"
+        })
+
+        setIsCompanyDialogOpen(false)
+        setEditingCompany(null)
+        setCompanyForm({
+          name: '',
+          cnpj: '',
+          email: '',
+          phone: '',
+          address: ''
+        })
+      } else {
+        toast({
+          title: "Erro",
+          description: "Erro ao salvar empresa. Tente novamente.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao salvar empresa:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar empresa. Tente novamente.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleDeleteCompany = async (company: Company) => {
+    if (!confirm(`Tem certeza que deseja deletar a empresa "${company.name}"? Esta ação não pode ser desfeita.`)) {
+      return
+    }
+
+    try {
+      const success = await deleteCompany(company.id)
+      
+      if (success) {
+        toast({
+          title: "Sucesso",
+          description: "Empresa deletada com sucesso",
+          variant: "default"
+        })
+      } else {
+        toast({
+          title: "Erro",
+          description: "Erro ao deletar empresa. Tente novamente.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao deletar empresa:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao deletar empresa. Tente novamente.",
+        variant: "destructive"
+      })
+    }
   }
 
   const openUserDialog = (user?: User) => {
@@ -943,15 +1079,17 @@ export function SettingsComponent() {
                   </CardTitle>
                   <CardDescription>Gerencie todas as empresas do sistema</CardDescription>
                 </div>
-                <Button onClick={() => openCompanyDialog()}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nova Empresa
-                </Button>
+                <div className="flex items-center space-x-2">
+                  <Button onClick={() => openCompanyDialog()}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nova Empresa
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {companies.map((company) => (
+                {currentCompanies.map((company) => (
                   <div key={company.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex-1">
                       <h3 className="font-semibold">{company.name}</h3>
@@ -977,10 +1115,61 @@ export function SettingsComponent() {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteCompany(company)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
+              
+              {/* Controles de Paginação */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <div className="text-sm text-gray-600">
+                    Página {currentPage} de {totalPages} ({companies.length} empresas)
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={goToPreviousPage}
+                      disabled={currentPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    
+                    {/* Números das páginas */}
+                    <div className="flex space-x-1">
+                      {/* Mostrar apenas as primeiras 4 páginas */}
+                      {Array.from({ length: Math.min(4, totalPages) }, (_, i) => i + 1).map((page) => (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => goToPage(page)}
+                          className="w-8 h-8 p-0"
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={goToNextPage}
+                      disabled={currentPage === totalPages}
+                    >
+                      Próximo
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1059,11 +1248,7 @@ export function SettingsComponent() {
               <Button variant="outline" onClick={() => setIsCompanyDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={() => {
-                // Aqui você implementaria a lógica de salvamento
-                console.log('Salvando empresa:', companyForm)
-                setIsCompanyDialogOpen(false)
-              }}>
+              <Button onClick={handleSaveCompany}>
                 <Save className="h-4 w-4 mr-2" />
                 {editingCompany ? "Salvar Alterações" : "Cadastrar Empresa"}
               </Button>

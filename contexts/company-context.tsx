@@ -26,6 +26,9 @@ interface CompanyContextType {
   addCompany: (company: Omit<Company, "id" | "createdAt">) => Promise<Company | null>
   updateCompany: (id: string, updates: Partial<Company>) => Promise<boolean>
   deleteCompany: (id: string) => Promise<boolean>
+  loadAllCompanies: () => Promise<void>
+  showAllCompanies: boolean
+  setShowAllCompanies: (show: boolean) => void
 }
 
 const CompanyContext = createContext<CompanyContextType | undefined>(undefined)
@@ -35,12 +38,19 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<User | null>(null)
+  const [showAllCompanies, setShowAllCompanies] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     const loadUserAndCompanies = async () => {
       try {
         setIsLoading(true)
+        
+        // Se já estamos mostrando todas as empresas, não recarregar
+        if (showAllCompanies) {
+          setIsLoading(false)
+          return
+        }
 
         // Verificar usuário autenticado
         const {
@@ -177,17 +187,21 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setCompanies([])
         setSelectedCompany(null)
+        setShowAllCompanies(false) // Reset showAllCompanies
         if (typeof window !== 'undefined') {
           localStorage.removeItem("selectedCompanyId")
         }
       } else if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user)
-        loadUserAndCompanies()
+        // Só recarregar se não estivermos mostrando todas as empresas
+        if (!showAllCompanies) {
+          loadUserAndCompanies()
+        }
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [showAllCompanies]) // Adicionar showAllCompanies como dependência
 
   const handleSetSelectedCompany = (company: Company | null) => {
     setSelectedCompany(company)
@@ -320,6 +334,52 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const loadAllCompanies = async (): Promise<void> => {
+    try {
+      setIsLoading(true)
+      console.log("Carregando todas as empresas...")
+      
+      // Buscar todas as empresas ativas
+      const { data: allCompanies, error } = await supabase
+        .from("empresas")
+        .select("id, nome, cnpj, endereco, telefone, email, logo_url, status, created_at")
+        .eq("status", true)
+        .order("created_at", { ascending: false })
+
+      console.log("Dados recebidos do Supabase:", allCompanies)
+      console.log("Erro do Supabase:", error)
+
+      if (error) {
+        console.error("Erro ao buscar todas as empresas:", error)
+        return
+      }
+
+      const formattedCompanies: Company[] =
+        allCompanies?.map((empresa) => ({
+          id: empresa.id,
+          name: empresa.nome,
+          cnpj: empresa.cnpj || "",
+          address: empresa.endereco || "",
+          phone: empresa.telefone || "",
+          email: empresa.email || "",
+          logo: empresa.logo_url || undefined,
+          isActive: empresa.status,
+          createdAt: new Date(empresa.created_at),
+        })) || []
+
+      console.log("Empresas formatadas:", formattedCompanies)
+      console.log("Total de empresas:", formattedCompanies.length)
+
+      setCompanies(formattedCompanies)
+      setShowAllCompanies(true)
+      console.log("Estado atualizado - showAllCompanies:", true)
+    } catch (error) {
+      console.error("Erro ao carregar todas as empresas:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <CompanyContext.Provider
       value={{
@@ -332,6 +392,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         addCompany,
         updateCompany,
         deleteCompany,
+        loadAllCompanies,
+        showAllCompanies,
+        setShowAllCompanies,
       }}
     >
       {children}
