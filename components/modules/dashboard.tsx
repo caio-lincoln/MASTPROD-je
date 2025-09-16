@@ -119,21 +119,8 @@ function Dashboard() {
           const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString()
           const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0).toISOString()
 
-          const [
-            { count: totalFuncionarios },
-            { count: lastMonthFuncionarios },
-            { count: examesEmDia },
-            { count: lastMonthExams },
-            { count: naoConformidadesAbertas },
-            { count: lastMonthNCs },
-            { count: treinamentosPendentes },
-            { count: lastMonthPending },
-            { data: examesData },
-            { data: riscosData },
-            { count: riscosComMitigacao },
-            { count: totalRiscos },
-            { count: funcionariosComEpi },
-          ] = await Promise.all([
+          // Usar Promise.allSettled para capturar erros individuais
+          const results = await Promise.allSettled([
             supabase
               .from("funcionarios")
               .select("id", { count: "exact", head: true })
@@ -171,13 +158,19 @@ function Dashboard() {
               .lte("created_at", endOfLastMonth),
             supabase
               .from("treinamento_funcionarios")
-              .select("id", { count: "exact", head: true })
-              .eq("empresa_id", empresaId)
+              .select(`
+                id,
+                funcionarios!inner(empresa_id)
+              `, { count: "exact", head: true })
+              .eq("funcionarios.empresa_id", empresaId)
               .eq("status", "pendente"),
             supabase
               .from("treinamento_funcionarios")
-              .select("id", { count: "exact", head: true })
-              .eq("empresa_id", empresaId)
+              .select(`
+                id,
+                funcionarios!inner(empresa_id)
+              `, { count: "exact", head: true })
+              .eq("funcionarios.empresa_id", empresaId)
               .eq("status", "pendente")
               .gte("created_at", startOfLastMonth)
               .lte("created_at", endOfLastMonth),
@@ -199,6 +192,37 @@ function Dashboard() {
               .eq("empresa_id", empresaId)
               .eq("status", "ativo"),
           ])
+
+          // Extrair dados com fallbacks seguros
+          const getCountFromResult = (result: any, index: number): number => {
+            if (result.status === 'fulfilled' && result.value?.count !== null) {
+              return result.value.count || 0
+            }
+            console.warn(`Query ${index} failed or returned null:`, result.reason || result.value?.error)
+            return 0
+          }
+
+          const getDataFromResult = (result: any, index: number): any[] => {
+            if (result.status === 'fulfilled' && result.value?.data) {
+              return result.value.data || []
+            }
+            console.warn(`Query ${index} failed or returned null:`, result.reason || result.value?.error)
+            return []
+          }
+
+          const totalFuncionarios = getCountFromResult(results[0], 0)
+          const lastMonthFuncionarios = getCountFromResult(results[1], 1)
+          const examesEmDia = getCountFromResult(results[2], 2)
+          const lastMonthExams = getCountFromResult(results[3], 3)
+          const naoConformidadesAbertas = getCountFromResult(results[4], 4)
+          const lastMonthNCs = getCountFromResult(results[5], 5)
+          const treinamentosPendentes = getCountFromResult(results[6], 6)
+          const lastMonthPending = getCountFromResult(results[7], 7)
+          const examesData = getDataFromResult(results[8], 8)
+          const riscosData = getDataFromResult(results[9], 9)
+          const riscosComMitigacao = getCountFromResult(results[10], 10)
+          const totalRiscos = getCountFromResult(results[11], 11)
+          const funcionariosComEpi = getCountFromResult(results[12], 12)
 
           const calculateVariation = (current: number, previous: number): number => {
             if (previous === 0) return current > 0 ? 100 : 0

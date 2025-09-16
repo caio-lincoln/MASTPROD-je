@@ -572,7 +572,33 @@ export function SettingsComponent() {
   }
 
   const handleDeleteCompany = async (company: Company) => {
-    if (!confirm(`Tem certeza que deseja deletar a empresa "${company.name}"? Esta ação não pode ser desfeita.`)) {
+    // Primeira confirmação - aviso sobre exclusão completa
+    const firstConfirm = confirm(
+      `⚠️ ATENÇÃO: Deletar a empresa "${company.name}" irá remover PERMANENTEMENTE:\n\n` +
+      `• Todos os funcionários\n` +
+      `• Todos os relatórios gerados\n` +
+      `• Todos os treinamentos\n` +
+      `• Todos os exames médicos\n` +
+      `• Todas as não conformidades\n` +
+      `• Todos os dados de segurança\n` +
+      `• Todas as configurações\n` +
+      `• Todos os logs e auditoria\n\n` +
+      `Esta ação NÃO PODE ser desfeita!\n\n` +
+      `Deseja continuar?`
+    )
+    
+    if (!firstConfirm) {
+      return
+    }
+
+    // Segunda confirmação - confirmação final
+    const secondConfirm = confirm(
+      `CONFIRMAÇÃO FINAL:\n\n` +
+      `Digite "DELETAR" para confirmar a exclusão completa da empresa "${company.name}".\n\n` +
+      `Tem ABSOLUTA CERTEZA que deseja prosseguir?`
+    )
+    
+    if (!secondConfirm) {
       return
     }
 
@@ -582,7 +608,7 @@ export function SettingsComponent() {
       if (success) {
         toast({
           title: "Sucesso",
-          description: "Empresa deletada com sucesso",
+          description: `Empresa "${company.name}" e todos os dados relacionados foram deletados com sucesso`,
           variant: "default"
         })
       } else {
@@ -596,7 +622,7 @@ export function SettingsComponent() {
       console.error('Erro ao deletar empresa:', error)
       toast({
         title: "Erro",
-        description: "Erro ao deletar empresa. Tente novamente.",
+        description: `Erro ao deletar empresa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
         variant: "destructive"
       })
     }

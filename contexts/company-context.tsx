@@ -217,9 +217,31 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   }
 
   const addCompany = async (companyData: Omit<Company, "id" | "createdAt">): Promise<Company | null> => {
-    if (!user) return null
-
     try {
+      // Verificar se o usuário está autenticado
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError) {
+        console.error("Erro de autenticação:", authError)
+        return null
+      }
+
+      if (!currentUser) {
+        console.error("Usuário não autenticado")
+        return null
+      }
+
+      // Verificar se o usuário é super admin
+      const { data: isSuperAdmin, error: superAdminError } = await supabase
+        .rpc('is_super_admin')
+
+      if (superAdminError) {
+        console.error("Erro ao verificar super admin:", superAdminError)
+      }
+
+      console.log("Usuário é super admin:", isSuperAdmin)
+      console.log("Dados da empresa a ser criada:", companyData)
+
       // Inserir empresa
       const { data: newCompany, error: companyError } = await supabase
         .from("empresas")
@@ -240,16 +262,24 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         return null
       }
 
-      // Criar relacionamento usuário-empresa
-      const { error: relationError } = await supabase.from("usuario_empresas").insert({
-        user_id: user.id,
-        empresa_id: newCompany.id,
-        role: "admin",
-      })
+      console.log("Empresa criada com sucesso:", newCompany)
 
-      if (relationError) {
-        console.error("Erro ao criar relacionamento usuário-empresa:", relationError)
-        return null
+      // Criar relacionamento usuário-empresa apenas se não for super admin
+      // Super admins podem criar empresas sem se associar automaticamente
+      if (!isSuperAdmin) {
+        const { error: relationError } = await supabase.from("usuario_empresas").insert({
+          user_id: currentUser.id,
+          empresa_id: newCompany.id,
+          role: "admin",
+        })
+
+        if (relationError) {
+          console.error("Erro ao criar relacionamento usuário-empresa:", relationError)
+          return null
+        }
+        console.log("Relacionamento usuário-empresa criado")
+      } else {
+        console.log("Super admin - relacionamento não criado automaticamente")
       }
 
       const formattedCompany: Company = {
@@ -265,6 +295,12 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       }
 
       setCompanies((prev) => [...prev, formattedCompany])
+      
+      // Atualizar o estado do usuário se necessário
+      if (!user) {
+        setUser(currentUser)
+      }
+      
       return formattedCompany
     } catch (error) {
       console.error("Erro ao adicionar empresa:", error)
@@ -309,6 +345,53 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   const deleteCompany = async (id: string): Promise<boolean> => {
     try {
+      // Lista de tabelas que referenciam empresas (em ordem de dependência)
+      const tablesToDelete = [
+        'backups',
+        'certificados_esocial',
+        'configuracoes_sistema',
+        'custom_roles',
+        'documentos',
+        'entregas_epi',
+        'epis',
+        'esocial_config',
+        'esocial_lotes',
+        'estatisticas_esocial',
+        'eventos_esocial',
+        'exames_aso',
+        'exames_medicos',
+        'fatores_risco',
+        'funcionarios',
+        'gestao_riscos',
+        'incidentes',
+        'inspecoes_epi',
+        'inspecoes_seguranca',
+        'logs_auditoria',
+        'logs_esocial',
+        'logs_gerais',
+        'manutencoes_epi',
+        'nao_conformidades',
+        'notificacoes',
+        'planos_acao',
+        'relatorios_gerados',
+        'treinamentos',
+        'usuario_empresas'
+      ]
+
+      // Excluir registros de todas as tabelas relacionadas
+      for (const table of tablesToDelete) {
+        const { error: deleteError } = await supabase
+          .from(table)
+          .delete()
+          .eq('empresa_id', id)
+
+        if (deleteError) {
+          console.warn(`Aviso ao deletar registros da tabela ${table}:`, deleteError)
+          // Continuar mesmo com avisos, pois algumas tabelas podem não ter registros
+        }
+      }
+
+      // Finalmente, excluir a empresa
       const { error } = await supabase.from("empresas").delete().eq("id", id)
 
       if (error) {

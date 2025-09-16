@@ -40,6 +40,7 @@
     "@supabase/auth-helpers-nextjs": "latest",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "@types/xml2js": "^0.4.14",
     "autoprefixer": "^10.4.20",
     "axios": "latest",
     "class-variance-authority": "^0.7.1",
@@ -71,6 +72,7 @@
     "vaul": "^0.9.9",
     "xlsx": "latest",
     "xml-crypto": "latest",
+    "xml2js": "^0.6.2",
     "xmldom": "latest",
     "zod": "3.25.67"
   },
