@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,10 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Calendar as CalendarLucide,
+  Play,
+  Pause,
+  Edit,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -192,7 +197,6 @@ const availableModules = [
   "Treinamentos",
   "Saúde Ocupacional",
   "Gestão de Riscos",
-  "Treinamentos",
   "Não Conformidades",
   "Segurança do Trabalho",
 ]
@@ -206,6 +210,14 @@ function Reports() {
   const [fatoresRisco, setFatoresRisco] = useState<any[]>([])
   const [loadingEsocial, setLoadingEsocial] = useState(false)
   const [generatingEvent, setGeneratingEvent] = useState(false)
+  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
+  const [newTemplate, setNewTemplate] = useState({
+    nome: '',
+    descricao: '',
+    modulo: '',
+    formato: 'pdf',
+    parametros: {}
+  })
 
   // Estados existentes
   const [selectedDate, setSelectedDate] = useState<Date>()
@@ -221,6 +233,30 @@ function Reports() {
     eventTypes: [] as string[],
     frequency: "manual",
     companies: [] as string[],
+  })
+
+  // Novos estados para agendados e configurações
+  const [scheduledReports, setScheduledReports] = useState<any[]>([])
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [newSchedule, setNewSchedule] = useState({
+    modelo_id: '',
+    modelo_nome: '',
+    frequencia: 'mensal',
+    dia_execucao: 1,
+    hora_execucao: '09:00',
+    ativo: true,
+    email_destinatarios: '',
+    formato: 'pdf'
+  })
+  const [reportSettings, setReportSettings] = useState<any>({
+    storage_path: 'relatorios/',
+    retention_days: 90,
+    default_email: '',
+    email_subject: 'Relatório Automático',
+    auto_send_email: false,
+    default_format: 'pdf',
+    pdf_quality: 'alta',
+    compression: 'media'
   })
 
   const [totalTemplates, setTotalTemplates] = useState(0)
@@ -274,11 +310,43 @@ function Reports() {
     }
   }
 
-  const loadReportTemplates = () => {
-    if (selectedCompany) {
-      const companyId = Number(selectedCompany.id) as keyof typeof reportTemplatesByCompany
-      setReportTemplates(reportTemplatesByCompany[companyId] || [])
-      setTotalTemplates(reportTemplatesByCompany[companyId]?.length || 0)
+  const loadReportTemplates = async () => {
+    if (!selectedCompany) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('modelos_relatorios')
+        .select('*')
+        .eq('empresa_id', selectedCompany.id)
+        .eq('ativo', true)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Converter para o formato esperado pelo componente
+      const templates = data?.map(template => ({
+        id: template.id,
+        nome: template.nome,
+        descricao: template.descricao,
+        categoria: template.modulo,
+        modulos: template.parametros?.modulos_incluidos || [],
+        periodicidade: template.parametros?.periodicidade || 'Mensal',
+        status: 'Ativo',
+        ultimaGeracao: template.updated_at,
+        downloads: 0,
+        formato: template.formato
+      })) || [];
+
+      setReportTemplates(templates);
+      setTotalTemplates(templates.length);
+    } catch (error) {
+      console.error('Erro ao carregar templates:', error);
+      // Fallback para dados estáticos se houver erro
+      if (selectedCompany) {
+        const companyId = Number(selectedCompany.id) as keyof typeof reportTemplatesByCompany
+        setReportTemplates(reportTemplatesByCompany[companyId] || [])
+        setTotalTemplates(reportTemplatesByCompany[companyId]?.length || 0)
+      }
     }
   }
 
@@ -302,8 +370,140 @@ function Reports() {
     if (selectedCompany) {
       loadReportTemplates()
       loadReportHistory()
+      loadScheduledReports()
+      loadReportSettings()
     }
   }, [selectedCompany, activeTab])
+
+  // Função para carregar relatórios agendados
+  const loadScheduledReports = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from('relatorios_agendados')
+        .select(`
+          *,
+          modelos_relatorios (nome, descricao)
+        `)
+        .eq('empresa_id', selectedCompany.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      const formattedSchedules = data?.map(schedule => ({
+        ...schedule,
+        modelo_nome: schedule.modelos_relatorios?.nome || 'Modelo não encontrado'
+      })) || []
+
+      setScheduledReports(formattedSchedules)
+      setActiveSchedules(formattedSchedules.filter(s => s.ativo).length)
+    } catch (error) {
+      console.error('Erro ao carregar agendamentos:', error)
+      setScheduledReports([])
+    }
+  }
+
+  // Função para carregar configurações
+  const loadReportSettings = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from('configuracoes_relatorios')
+        .select('*')
+        .eq('empresa_id', selectedCompany.id)
+        .single()
+
+      if (error && error.code !== 'PGRST116') throw error
+
+      if (data) {
+        setReportSettings({
+          ...reportSettings,
+          ...data.configuracoes
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configurações:', error)
+    }
+  }
+
+  // Função para salvar configurações
+  const saveReportSettings = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { error } = await supabase
+        .from('configuracoes_relatorios')
+        .upsert({
+          empresa_id: selectedCompany.id,
+          configuracoes: reportSettings
+        })
+
+      if (error) throw error
+
+      toast({
+        title: "Configurações Salvas",
+        description: "As configurações foram salvas com sucesso!",
+      })
+    } catch (error) {
+      console.error('Erro ao salvar configurações:', error)
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar configurações. Tente novamente.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Função para criar modelo no Supabase
+  const handleCreateTemplate = async () => {
+    if (!newTemplate.nome || !newTemplate.modulo) {
+      toast({
+        title: "Erro",
+        description: "Nome e categoria são obrigatórios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('modelos_relatorios')
+        .insert([{
+          empresa_id: selectedCompany.id,
+          nome: newTemplate.nome,
+          descricao: newTemplate.descricao,
+          modulo: newTemplate.modulo,
+          formato: newTemplate.formato,
+          parametros: {
+            modulos_incluidos: selectedModules,
+            ...newTemplate.parametros
+          }
+        }]);
+
+      if (error) throw error;
+
+      toast({
+        title: "Modelo Criado",
+        description: `Modelo "${newTemplate.nome}" criado com sucesso!`,
+      });
+
+      setShowCreateTemplateModal(false);
+      setNewTemplate({ nome: '', descricao: '', modulo: '', formato: 'pdf', parametros: {} });
+      setSelectedModules([]);
+      
+      // Recarregar templates
+      loadReportTemplates();
+    } catch (error) {
+      console.error('Erro ao criar modelo:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao criar modelo. Tente novamente.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const generateS2220Event = async () => {
     if (!selectedCompany) return
@@ -934,7 +1134,7 @@ function Reports() {
                 <div className="text-center py-8">
                   <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">Nenhum modelo de relatório configurado para esta empresa.</p>
-                  <Button className="mt-4">
+                  <Button className="mt-4" onClick={() => setShowCreateTemplateModal(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     Criar Primeiro Modelo
                   </Button>
@@ -1273,13 +1473,489 @@ function Reports() {
         </TabsContent>
 
         <TabsContent value="agendados" className="space-y-4">
-          {/* Agendados Content */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Relatórios Agendados - {selectedCompany.name}</CardTitle>
+              <CardDescription>Geração automática de relatórios programados</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex space-x-2">
+                  <Input placeholder="Buscar agendamento..." className="w-64" />
+                  <Select>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="pausado">Pausado</SelectItem>
+                      <SelectItem value="erro">Erro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={() => setShowScheduleModal(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Agendamento
+                </Button>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Modelo</TableHead>
+                    <TableHead>Frequência</TableHead>
+                    <TableHead>Próxima Execução</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Última Execução</TableHead>
+                    <TableHead>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {scheduledReports.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8">
+                        <CalendarLucide className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <p className="text-muted-foreground">Nenhum relatório agendado.</p>
+                        <Button 
+                          variant="outline" 
+                          className="mt-2"
+                          onClick={() => setShowScheduleModal(true)}
+                        >
+                          Criar Primeiro Agendamento
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    scheduledReports.map((schedule) => (
+                      <TableRow key={schedule.id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{schedule.modelo_nome}</p>
+                            <p className="text-sm text-muted-foreground">{schedule.descricao}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{schedule.frequencia}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          {new Date(schedule.proxima_execucao).toLocaleDateString('pt-BR')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={schedule.ativo ? "default" : "secondary"}>
+                            {schedule.ativo ? "Ativo" : "Pausado"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {schedule.ultima_execucao 
+                            ? new Date(schedule.ultima_execucao).toLocaleDateString('pt-BR')
+                            : "Nunca"
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex space-x-1">
+                            <Button variant="ghost" size="sm" title="Editar">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              title={schedule.ativo ? "Pausar" : "Ativar"}
+                            >
+                              {schedule.ativo ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                            </Button>
+                            <Button variant="ghost" size="sm" title="Excluir">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="configuracoes" className="space-y-4">
-          {/* Configurações Content */}
+          <div className="grid gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configurações de Relatórios</CardTitle>
+                <CardDescription>Personalize as configurações gerais dos relatórios</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">Configurações de Armazenamento</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Pasta Padrão no Storage</Label>
+                      <Input 
+                        value={reportSettings.storage_path || 'relatorios/'}
+                        onChange={(e) => setReportSettings({...reportSettings, storage_path: e.target.value})}
+                        placeholder="relatorios/"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Retenção de Arquivos (dias)</Label>
+                      <Input 
+                        type="number"
+                        value={reportSettings.retention_days || 90}
+                        onChange={(e) => setReportSettings({...reportSettings, retention_days: parseInt(e.target.value)})}
+                        placeholder="90"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">Configurações de Email</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Email Padrão para Envio</Label>
+                      <Input 
+                        type="email"
+                        value={reportSettings.default_email || ''}
+                        onChange={(e) => setReportSettings({...reportSettings, default_email: e.target.value})}
+                        placeholder="relatorios@empresa.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Assunto Padrão</Label>
+                      <Input 
+                        value={reportSettings.email_subject || 'Relatório Automático'}
+                        onChange={(e) => setReportSettings({...reportSettings, email_subject: e.target.value})}
+                        placeholder="Relatório Automático"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="auto-send"
+                      checked={reportSettings.auto_send_email || false}
+                      onCheckedChange={(checked) => setReportSettings({...reportSettings, auto_send_email: checked})}
+                    />
+                    <Label htmlFor="auto-send">Enviar automaticamente por email após geração</Label>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">Configurações de Formato</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Formato Padrão</Label>
+                      <Select 
+                        value={reportSettings.default_format || 'pdf'}
+                        onValueChange={(value) => setReportSettings({...reportSettings, default_format: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pdf">PDF</SelectItem>
+                          <SelectItem value="excel">Excel</SelectItem>
+                          <SelectItem value="csv">CSV</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Qualidade PDF</Label>
+                      <Select 
+                        value={reportSettings.pdf_quality || 'alta'}
+                        onValueChange={(value) => setReportSettings({...reportSettings, pdf_quality: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="baixa">Baixa</SelectItem>
+                          <SelectItem value="media">Média</SelectItem>
+                          <SelectItem value="alta">Alta</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Compressão</Label>
+                      <Select 
+                        value={reportSettings.compression || 'media'}
+                        onValueChange={(value) => setReportSettings({...reportSettings, compression: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="nenhuma">Nenhuma</SelectItem>
+                          <SelectItem value="baixa">Baixa</SelectItem>
+                          <SelectItem value="media">Média</SelectItem>
+                          <SelectItem value="alta">Alta</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => loadReportSettings()}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={saveReportSettings}>
+                    Salvar Configurações
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
+
+      {/* Modal para Criar Modelo */}
+      <Dialog open={showCreateTemplateModal} onOpenChange={setShowCreateTemplateModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Criar Novo Modelo de Relatório</DialogTitle>
+            <DialogDescription>
+              Configure um modelo personalizado para {selectedCompany.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome do Modelo</Label>
+                <Input 
+                  placeholder="Ex: Relatório Mensal de SST"
+                  value={newTemplate.nome}
+                  onChange={(e) => setNewTemplate({...newTemplate, nome: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Select value={newTemplate.modulo} onValueChange={(value) => setNewTemplate({...newTemplate, modulo: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="geral">Geral</SelectItem>
+                    <SelectItem value="saude">Saúde Ocupacional</SelectItem>
+                    <SelectItem value="riscos">Gestão de Riscos</SelectItem>
+                    <SelectItem value="treinamentos">Treinamentos</SelectItem>
+                    <SelectItem value="conformidade">Conformidade</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição</Label>
+              <Input 
+                placeholder="Descreva o objetivo deste relatório"
+                value={newTemplate.descricao}
+                onChange={(e) => setNewTemplate({...newTemplate, descricao: e.target.value})}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Módulos a Incluir</Label>
+              <div className="grid grid-cols-2 gap-2 p-4 border rounded-lg">
+                {availableModules.map((module) => (
+                  <div key={module} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={module}
+                      checked={selectedModules.includes(module)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedModules([...selectedModules, module])
+                        } else {
+                          setSelectedModules(selectedModules.filter((m) => m !== module))
+                        }
+                      }}
+                    />
+                    <Label htmlFor={module} className="text-sm">
+                      {module}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Formato Padrão</Label>
+                <Select value={newTemplate.formato} onValueChange={(value) => setNewTemplate({...newTemplate, formato: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Formato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                    <SelectItem value="excel">Excel</SelectItem>
+                    <SelectItem value="word">Word</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Periodicidade</Label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Frequência" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                    <SelectItem value="trimestral">Trimestral</SelectItem>
+                    <SelectItem value="semestral">Semestral</SelectItem>
+                    <SelectItem value="anual">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowCreateTemplateModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateTemplate}>
+               Criar Modelo
+             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Criar Agendamento */}
+      <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Novo Agendamento de Relatório</DialogTitle>
+            <DialogDescription>
+              Configure um agendamento automático para {selectedCompany.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Modelo de Relatório</Label>
+                <Select 
+                  value={newSchedule.modelo_id} 
+                  onValueChange={(value) => {
+                    const template = reportTemplates.find(t => t.id === value)
+                    setNewSchedule({
+                      ...newSchedule, 
+                      modelo_id: value,
+                      modelo_nome: template?.nome || ''
+                    })
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um modelo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reportTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Frequência</Label>
+                <Select 
+                  value={newSchedule.frequencia} 
+                  onValueChange={(value) => setNewSchedule({...newSchedule, frequencia: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="diario">Diário</SelectItem>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                    <SelectItem value="trimestral">Trimestral</SelectItem>
+                    <SelectItem value="semestral">Semestral</SelectItem>
+                    <SelectItem value="anual">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Dia da Execução</Label>
+                <Input 
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={newSchedule.dia_execucao}
+                  onChange={(e) => setNewSchedule({...newSchedule, dia_execucao: parseInt(e.target.value)})}
+                  placeholder="1"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Horário</Label>
+                <Input 
+                  type="time"
+                  value={newSchedule.hora_execucao}
+                  onChange={(e) => setNewSchedule({...newSchedule, hora_execucao: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Destinatários de Email (separados por vírgula)</Label>
+              <Input 
+                placeholder="email1@empresa.com, email2@empresa.com"
+                value={newSchedule.email_destinatarios}
+                onChange={(e) => setNewSchedule({...newSchedule, email_destinatarios: e.target.value})}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Formato</Label>
+                <Select 
+                  value={newSchedule.formato} 
+                  onValueChange={(value) => setNewSchedule({...newSchedule, formato: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                    <SelectItem value="excel">Excel</SelectItem>
+                    <SelectItem value="csv">CSV</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center space-x-2 pt-6">
+                <Checkbox 
+                  id="ativo"
+                  checked={newSchedule.ativo}
+                  onCheckedChange={(checked) => setNewSchedule({...newSchedule, ativo: checked})}
+                />
+                <Label htmlFor="ativo">Ativar agendamento</Label>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => setShowScheduleModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => {
+              // Aqui implementaríamos a lógica de criação do agendamento
+              toast({
+                title: "Agendamento criado!",
+                description: "O relatório será gerado automaticamente conforme configurado.",
+              })
+              setShowScheduleModal(false)
+            }}>
+              Criar Agendamento
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

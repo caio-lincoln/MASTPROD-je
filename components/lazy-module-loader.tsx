@@ -26,6 +26,7 @@ export function LazyModuleLoader({
       "@/components/modules/occupational-health": () => import("@/components/modules/occupational-health"),
       "@/components/modules/training": () => import("@/components/modules/training"),
       "@/components/modules/reports": () => import("@/components/modules/reports"),
+      "@/components/modules/esocial": () => import("@/components/modules/esocial"),
       "@/components/modules/esocial-integration": () => import("@/components/modules/esocial-integration"),
       "@/components/modules/digital-library": () => import("@/components/modules/digital-library"),
       "@/components/modules/risk-management": () => import("@/components/modules/risk-management"),

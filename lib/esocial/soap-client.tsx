@@ -1,4 +1,5 @@
-import type { EsocialConfig } from "./types"
+import { EsocialConfig } from "./types"
+import { createEsocialFetchOptions } from "./ssl-config"
 
 export interface SoapResponse {
   sucesso: boolean
@@ -32,16 +33,13 @@ export class EsocialSoapClient {
     try {
       const soapEnvelope = this.criarEnvelopeEnvioLote(xmlLote)
 
-      const response = await fetch(this.config.urls.recepcaoLote, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/xml; charset=utf-8",
-          SOAPAction:
-            "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/v1_1_1/ServicoEnviarLoteEventos/EnviarLoteEventos",
-          "User-Agent": "SST-System/1.0",
-        },
-        body: soapEnvelope,
+      // Usar configurações SSL centralizadas
+      const fetchOptions = createEsocialFetchOptions('POST', soapEnvelope, {
+        SOAPAction:
+          "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/v1_1_1/ServicoEnviarLoteEventos/EnviarLoteEventos",
       })
+
+      const response = await fetch(this.config.urls.recepcaoLote, fetchOptions)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -63,21 +61,18 @@ export class EsocialSoapClient {
     }
   }
 
-  // Consultar status de lote enviado
+  // Consultar status de lote de eventos
   async consultarLoteEventos(protocolo: string): Promise<ConsultaLoteResponse> {
     try {
       const soapEnvelope = this.criarEnvelopeConsultaLote(protocolo)
 
-      const response = await fetch(this.config.urls.consultaLote, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/xml; charset=utf-8",
-          SOAPAction:
-            "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/v1_1_1/ServicoConsultarLoteEventos/ConsultarLoteEventos",
-          "User-Agent": "SST-System/1.0",
-        },
-        body: soapEnvelope,
+      // Usar configurações SSL centralizadas
+      const fetchOptions = createEsocialFetchOptions('POST', soapEnvelope, {
+        SOAPAction:
+          "http://www.esocial.gov.br/servicos/empregador/consultaloteeventos/v1_1_0/ServicoConsultarLoteEventos/ConsultarLoteEventos",
       })
+
+      const response = await fetch(this.config.urls.consultaLote, fetchOptions)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -99,21 +94,18 @@ export class EsocialSoapClient {
     }
   }
 
-  // Download de evento processado
-  async downloadEvento(numeroRecibo: string): Promise<SoapResponse> {
+  // Download de evento específico
+  async downloadEvento(recibo: string): Promise<DownloadEventoResponse> {
     try {
-      const soapEnvelope = this.criarEnvelopeDownloadEvento(numeroRecibo)
+      const soapEnvelope = this.criarEnvelopeDownloadEvento(recibo)
 
-      const response = await fetch(this.config.urls.downloadEvento, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/xml; charset=utf-8",
-          SOAPAction:
-            "http://www.esocial.gov.br/servicos/empregador/download/solicitacao/v1_0_0/ServicoSolicitarDownloadEventos/SolicitarDownloadEventos",
-          "User-Agent": "SST-System/1.0",
-        },
-        body: soapEnvelope,
+      // Usar configurações SSL centralizadas
+      const fetchOptions = createEsocialFetchOptions('POST', soapEnvelope, {
+        SOAPAction:
+          "http://www.esocial.gov.br/servicos/empregador/download/v1_0_0/ServicoDownloadEventos/DownloadEventos",
       })
+
+      const response = await fetch(this.config.urls.downloadEvento, fetchOptions)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)

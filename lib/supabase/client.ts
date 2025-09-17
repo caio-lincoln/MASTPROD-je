@@ -6,3 +6,6 @@ export function createClient() {
 }
 
 export { createClient as createBrowserClient }
+
+// Create and export a default supabase instance
+export const supabase = createClient()

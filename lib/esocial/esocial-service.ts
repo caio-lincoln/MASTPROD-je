@@ -205,6 +205,60 @@ export class EsocialService {
     }
   }
 
+  // Consultar status de um evento específico por número de recibo
+  async consultarStatusEvento(numeroRecibo: string): Promise<{
+    processado: boolean
+    sucesso: boolean
+    numero_recibo?: string
+    erros?: string[]
+    data_processamento?: string
+  }> {
+    try {
+      // Buscar empresa pelo número de recibo (assumindo que o número de recibo está associado a um evento)
+      const { data: evento } = await this.supabase
+        .from("eventos_esocial")
+        .select("empresa_id, empresas(cnpj)")
+        .eq("numero_recibo", numeroRecibo)
+        .single()
+
+      if (!evento || !evento.empresas) {
+        throw new Error("Evento ou empresa não encontrada para o número de recibo")
+      }
+
+      const config = getEsocialConfig(evento.empresas.cnpj, "producao")
+      const soapClient = new EsocialSoapClient(config)
+
+      const consultaResult = await soapClient.consultarLoteEventos(numeroRecibo)
+
+      if (!consultaResult.sucesso) {
+        return {
+          processado: false,
+          sucesso: false,
+          erros: consultaResult.erros?.map(e => e.descricao) || ["Erro na consulta"]
+        }
+      }
+
+      const processado = consultaResult.status_lote === "Processado" || consultaResult.status_lote === "Erro"
+      const sucesso = consultaResult.status_lote === "Processado"
+
+      return {
+        processado,
+        sucesso,
+        numero_recibo: consultaResult.numero_recibo,
+        erros: consultaResult.erros?.map(e => e.descricao),
+        data_processamento: processado ? new Date().toISOString() : undefined
+      }
+
+    } catch (error) {
+      console.error("Erro ao consultar status do evento:", error)
+      return {
+        processado: false,
+        sucesso: false,
+        erros: [error instanceof Error ? error.message : "Erro desconhecido"]
+      }
+    }
+  }
+
   // Gerar relatório de eventos eSocial
   async gerarRelatorioEventos(
     empresa_id: string,

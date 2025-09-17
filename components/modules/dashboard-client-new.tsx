@@ -63,61 +63,65 @@ async function fetchDashboardData(empresaId: string): Promise<DashboardStats> {
   const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString()
   const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0).toISOString()
 
-  const [
-    { count: totalFuncionarios },
-    { count: lastMonthFuncionarios },
-    { count: examesEmDia },
-    { count: lastMonthExams },
-    { count: naoConformidadesAbertas },
-    { count: lastMonthNCs },
-    { count: treinamentosPendentes },
-    { count: lastMonthPending },
-    { data: examesData },
-    { data: riscosData },
-    { count: riscosComMitigacao },
-    { count: totalRiscos },
-    { count: funcionariosComEpi },
-  ] = await Promise.all([
-    supabase
-      .from("funcionarios")
-      .select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresaId)
-      .eq("ativo", true),
+  try {
+    const [
+      { count: totalFuncionarios },
+      { count: lastMonthFuncionarios },
+      { count: examesEmDia },
+      { count: lastMonthExams },
+      { count: naoConformidadesAbertas },
+      { count: lastMonthNCs },
+      { count: treinamentosPendentes },
+      { count: lastMonthPending },
+      { data: examesData },
+      { data: riscosData },
+      { count: riscosComMitigacao },
+      { count: totalRiscos },
+      { count: funcionariosComEpi },
+    ] = await Promise.all([
+      supabase
+        .from("funcionarios")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId)
+        .eq("ativo", true),
 
-    supabase
-      .from("funcionarios")
-      .select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresaId)
-      .eq("ativo", true)
-      .gte("data_admissao", startOfLastMonth)
-      .lte("data_admissao", endOfLastMonth),
+      supabase
+        .from("funcionarios")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId)
+        .eq("ativo", true)
+        .gte("data_admissao", startOfLastMonth)
+        .lte("data_admissao", endOfLastMonth),
 
-    supabase
-      .from("exames_aso")
-      .select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresaId)
-      .gte("validade", today.toISOString()),
+      supabase
+        .from("exames_aso")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId)
+        .gte("validade", today.toISOString()),
 
-    supabase
-      .from("exames_aso")
-      .select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresaId)
-      .gte("validade", startOfLastMonth)
-      .lte("validade", endOfLastMonth),
+      supabase
+        .from("exames_aso")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId)
+        .gte("validade", startOfLastMonth)
+        .lte("validade", endOfLastMonth),
 
-    supabase
-      .from("nao_conformidades")
-      .select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresaId)
-      .eq("status", "aberta"),
+      // Query otimizada para não conformidades com timeout e retry
+      supabase
+        .from("nao_conformidades")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId)
+        .eq("status", "aberta")
+        .abortSignal(AbortSignal.timeout(10000)), // 10 segundos timeout
 
-    supabase
-      .from("nao_conformidades")
-      .select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresaId)
-      .eq("status", "aberta")
-      .gte("created_at", startOfLastMonth)
-      .lte("created_at", endOfLastMonth),
+      supabase
+        .from("nao_conformidades")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId)
+        .eq("status", "aberta")
+        .gte("created_at", startOfLastMonth)
+        .lte("created_at", endOfLastMonth)
+        .abortSignal(AbortSignal.timeout(10000)), // 10 segundos timeout
 
     supabase
       .from("treinamento_funcionarios")
@@ -154,70 +158,98 @@ async function fetchDashboardData(empresaId: string): Promise<DashboardStats> {
       .select("funcionario_id", { count: "exact", head: true })
       .eq("empresa_id", empresaId)
       .eq("status", "ativo"),
-  ])
+    ])
 
-  const calculateVariation = (current: number, previous: number): number => {
-    if (previous === 0) return current > 0 ? 100 : 0
-    return ((current - previous) / previous) * 100
-  }
-
-  const kpiVariations = {
-    funcionarios: calculateVariation(totalFuncionarios || 0, lastMonthFuncionarios || 0),
-    exames: calculateVariation(examesEmDia || 0, lastMonthExams || 0),
-    naoConformidades: calculateVariation(naoConformidadesAbertas || 0, lastMonthNCs || 0),
-    treinamentos: calculateVariation(treinamentosPendentes || 0, lastMonthPending || 0),
-  }
-
-  const next30 = new Date()
-  next30.setDate(today.getDate() + 30)
-
-  const emDia = examesData?.filter((e) => new Date(e.validade) > next30) || []
-  const vencendo = examesData?.filter((e) => new Date(e.validade) <= next30 && new Date(e.validade) >= today) || []
-  const vencidos = examesData?.filter((e) => new Date(e.validade) < today) || []
-
-  const riskByMonth: { [key: string]: { baixo: number; medio: number; alto: number } } = {}
-  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"]
-
-  months.forEach((month) => {
-    riskByMonth[month] = { baixo: 0, medio: 0, alto: 0 }
-  })
-
-  riscosData?.forEach((risco) => {
-    const month = new Date(risco.data_identificacao).getMonth()
-    const monthName = months[month]
-    if (monthName && riskByMonth[monthName]) {
-      if (risco.classificacao === "baixo") riskByMonth[monthName].baixo++
-      else if (risco.classificacao === "medio") riskByMonth[monthName].medio++
-      else if (risco.classificacao === "alto") riskByMonth[monthName].alto++
+    const calculateVariation = (current: number, previous: number): number => {
+      if (previous === 0) return current > 0 ? 100 : 0
+      return ((current - previous) / previous) * 100
     }
-  })
 
-  const riskData: RiskData[] = months.map((month) => ({
-    name: month,
-    ...riskByMonth[month],
-  }))
+    const kpiVariations = {
+      funcionarios: calculateVariation(totalFuncionarios || 0, lastMonthFuncionarios || 0),
+      exames: calculateVariation(examesEmDia || 0, lastMonthExams || 0),
+      naoConformidades: calculateVariation(naoConformidadesAbertas || 0, lastMonthNCs || 0),
+      treinamentos: calculateVariation(treinamentosPendentes || 0, lastMonthPending || 0),
+    }
 
-  const nr07 = totalFuncionarios ? Math.round((emDia.length / totalFuncionarios) * 100) : 0
-  const nr09 = totalRiscos ? Math.round(((riscosComMitigacao || 0) / totalRiscos) * 100) : 0
-  const nr06 = totalFuncionarios ? Math.round(((funcionariosComEpi || 0) / totalFuncionarios) * 100) : 0
+    const next30 = new Date()
+    next30.setDate(today.getDate() + 30)
 
-  return {
-    totalFuncionarios: totalFuncionarios || 0,
-    examesEmDia: examesEmDia || 0,
-    naoConformidadesAbertas: naoConformidadesAbertas || 0,
-    treinamentosPendentes: treinamentosPendentes || 0,
-    kpiVariations,
-    examData: [
-      { name: "Em Dia", value: emDia.length, color: "#22c55e" },
-      { name: "Vencendo (30 dias)", value: vencendo.length, color: "#f59e0b" },
-      { name: "Vencidos", value: vencidos.length, color: "#ef4444" },
-    ],
-    riskData,
-    complianceData: {
-      nr07,
-      nr09,
-      nr06,
-    },
+    const emDia = examesData?.filter((e) => new Date(e.validade) > next30) || []
+    const vencendo = examesData?.filter((e) => new Date(e.validade) <= next30 && new Date(e.validade) >= today) || []
+    const vencidos = examesData?.filter((e) => new Date(e.validade) < today) || []
+
+    const riskByMonth: { [key: string]: { baixo: number; medio: number; alto: number } } = {}
+    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"]
+
+    months.forEach((month) => {
+      riskByMonth[month] = { baixo: 0, medio: 0, alto: 0 }
+    })
+
+    riscosData?.forEach((risco) => {
+      const month = new Date(risco.data_identificacao).getMonth()
+      const monthName = months[month]
+      if (monthName && riskByMonth[monthName]) {
+        if (risco.classificacao === "baixo") riskByMonth[monthName].baixo++
+        else if (risco.classificacao === "medio") riskByMonth[monthName].medio++
+        else if (risco.classificacao === "alto") riskByMonth[monthName].alto++
+      }
+    })
+
+    const riskData: RiskData[] = months.map((month) => ({
+      name: month,
+      ...riskByMonth[month],
+    }))
+
+    const nr07 = totalFuncionarios ? Math.round((emDia.length / totalFuncionarios) * 100) : 0
+    const nr09 = totalRiscos ? Math.round(((riscosComMitigacao || 0) / totalRiscos) * 100) : 0
+    const nr06 = totalFuncionarios ? Math.round(((funcionariosComEpi || 0) / totalFuncionarios) * 100) : 0
+
+    return {
+      totalFuncionarios: totalFuncionarios || 0,
+      examesEmDia: examesEmDia || 0,
+      naoConformidadesAbertas: naoConformidadesAbertas || 0,
+      treinamentosPendentes: treinamentosPendentes || 0,
+      kpiVariations,
+      examData: [
+        { name: "Em Dia", value: emDia.length, color: "#22c55e" },
+        { name: "Vencendo (30 dias)", value: vencendo.length, color: "#f59e0b" },
+        { name: "Vencidos", value: vencidos.length, color: "#ef4444" },
+      ],
+      riskData,
+      complianceData: {
+        nr07,
+        nr09,
+        nr06,
+      },
+    }
+  } catch (error) {
+    console.error("Erro ao buscar dados do dashboard:", error)
+    
+    // Retornar dados padrão em caso de erro
+    return {
+      totalFuncionarios: 0,
+      examesEmDia: 0,
+      naoConformidadesAbertas: 0,
+      treinamentosPendentes: 0,
+      kpiVariations: {
+        funcionarios: 0,
+        exames: 0,
+        naoConformidades: 0,
+        treinamentos: 0,
+      },
+      examData: [
+        { name: "Em Dia", value: 0, color: "#22c55e" },
+        { name: "Vencendo (30 dias)", value: 0, color: "#f59e0b" },
+        { name: "Vencidos", value: 0, color: "#ef4444" },
+      ],
+      riskData: [],
+      complianceData: {
+        nr07: 0,
+        nr09: 0,
+        nr06: 0,
+      },
+    }
   }
 }
 
