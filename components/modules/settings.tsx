@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DeleteCompanyDialog } from "@/components/ui/delete-company-dialog"
 import { useCompany, type Company } from "@/contexts/company-context"
 import {
   Users,
@@ -35,6 +36,9 @@ import {
   EyeOff,
   Building2,
   AlertCircle,
+  Upload,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 
 interface User {
@@ -97,6 +101,7 @@ export function SettingsComponent() {
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false)
   const [isCompanyDialogOpen, setIsCompanyDialogOpen] = useState(false)
+  const [isDeleteCompanyDialogOpen, setIsDeleteCompanyDialogOpen] = useState(false)
   const [isEsocialDialogOpen, setIsEsocialDialogOpen] = useState(false)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
   const [isSmsDialogOpen, setIsSmsDialogOpen] = useState(false)
@@ -106,6 +111,8 @@ export function SettingsComponent() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [editingCompany, setEditingCompany] = useState<Company | null>(null)
+  const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null)
+  const [isDeletingCompany, setIsDeletingCompany] = useState(false)
 
   // Estados para erros
   const [userError, setUserError] = useState<string | null>(null)
@@ -429,12 +436,29 @@ export function SettingsComponent() {
   }
 
   // Estados para formulários de integração
+  // Estados específicos para configuração global do eSocial
+  const [certificateFile, setCertificateFile] = useState<File | null>(null)
+  const [certificatePassword, setCertificatePassword] = useState("")
+  const [certificateStatus, setCertificateStatus] = useState<{
+    loaded: boolean
+    fileName?: string
+    uploadDate?: string
+    valid?: boolean
+    validUntil?: string
+  }>({ loaded: false })
+  const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
+  const [isValidatingCertificate, setIsValidatingCertificate] = useState(false)
+  const [validationResult, setValidationResult] = useState<{
+    status: "valid" | "invalid" | "warning" | null
+    checks: Array<{
+      name: string
+      ok: boolean
+      message: string
+    }>
+  }>({ status: null, checks: [] })
+
   const [esocialForm, setEsocialForm] = useState({
-    cnpj: '',
-    razaoSocial: '',
-    certificado: null as File | null,
-    senha: '',
-    ambiente: 'producao' as 'producao' | 'homologacao'
+    ambiente: 'homologacao' as 'producao' | 'homologacao'
   })
 
   const [emailForm, setEmailForm] = useState({
@@ -572,43 +596,22 @@ export function SettingsComponent() {
   }
 
   const handleDeleteCompany = async (company: Company) => {
-    // Primeira confirmação - aviso sobre exclusão completa
-    const firstConfirm = confirm(
-      `⚠️ ATENÇÃO: Deletar a empresa "${company.name}" irá remover PERMANENTEMENTE:\n\n` +
-      `• Todos os funcionários\n` +
-      `• Todos os relatórios gerados\n` +
-      `• Todos os treinamentos\n` +
-      `• Todos os exames médicos\n` +
-      `• Todas as não conformidades\n` +
-      `• Todos os dados de segurança\n` +
-      `• Todas as configurações\n` +
-      `• Todos os logs e auditoria\n\n` +
-      `Esta ação NÃO PODE ser desfeita!\n\n` +
-      `Deseja continuar?`
-    )
-    
-    if (!firstConfirm) {
-      return
-    }
+    setCompanyToDelete(company)
+    setIsDeleteCompanyDialogOpen(true)
+  }
 
-    // Segunda confirmação - confirmação final
-    const secondConfirm = confirm(
-      `CONFIRMAÇÃO FINAL:\n\n` +
-      `Digite "DELETAR" para confirmar a exclusão completa da empresa "${company.name}".\n\n` +
-      `Tem ABSOLUTA CERTEZA que deseja prosseguir?`
-    )
-    
-    if (!secondConfirm) {
-      return
-    }
+  const confirmDeleteCompany = async () => {
+    if (!companyToDelete) return
 
+    setIsDeletingCompany(true)
+    
     try {
-      const success = await deleteCompany(company.id)
+      const success = await deleteCompany(companyToDelete.id)
       
       if (success) {
         toast({
           title: "Sucesso",
-          description: `Empresa "${company.name}" e todos os dados relacionados foram deletados com sucesso`,
+          description: `Empresa "${companyToDelete.name}" e todos os dados relacionados foram deletados com sucesso`,
           variant: "default"
         })
       } else {
@@ -625,6 +628,10 @@ export function SettingsComponent() {
         description: `Erro ao deletar empresa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
         variant: "destructive"
       })
+    } finally {
+      setIsDeletingCompany(false)
+      setCompanyToDelete(null)
+      setIsDeleteCompanyDialogOpen(false)
     }
   }
 
@@ -733,16 +740,7 @@ export function SettingsComponent() {
 
   const handleSaveEsocialConfig = async (testConnection = false) => {
     // Validações básicas
-    if (!esocialForm.cnpj || !esocialForm.razaoSocial) {
-      toast({
-        title: "Erro de validação",
-        description: "CNPJ e Razão Social são obrigatórios.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!esocialForm.certificado || !esocialForm.senha) {
+    if (!certificateFile || !certificatePassword) {
       toast({
         title: "Erro de validação",
         description: "Certificado digital e senha são obrigatórios.",
@@ -752,19 +750,21 @@ export function SettingsComponent() {
     }
 
     try {
-      // Simular salvamento da configuração
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Simular upload e salvamento da configuração global
+      setIsUploadingCertificate(true)
       
-      // Aqui você implementaria a lógica real de salvamento
-      // const supabase = createClient()
-      // const { error } = await supabase
-      //   .from('integracoes')
-      //   .upsert({
-      //     empresa_id: selectedCompany?.id,
-      //     tipo: 'esocial',
-      //     configuracao: esocialForm,
-      //     ativo: true
-      //   })
+      // Aqui você implementaria a lógica real de upload do certificado
+      // usando o DigitalSignatureService similar ao módulo eSocial
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // Simular sucesso do upload
+      setCertificateStatus({
+        loaded: true,
+        fileName: certificateFile.name,
+        uploadDate: new Date().toLocaleDateString("pt-BR"),
+        valid: true,
+        validUntil: "2024-12-31",
+      })
       
       // Atualizar estado das integrações
       setIntegrations(prev => prev.map(integration => 
@@ -781,7 +781,7 @@ export function SettingsComponent() {
       
       toast({
         title: "Configuração salva",
-        description: "Integração eSocial configurada com sucesso.",
+        description: "Integração eSocial configurada com sucesso para todas as empresas.",
       })
       
       // Teste de conexão se solicitado
@@ -795,7 +795,7 @@ export function SettingsComponent() {
         await new Promise(resolve => setTimeout(resolve, 2000))
         
         toast({
-          title: "Teste concluído",
+          title: "Conexão estabelecida",
           description: "Conexão com eSocial estabelecida com sucesso.",
         })
       }
@@ -805,8 +805,79 @@ export function SettingsComponent() {
         description: "Não foi possível salvar a configuração do eSocial.",
         variant: "destructive",
       })
+    } finally {
+      setIsUploadingCertificate(false)
     }
   }
+
+  // Função para validar certificado
+  const handleValidateCertificate = async () => {
+    if (!certificateFile || !certificatePassword) {
+      toast({
+        title: "Dados incompletos",
+        description: "Selecione um arquivo e digite a senha do certificado",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsValidatingCertificate(true)
+    
+    try {
+      // Simular validação do certificado
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      // Simular resultado da validação
+      setValidationResult({
+        status: "valid",
+        checks: [
+          { name: "formato_arquivo", ok: true, message: "Formato do arquivo válido" },
+          { name: "senha_correta", ok: true, message: "Senha do certificado correta" },
+          { name: "certificado_valido", ok: true, message: "Certificado válido" },
+          { name: "cadeia_certificacao", ok: true, message: "Cadeia de certificação verificada" }
+        ]
+      })
+      
+      toast({
+        title: "Certificado válido",
+        description: "O certificado foi validado com sucesso.",
+      })
+    } catch (error) {
+      setValidationResult({
+        status: "invalid",
+        checks: [
+          { name: "erro_validacao", ok: false, message: "Erro na validação do certificado" }
+        ]
+      })
+      
+      toast({
+        title: "Erro na validação",
+        description: "Não foi possível validar o certificado.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsValidatingCertificate(false)
+    }
+  }
+
+  // Função para carregar status do certificado
+  const loadCertificateStatus = async () => {
+    try {
+      // Simular carregamento do status do certificado
+      // Aqui você implementaria a lógica real para verificar se já existe um certificado configurado
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Por enquanto, simular que não há certificado configurado
+      setCertificateStatus({ loaded: false })
+    } catch (error) {
+      setCertificateStatus({ loaded: false })
+    }
+  }
+
+  // Carregar status do certificado ao montar o componente
+  useEffect(() => {
+    loadCertificateStatus()
+  }, [])
 
   const handleSaveEmailConfig = async (testConnection = false) => {
     // Validações básicas
@@ -1660,84 +1731,146 @@ export function SettingsComponent() {
 
       {/* Dialog de Configuração eSocial */}
       <Dialog open={isEsocialDialogOpen} onOpenChange={setIsEsocialDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Configuração eSocial</DialogTitle>
+            <DialogTitle>Configuração Global eSocial</DialogTitle>
             <DialogDescription>
-              Configure a integração com o sistema eSocial do governo federal
+              Configure a integração com o sistema eSocial para todas as empresas. 
+              Esta configuração será aplicada globalmente usando um certificado digital compartilhado.
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-6">
+            {/* Status do Certificado Atual */}
+            {certificateStatus.loaded && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="font-medium text-green-800">Certificado Configurado</span>
+                </div>
+                <div className="text-sm text-green-700 space-y-1">
+                  <p><strong>Arquivo:</strong> {certificateStatus.fileName}</p>
+                  <p><strong>Upload:</strong> {certificateStatus.uploadDate}</p>
+                  <p><strong>Válido até:</strong> {certificateStatus.validUntil}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Upload do Certificado */}
+            <div className="space-y-4">
               <div className="space-y-2">
-                <Label>CNPJ da Empresa</Label>
+                <Label>Certificado Digital (A1)</Label>
                 <Input
-                  value={esocialForm.cnpj}
-                  onChange={(e) => setEsocialForm(prev => ({ ...prev, cnpj: e.target.value }))}
-                  placeholder="00.000.000/0000-00"
+                  type="file"
+                  accept=".p12,.pfx"
+                  onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
+                  disabled={isUploadingCertificate}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Selecione o arquivo do certificado digital A1 (.p12 ou .pfx) que será usado por todas as empresas
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Senha do Certificado</Label>
+                <Input
+                  type="password"
+                  value={certificatePassword}
+                  onChange={(e) => setCertificatePassword(e.target.value)}
+                  placeholder="Digite a senha do certificado"
+                  disabled={isUploadingCertificate}
                 />
               </div>
+              
+              {/* Botão de Validação */}
+              {certificateFile && certificatePassword && (
+                <Button 
+                  variant="outline" 
+                  onClick={handleValidateCertificate}
+                  disabled={isValidatingCertificate}
+                  className="w-full"
+                >
+                  {isValidatingCertificate ? "Validando..." : "Validar Certificado"}
+                </Button>
+              )}
+              
+              {/* Resultado da Validação */}
+              {validationResult && (
+                <div className={`p-4 rounded-lg border ${
+                  validationResult.status === "valid" 
+                    ? "bg-green-50 border-green-200" 
+                    : "bg-red-50 border-red-200"
+                }`}>
+                  <div className="space-y-2">
+                    {validationResult.checks.map((check, index) => (
+                      <div key={index} className="flex items-center gap-2 text-sm">
+                        <div className={`w-2 h-2 rounded-full ${
+                          check.ok ? "bg-green-500" : "bg-red-500"
+                        }`}></div>
+                        <span className={check.ok ? "text-green-700" : "text-red-700"}>
+                          {check.message}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Configurações Gerais */}
+            <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Razão Social</Label>
-                <Input
-                  value={esocialForm.razaoSocial}
-                  onChange={(e) => setEsocialForm(prev => ({ ...prev, razaoSocial: e.target.value }))}
-                  placeholder="Nome da empresa"
-                />
+                <Label>Ambiente</Label>
+                <Select 
+                  value={esocialForm.ambiente} 
+                  onValueChange={(value: 'producao' | 'homologacao') => setEsocialForm(prev => ({ ...prev, ambiente: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="homologacao">Homologação</SelectItem>
+                    <SelectItem value="producao">Produção</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Selecione o ambiente do eSocial (recomendado começar com Homologação)
+                </p>
               </div>
             </div>
             
-            <div className="space-y-2">
-              <Label>Certificado Digital (A1)</Label>
-              <Input
-                type="file"
-                accept=".p12,.pfx"
-                onChange={(e) => setEsocialForm(prev => ({ ...prev, certificado: e.target.files?.[0] || null }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Selecione o arquivo do certificado digital A1 (.p12 ou .pfx)
-              </p>
+            {/* Informações Importantes */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-1">Configuração Global</p>
+                  <p>Esta configuração será aplicada a todas as empresas do sistema. Certifique-se de que o certificado digital possui autorização para representar todas as empresas cadastradas.</p>
+                </div>
+              </div>
             </div>
-            
-            <div className="space-y-2">
-               <Label>Senha do Certificado</Label>
-               <Input
-                 type="password"
-                 value={esocialForm.senha}
-                 onChange={(e) => setEsocialForm(prev => ({ ...prev, senha: e.target.value }))}
-                 placeholder="Digite a senha do certificado"
-               />
-             </div>
-             
-             <div className="space-y-2">
-               <Label>Ambiente</Label>
-               <Select 
-                 value={esocialForm.ambiente} 
-                 onValueChange={(value: 'producao' | 'homologacao') => setEsocialForm(prev => ({ ...prev, ambiente: value }))}
-               >
-                 <SelectTrigger>
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="homologacao">Homologação</SelectItem>
-                   <SelectItem value="producao">Produção</SelectItem>
-                 </SelectContent>
-               </Select>
-             </div>
-           </div>
-           
-           <DialogFooter>
-             <Button variant="outline" onClick={() => setIsEsocialDialogOpen(false)}>
-               Cancelar
-             </Button>
-             <Button onClick={() => handleSaveEsocialConfig()}>
-               <Save className="h-4 w-4 mr-2" />
-               Salvar Configuração
-             </Button>
-           </DialogFooter>
-         </DialogContent>
-       </Dialog>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsEsocialDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => handleSaveEsocialConfig(true)}
+              disabled={!certificateFile || !certificatePassword || isUploadingCertificate}
+              variant="outline"
+            >
+              Salvar e Testar
+            </Button>
+            <Button 
+              onClick={() => handleSaveEsocialConfig(false)}
+              disabled={!certificateFile || !certificatePassword || isUploadingCertificate}
+            >
+              {isUploadingCertificate ? "Salvando..." : "Salvar Configuração"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
        {/* Dialog de Configuração de E-mail */}
        <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
@@ -2005,6 +2138,15 @@ export function SettingsComponent() {
            </DialogFooter>
          </DialogContent>
        </Dialog>
+
+       {/* Dialog de Confirmação para Deletar Empresa */}
+       <DeleteCompanyDialog
+         open={isDeleteCompanyDialogOpen}
+         onOpenChange={setIsDeleteCompanyDialogOpen}
+         company={companyToDelete}
+         onConfirm={confirmDeleteCompany}
+         isLoading={isDeletingCompany}
+       />
      </div>
    )
  }

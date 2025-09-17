@@ -15,10 +15,11 @@ import { useTheme } from "next-themes"
 import { CompanySelector } from "@/components/company-selector"
 import { MobileCompanySelector } from "@/components/mobile-company-selector"
 import { NotificationCenter } from "@/components/notifications/notification-center"
+import { ProfileEditDialog } from "@/components/profile-edit-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 interface TopBarProps {
   sidebarCollapsed: boolean
@@ -40,6 +41,8 @@ export function TopBar({
   const { theme, setTheme } = useTheme()
   const router = useRouter()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
 
   const handleMenuClick = () => {
     if (isMobile && setMobileSidebarOpen) {
@@ -63,8 +66,32 @@ export function TopBar({
     }
   }
 
+  const handleProfileUpdate = (profile: any) => {
+    setUserProfile(profile)
+  }
+
+  // Carregar perfil do usuário
+  useEffect(() => {
+    if (user) {
+      const loadProfile = async () => {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (data) {
+          setUserProfile(data)
+        }
+      }
+      loadProfile()
+    }
+  }, [user])
+
   const userEmail = user?.email || "usuario@empresa.com"
-  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário"
+  const userName = userProfile?.display_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Usuário"
+  const userAvatar = userProfile?.avatar_url || user?.user_metadata?.avatar_url || "/placeholder.svg"
   const userInitials = userName
     .split(" ")
     .map((n: string) => n[0])
@@ -128,7 +155,7 @@ export function TopBar({
                 className="relative h-8 w-8 rounded-full min-h-[44px] min-w-[44px] sm:min-h-[32px] sm:min-w-[32px]"
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={user?.user_metadata?.avatar_url || "/placeholder.svg"} alt={userName} />
+                  <AvatarImage src={userAvatar} alt={userName} />
                   <AvatarFallback>{userInitials}</AvatarFallback>
                 </Avatar>
               </Button>
@@ -141,7 +168,7 @@ export function TopBar({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProfileDialogOpen(true)}>
                 <User className="mr-2 h-4 w-4" />
                 <span>Perfil</span>
               </DropdownMenuItem>
@@ -154,6 +181,16 @@ export function TopBar({
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Diálogo de edição de perfil */}
+      {user && (
+        <ProfileEditDialog
+          open={profileDialogOpen}
+          onOpenChange={setProfileDialogOpen}
+          user={user}
+          onProfileUpdate={handleProfileUpdate}
+        />
+      )}
     </header>
   )
 }

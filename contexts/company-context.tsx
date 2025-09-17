@@ -345,53 +345,8 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   const deleteCompany = async (id: string): Promise<boolean> => {
     try {
-      // Lista de tabelas que referenciam empresas (em ordem de dependência)
-      const tablesToDelete = [
-        'backups',
-        'certificados_esocial',
-        'configuracoes_sistema',
-        'custom_roles',
-        'documentos',
-        'entregas_epi',
-        'epis',
-        'esocial_config',
-        'esocial_lotes',
-        'estatisticas_esocial',
-        'eventos_esocial',
-        'exames_aso',
-        'exames_medicos',
-        'fatores_risco',
-        'funcionarios',
-        'gestao_riscos',
-        'incidentes',
-        'inspecoes_epi',
-        'inspecoes_seguranca',
-        'logs_auditoria',
-        'logs_esocial',
-        'logs_gerais',
-        'manutencoes_epi',
-        'nao_conformidades',
-        'notificacoes',
-        'planos_acao',
-        'relatorios_gerados',
-        'treinamentos',
-        'usuario_empresas'
-      ]
-
-      // Excluir registros de todas as tabelas relacionadas
-      for (const table of tablesToDelete) {
-        const { error: deleteError } = await supabase
-          .from(table)
-          .delete()
-          .eq('empresa_id', id)
-
-        if (deleteError) {
-          console.warn(`Aviso ao deletar registros da tabela ${table}:`, deleteError)
-          // Continuar mesmo com avisos, pois algumas tabelas podem não ter registros
-        }
-      }
-
-      // Finalmente, excluir a empresa
+      // Com as constraints CASCADE configuradas, podemos deletar diretamente a empresa
+      // Todos os registros relacionados serão automaticamente removidos
       const { error } = await supabase.from("empresas").delete().eq("id", id)
 
       if (error) {

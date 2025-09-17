@@ -373,9 +373,26 @@ function Reports() {
         .from("eventos_esocial")
         .select("xml_gerado, tipo_evento")
         .eq("id", eventId)
-        .single()
+        .maybeSingle()
 
-      if (error) throw error
+      if (error) {
+        console.error("Erro ao buscar XML:", error)
+        toast({
+          title: "Erro",
+          description: "Erro ao buscar dados do evento",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!data) {
+        toast({
+          title: "Erro",
+          description: "Evento não encontrado",
+          variant: "destructive",
+        })
+        return
+      }
 
       if (data.xml_gerado) {
         const blob = new Blob([data.xml_gerado], { type: "application/xml" })

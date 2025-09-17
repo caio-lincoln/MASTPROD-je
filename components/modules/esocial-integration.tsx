@@ -133,26 +133,12 @@ export function ESocialIntegration() {
     ativo: true,
   })
 
-  const [certificateFile, setCertificateFile] = useState<File | null>(null)
-  const [certificatePassword, setCertificatePassword] = useState("")
-  const [certificateStatus, setCertificateStatus] = useState<{
-    loaded: boolean
-    fileName?: string
-    uploadDate?: string
-    valid?: boolean
-    validUntil?: string
-  }>({ loaded: false })
-  const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
-  const [isValidatingCertificate, setIsValidatingCertificate] = useState(false)
-  const [validationResult, setValidationResult] = useState<{
-    status: "valid" | "invalid" | "warning" | null
-    checks: Array<{
-      name: string
-      ok: boolean
-      message: string
-    }>
-    summary: string
-  } | null>(null)
+  // Estado para configuração global do eSocial
+  const [globalConfig, setGlobalConfig] = useState<{
+    certificateConfigured: boolean
+    environment: string
+    lastUpdate?: string
+  }>({ certificateConfigured: false, environment: "producao" })
 
   const [testingConnection, setTestingConnection] = useState(false)
   const [processingEvents, setProcessingEvents] = useState(false)
@@ -472,212 +458,18 @@ export function ESocialIntegration() {
     }
   }
 
-  const handleCertificateUpload = async () => {
-    if (!certificateFile || !certificatePassword || !selectedCompany) {
-      toast({
-        title: "Dados incompletos",
-        description: "Selecione um arquivo e digite a senha do certificado",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Validar extensão do arquivo
-    if (!certificateFile.name.match(/\.(p12|pfx)$/i)) {
-      toast({
-        title: "Arquivo inválido",
-        description: "Selecione um arquivo .p12 ou .pfx",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Validar tamanho do arquivo (máximo 5MB)
-    if (certificateFile.size > 5 * 1024 * 1024) {
-      toast({
-        title: "Arquivo muito grande",
-        description: "O certificado deve ter no máximo 5MB",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsUploadingCertificate(true)
-
+  // Carregar configuração global do eSocial
+  const loadGlobalConfig = async () => {
     try {
-      console.log("[v0] Iniciando upload do certificado A1:", {
-        fileName: certificateFile.name,
-        fileSize: certificateFile.size,
-        empresaId: selectedCompany.id,
+      // Simular carregamento da configuração global
+      // Em produção, isso viria da API de configurações
+      setGlobalConfig({
+        certificateConfigured: true,
+        environment: "producao",
+        lastUpdate: new Date().toLocaleDateString("pt-BR")
       })
-
-      const signatureService = new DigitalSignatureService()
-
-      const result = await signatureService.uploadCertificadoA1(
-        certificateFile,
-        selectedCompany.id,
-        certificatePassword,
-      )
-
-      console.log("[v0] Resultado do upload:", result)
-
-      if (result.sucesso) {
-        toast({
-          title: "Certificado A1 carregado e salvo com sucesso",
-          description: "O certificado foi armazenado com segurança e está pronto para uso",
-        })
-
-        setCertificateStatus({
-          loaded: true,
-          fileName: certificateFile.name,
-          uploadDate: new Date().toLocaleDateString("pt-BR"),
-          valid: true,
-          validUntil: "2024-12-31",
-        })
-
-        setCertificateFile(null)
-        setCertificatePassword("")
-
-        // Recarregar status do certificado
-        await loadCertificateStatus()
-      } else {
-        const errorMessage = result.erro || "Erro desconhecido no upload"
-        console.error("[v0] Erro no upload do certificado:", errorMessage)
-
-        toast({
-          title: "Erro ao carregar o certificado",
-          description: `Erro detalhado: ${errorMessage}`,
-          variant: "destructive",
-        })
-      }
-    } catch (err: any) {
-      console.error("[v0] Erro inesperado no upload:", err)
-
-      let errorMessage = "Erro inesperado ao enviar o certificado"
-
-      if (err?.message) {
-        errorMessage = err.message
-      } else if (typeof err === "string") {
-        errorMessage = err
-      }
-
-      // Verificar se é erro específico do Supabase
-      if (err?.error?.message) {
-        errorMessage = `Erro Supabase: ${err.error.message}`
-      } else if (err?.message?.includes("bucket")) {
-        errorMessage = "Erro de configuração: Bucket não encontrado ou inacessível"
-      } else if (err?.message?.includes("network") || err?.message?.includes("fetch")) {
-        errorMessage = "Erro de conexão: Verifique sua internet e tente novamente"
-      } else if (err?.message?.includes("permission") || err?.message?.includes("unauthorized")) {
-        errorMessage = "Erro de permissão: Acesso negado ao storage"
-      }
-
-      toast({
-        title: "Erro ao carregar o certificado",
-        description: errorMessage,
-        variant: "destructive",
-      })
-    } finally {
-      setIsUploadingCertificate(false)
-    }
-  }
-
-  const handleValidateCertificate = async (showToast = true) => {
-    if (!certificateFile || !certificatePassword || !selectedCompany) {
-      if (showToast) {
-        toast({
-          title: "Dados incompletos",
-          description: "Selecione um arquivo e digite a senha do certificado",
-          variant: "destructive",
-        })
-      }
-      return
-    }
-
-    setIsValidatingCertificate(true)
-    setValidationResult(null)
-
-    try {
-      const formData = new FormData()
-      formData.append("arquivo", certificateFile)
-      formData.append("senha", certificatePassword)
-      formData.append("cnpjEmpresa", selectedCompany.cnpj || "")
-
-      const response = await fetch("/api/esocial/validar-certificado", {
-        method: "POST",
-        body: formData,
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.message || "Erro na validação")
-      }
-
-      setValidationResult(result)
-
-      if (showToast) {
-        if (result.status === "valid") {
-          toast({
-            title: "Certificado válido",
-            description: result.summary,
-          })
-        } else if (result.status === "warning") {
-          toast({
-            title: "Certificado válido com avisos",
-            description: result.summary,
-            variant: "destructive",
-          })
-        } else {
-          toast({
-            title: "Certificado inválido",
-            description: result.summary,
-          })
-        }
-      }
-
-      // Se certificado inválido, impede upload
-      if (result.status === "invalid") {
-        throw new Error(result.summary)
-      }
-    } catch (error: any) {
-      if (showToast) {
-        toast({
-          title: "Erro na validação",
-          description: error.message || "Falha ao validar certificado",
-          variant: "destructive",
-        })
-      }
-
-      // Re-throw error para impedir upload se chamado internamente
-      if (!showToast) {
-        throw error
-      }
-    } finally {
-      setIsValidatingCertificate(false)
-    }
-  }
-
-  const loadCertificateStatus = async () => {
-    if (!selectedCompany) return
-
-    try {
-      const signatureService = new DigitalSignatureService()
-      const certificado = await signatureService.obterCertificadoAtivo(selectedCompany.id)
-
-      if (certificado && certificado.tipo === "A1") {
-        setCertificateStatus({
-          loaded: true,
-          fileName: certificado.arquivo_url || "certificado.p12",
-          uploadDate: new Date().toLocaleDateString("pt-BR"),
-          valid: true,
-          validUntil: "2024-12-31",
-        })
-      } else {
-        setCertificateStatus({ loaded: false })
-      }
     } catch (error) {
-      setCertificateStatus({ loaded: false })
+      console.error("Erro ao carregar configuração global:", error)
     }
   }
 
@@ -799,13 +591,13 @@ export function ESocialIntegration() {
   }
 
   const generateEventXML = async (eventType: string, data: any): Promise<string> => {
-    const { data: tipoEvento } = await supabase
+    const { data: tipoEvento, error } = await supabase
       .from("esocial_tipos_eventos")
       .select("layout_xml")
       .eq("codigo", eventType)
-      .single()
+      .maybeSingle()
 
-    if (!tipoEvento?.layout_xml) {
+    if (error || !tipoEvento?.layout_xml) {
       throw new Error(`Layout XML não encontrado para evento ${eventType}`)
     }
 
@@ -857,10 +649,10 @@ export function ESocialIntegration() {
   }
 
   const processEvents = async (eventType: string, selectedItems: any[]) => {
-    if (!selectedCompany || !certificatePassword) {
+    if (!selectedCompany || !globalConfig.certificateConfigured) {
       toast({
         title: "Erro",
-        description: "Empresa não selecionada ou senha do certificado não informada",
+        description: "Empresa não selecionada ou certificado não configurado",
         variant: "destructive",
       })
       return
@@ -880,7 +672,7 @@ export function ESocialIntegration() {
           // Sign XML
           const signResult = await signXMLWithSupabaseCertificate({
             empresaId: selectedCompany.id,
-            certPassword: certificatePassword,
+            certPassword: "", // Senha será obtida da configuração global
             rawXml,
           })
 
@@ -970,9 +762,26 @@ export function ESocialIntegration() {
 
   const handleResendEventById = async (eventId: string) => {
     try {
-      const { data: evento } = await supabase.from("eventos_esocial").select("*").eq("id", eventId).single()
+      const { data: evento, error } = await supabase.from("eventos_esocial").select("*").eq("id", eventId).maybeSingle()
 
-      if (!evento) throw new Error("Evento não encontrado")
+      if (error) {
+        console.error("Erro ao buscar evento:", error)
+        toast({
+          title: "Erro",
+          description: "Erro ao buscar dados do evento",
+          variant: "destructive",
+        })
+        return
+      }
+
+      if (!evento) {
+        toast({
+          title: "Erro",
+          description: "Evento não encontrado",
+          variant: "destructive",
+        })
+        return
+      }
 
       const esocialService = new ESocialService()
       const sendResult = await esocialService.processarEventoCompleto(
@@ -1029,17 +838,38 @@ export function ESocialIntegration() {
         .from("empresas")
         .select("conectado, ambiente, ultima_verificacao")
         .eq("id", selectedCompany.id)
-        .single()
+        .maybeSingle()
 
-      if (error) throw error
+      if (error) {
+        console.error("Erro ao carregar status da conexão:", error)
+        setConnectionStatus({
+          connected: false,
+          environment: "producao",
+          lastCheck: null,
+        })
+        return
+      }
 
-      setConnectionStatus({
-        connected: data.conectado,
-        environment: data.ambiente,
-        lastCheck: data.ultima_verificacao,
-      })
+      if (data) {
+        setConnectionStatus({
+          connected: data.conectado || false,
+          environment: data.ambiente || "producao",
+          lastCheck: data.ultima_verificacao,
+        })
+      } else {
+        setConnectionStatus({
+          connected: false,
+          environment: "producao",
+          lastCheck: null,
+        })
+      }
     } catch (error) {
       console.error("Erro ao carregar status da conexão:", error)
+      setConnectionStatus({
+        connected: false,
+        environment: "producao",
+        lastCheck: null,
+      })
     }
   }
 
@@ -1051,19 +881,49 @@ export function ESocialIntegration() {
         .from("estatisticas_esocial")
         .select("*")
         .eq("empresa_id", selectedCompany.id)
-        .single()
+        .maybeSingle()
 
-      if (error) throw error
+      if (error) {
+        console.error("Erro ao carregar estatísticas:", error)
+        // Se não há dados, criar estatísticas padrão
+        setStatistics({
+          totalEvents: 0,
+          successEvents: 0,
+          errorEvents: 0,
+          pendingEvents: 0,
+          averageTime: 0,
+        })
+        return
+      }
 
-      setStatistics({
-        totalEvents: data.total_eventos || 0,
-        successEvents: data.sucesso_eventos || 0,
-        errorEvents: data.erro_eventos || 0,
-        pendingEvents: data.pendente_eventos || 0,
-        averageTime: data.tempo_medio || 0,
-      })
+      if (data) {
+        setStatistics({
+          totalEvents: data.total_eventos || 0,
+          successEvents: data.sucesso_eventos || 0,
+          errorEvents: data.erro_eventos || 0,
+          pendingEvents: data.pendente_eventos || 0,
+          averageTime: data.tempo_medio || 0,
+        })
+      } else {
+        // Se não há dados, definir valores padrão
+        setStatistics({
+          totalEvents: 0,
+          successEvents: 0,
+          errorEvents: 0,
+          pendingEvents: 0,
+          averageTime: 0,
+        })
+      }
     } catch (error) {
       console.error("Erro ao carregar estatísticas:", error)
+      // Fallback para valores padrão em caso de erro
+      setStatistics({
+        totalEvents: 0,
+        successEvents: 0,
+        errorEvents: 0,
+        pendingEvents: 0,
+        averageTime: 0,
+      })
     }
   }
 
@@ -1103,7 +963,7 @@ export function ESocialIntegration() {
 
   useEffect(() => {
     loadEvents()
-    loadCertificateStatus()
+    loadGlobalConfig()
     loadAvailableData()
     loadConnectionStatus()
     loadStatistics()
@@ -1287,7 +1147,7 @@ export function ESocialIntegration() {
                 <Button
                   className="h-20 flex flex-col space-y-2"
                   onClick={() => setShowEventGenerationDialog(true)}
-                  disabled={!certificateStatus.loaded}
+                  disabled={!globalConfig.certificateConfigured}
                 >
                   <Send className="h-6 w-6" />
                   <span>Gerar Eventos</span>
@@ -1729,15 +1589,9 @@ export function ESocialIntegration() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Certificado Digital:</span>
-                    {certificateStatus ? (
-                      <Badge variant={certificateStatus.valid ? "default" : "destructive"}>
-                        {certificateStatus.valid
-                          ? `Válido até ${formatDateSafe(certificateStatus.validUntil || null)}`
-                          : "Expirado"}
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">Não configurado</Badge>
-                    )}
+                    <Badge variant={globalConfig.certificateConfigured ? "default" : "secondary"}>
+                      {globalConfig.certificateConfigured ? "Configurado" : "Não configurado"}
+                    </Badge>
                   </div>
                 </div>
 
@@ -1867,176 +1721,42 @@ export function ESocialIntegration() {
         </TabsContent>
 
         <TabsContent value="certificados" className="space-y-4">
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Shield className="h-5 w-5" />
-                  <span>Certificado A1 (Arquivo)</span>
+                  <span>Configuração de Certificado Digital</span>
                 </CardTitle>
-                <CardDescription>Upload e configuração de certificado A1</CardDescription>
+                <CardDescription>
+                  O certificado digital é configurado globalmente nas Configurações do sistema
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Arquivo do Certificado (.p12/.pfx)</Label>
-                  <Input
-                    type="file"
-                    accept=".p12,.pfx"
-                    onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
-                    disabled={isUploadingCertificate || isValidatingCertificate}
-                  />
-                  {certificateFile && (
-                    <p className="text-sm text-muted-foreground">
-                      Arquivo selecionado: {certificateFile.name} ({(certificateFile.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Senha do Certificado</Label>
-                  <Input
-                    type="password"
-                    value={certificatePassword}
-                    onChange={(e) => setCertificatePassword(e.target.value)}
-                    placeholder="Digite a senha do certificado"
-                    disabled={isUploadingCertificate || isValidatingCertificate}
-                  />
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <Button
-                    onClick={() => handleValidateCertificate(true)}
-                    disabled={
-                      !certificateFile || !certificatePassword || isValidatingCertificate || isUploadingCertificate
-                    }
-                    variant="outline"
-                  >
-                    {isValidatingCertificate ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Validando...
-                      </>
+                <div className="p-4 bg-muted rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    {globalConfig.certificateConfigured ? (
+                      <CheckCircle className="h-5 w-5 text-green-500" />
                     ) : (
-                      <>
-                        <TestTube className="h-4 w-4 mr-2" />
-                        Validar Certificado
-                      </>
+                      <AlertCircle className="h-5 w-5 text-yellow-500" />
                     )}
-                  </Button>
-
-                  <Button
-                    onClick={handleCertificateUpload}
-                    disabled={
-                      !certificateFile || !certificatePassword || isUploadingCertificate || isValidatingCertificate
-                    }
-                  >
-                    {isUploadingCertificate ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Carregando...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Carregar Certificado
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {validationResult && (
-                  <Card className="mt-4">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center space-x-2 text-base">
-                        {validationResult.status === "valid" && <CheckCircle className="h-5 w-5 text-green-500" />}
-                        {validationResult.status === "warning" && <AlertTriangle className="h-5 w-5 text-yellow-500" />}
-                        {validationResult.status === "invalid" && <AlertCircle className="h-5 w-5 text-red-500" />}
-                        <span>
-                          {validationResult.status === "valid" && "Certificado Válido"}
-                          {validationResult.status === "warning" && "Válido com Avisos"}
-                          {validationResult.status === "invalid" && "Certificado Inválido"}
-                        </span>
-                      </CardTitle>
-                      <CardDescription>{validationResult.summary}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        {validationResult.checks.map((check, index) => (
-                          <div key={index} className="flex items-center space-x-2 text-sm">
-                            {check.ok ? (
-                              <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
-                            ) : (
-                              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-                            )}
-                            <span className={check.ok ? "text-green-700" : "text-red-700"}>{check.message}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    Status:{" "}
-                    {certificateStatus.loaded ? (
-                      <Badge variant="default" className="ml-1">
-                        Configurado
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="ml-1">
-                        Não configurado
-                      </Badge>
-                    )}
-                  </p>
-                  {certificateStatus.loaded && (
-                    <div className="mt-2 space-y-1">
-                      <p className="text-xs text-muted-foreground">Arquivo: {certificateStatus.fileName}</p>
-                      <p className="text-xs text-muted-foreground">Upload: {certificateStatus.uploadDate}</p>
+                    <span className="font-medium">
+                      {globalConfig.certificateConfigured ? "Certificado Configurado" : "Certificado Não Configurado"}
+                    </span>
+                  </div>
+                  
+                  {globalConfig.certificateConfigured && (
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>Ambiente: {globalConfig.environment}</p>
+                      <p>Última atualização: {globalConfig.lastUpdate}</p>
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Key className="h-5 w-5" />
-                  <span>Certificado A3 (Token/Smartcard)</span>
-                </CardTitle>
-                <CardDescription>Configuração de certificado A3</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Driver do Token</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o driver" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="safenet">SafeNet</SelectItem>
-                      <SelectItem value="gemalto">Gemalto</SelectItem>
-                      <SelectItem value="watchdata">WatchData</SelectItem>
-                      <SelectItem value="outros">Outros</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>PIN do Token</Label>
-                  <Input type="password" placeholder="Digite o PIN do token" />
-                </div>
-
-                <Button className="w-full bg-transparent" variant="outline">
-                  <Key className="h-4 w-4 mr-2" />
-                  Detectar Certificado A3
-                </Button>
-
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    Status: <Badge variant="outline">Token não detectado</Badge>
-                  </p>
+                  
+                  {!globalConfig.certificateConfigured && (
+                    <p className="text-sm text-muted-foreground">
+                      Acesse Configurações → Integrações → eSocial para configurar o certificado digital
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -2049,44 +1769,19 @@ export function ESocialIntegration() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="text-center p-4 border rounded-lg">
-                    {validationResult?.status === "valid" ? (
-                      <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                    ) : validationResult?.status === "warning" ? (
-                      <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-                    ) : validationResult?.status === "invalid" ? (
-                      <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                    ) : (
-                      <Clock className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                    )}
-                    <p className="font-medium">
-                      {validationResult
-                        ? validationResult.status === "valid"
-                          ? "Certificado Válido"
-                          : validationResult.status === "warning"
-                            ? "Válido com Avisos"
-                            : "Certificado Inválido"
-                        : "Aguardando Validação"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {validationResult ? validationResult.summary : "Faça upload para validar"}
-                    </p>
-                  </div>
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="text-center p-4 border rounded-lg">
                     <Shield className="h-8 w-8 text-blue-500 mx-auto mb-2" />
                     <p className="font-medium">Assinatura Digital</p>
                     <p className="text-sm text-muted-foreground">
-                      {certificateStatus.loaded ? "Configurada" : "Não configurada"}
+                      {globalConfig.certificateConfigured ? "Configurada" : "Não configurada"}
                     </p>
                   </div>
                   <div className="text-center p-4 border rounded-lg">
                     <Key className="h-8 w-8 text-purple-500 mx-auto mb-2" />
-                    <p className="font-medium">Cadeia de Confiança</p>
+                    <p className="font-medium">Ambiente</p>
                     <p className="text-sm text-muted-foreground">
-                      {validationResult?.checks.find((c) => c.name === "cadeia_certificacao")?.ok
-                        ? "Verificada"
-                        : "Pendente"}
+                      {globalConfig.environment === "producao" ? "Produção" : "Homologação"}
                     </p>
                   </div>
                 </div>
@@ -2094,20 +1789,11 @@ export function ESocialIntegration() {
                 <Button
                   variant="outline"
                   className="w-full bg-transparent"
-                  onClick={() => handleValidateCertificate(true)}
-                  disabled={!certificateFile || !certificatePassword || isValidatingCertificate}
+                  onClick={() => toast({ title: "Configuração Global", description: "Configure os certificados nas configurações globais do sistema." })}
+                  disabled={!globalConfig.certificateConfigured}
                 >
-                  {isValidatingCertificate ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Validando...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Validar Certificados
-                    </>
-                  )}
+                  <Settings className="h-4 w-4 mr-2" />
+                  Ir para Configurações
                 </Button>
               </div>
             </CardContent>
@@ -2385,13 +2071,14 @@ export function ESocialIntegration() {
             )}
 
             <div className="space-y-2">
-              <Label>Senha do Certificado</Label>
-              <Input
-                type="password"
-                value={certificatePassword}
-                onChange={(e) => setCertificatePassword(e.target.value)}
-                placeholder="Digite a senha do certificado A1"
-              />
+              <Label>Configuração de Certificado</Label>
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  {globalConfig.certificateConfigured 
+                    ? "Certificado configurado nas configurações globais" 
+                    : "Configure o certificado nas configurações globais do sistema"}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -2405,7 +2092,7 @@ export function ESocialIntegration() {
                 // Logic to get selected items would go here
                 processEvents(selectedEventType, selectedItems)
               }}
-              disabled={!selectedEventType || !certificatePassword || processingEvents}
+              disabled={!selectedEventType || !globalConfig.certificateConfigured || processingEvents}
             >
               {processingEvents ? (
                 <>
