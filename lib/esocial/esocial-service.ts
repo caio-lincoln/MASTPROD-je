@@ -66,7 +66,7 @@ export class EsocialService {
         return { sucesso: false, erro: "Empresa não encontrada" }
       }
 
-      const config = getEsocialConfig(empresa.cnpj, "homologacao")
+      const config = getEsocialConfig(empresa.cnpj, "producao")
       const soapClient = new EsocialSoapClient(config)
 
       // 5. Enviar para eSocial
@@ -177,7 +177,7 @@ export class EsocialService {
 
       if (!empresa) return
 
-      const config = getEsocialConfig(empresa.cnpj, "homologacao")
+      const config = getEsocialConfig(empresa.cnpj, "producao")
       const soapClient = new EsocialSoapClient(config)
 
       // Consultar cada protocolo
@@ -302,7 +302,7 @@ export class EsocialService {
         return { conectado: false, ambiente: "N/A", erro: "Empresa não encontrada" }
       }
 
-      const config = getEsocialConfig(empresa.cnpj, "homologacao")
+      const config = getEsocialConfig(empresa.cnpj, "producao")
       const soapClient = new EsocialSoapClient(config)
 
       const teste = await soapClient.testarConectividade()

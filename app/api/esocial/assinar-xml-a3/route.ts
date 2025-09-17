@@ -55,41 +55,15 @@ async function assinarXMLComCertificadoA3(xml: string, thumbprint: string, senha
 }
 
 async function buscarCertificadoPorThumbprint(thumbprint: string): Promise<any> {
-  // Mock - em produção, buscar certificado no store do sistema
-  return {
-    thumbprint,
-    subject: "CN=Empresa Teste",
-    issuer: "CN=AC Teste",
-    validFrom: new Date(),
-    validTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-  }
+  // TODO: Implementar busca real do certificado no store do sistema
+  // Esta implementação deve ser substituída por integração com Windows Certificate Store
+  throw new Error("Funcionalidade de certificado A3 não implementada para produção")
 }
 
 async function gerarAssinaturaA3(xml: string, certificado: any, senha?: string): Promise<string> {
-  // Mock da assinatura A3
-  const timestamp = new Date().toISOString()
-  const hash = Buffer.from(xml).toString("base64").substring(0, 64)
-
-  return `
-    <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
-      <ds:SignedInfo>
-        <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
-        <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
-        <ds:Reference URI="">
-          <ds:Transforms>
-            <ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
-          </ds:Transforms>
-          <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
-          <ds:DigestValue>${hash}</ds:DigestValue>
-        </ds:Reference>
-      </ds:SignedInfo>
-      <ds:SignatureValue>A3SignatureValue${timestamp}</ds:SignatureValue>
-      <ds:KeyInfo>
-        <ds:X509Data>
-          <ds:X509Certificate>A3CertificateData${certificado.thumbprint}</ds:X509Certificate>
-        </ds:X509Data>
-      </ds:KeyInfo>
-    </ds:Signature>`
+  // TODO: Implementar assinatura digital real com certificado A3
+  // Esta implementação deve usar bibliotecas de criptografia adequadas
+  throw new Error("Funcionalidade de assinatura A3 não implementada para produção")
 }
 
 function inserirAssinaturaNoXML(xml: string, assinatura: string): string {

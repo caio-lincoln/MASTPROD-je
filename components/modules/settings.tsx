@@ -425,14 +425,14 @@ export function SettingsComponent() {
     loadUsers()
   }, [selectedCompany])
 
-  // Dados mock para empresa (você pode substituir por dados reais)
+  // Dados da empresa selecionada
   const companyData = {
-    name: selectedCompany?.name || "Empresa Exemplo",
-    cnpj: "12.345.678/0001-90",
-    address: "Rua das Indústrias, 123 - São Paulo, SP",
-    phone: "(11) 1234-5678",
-    email: "contato@empresa.com",
-    responsibleTechnician: "João Silva",
+    name: selectedCompany?.name || "Empresa não selecionada",
+    cnpj: selectedCompany?.cnpj || "Não informado",
+    address: selectedCompany?.endereco || "Não informado",
+    phone: selectedCompany?.telefone || "Não informado",
+    email: selectedCompany?.email || "Não informado",
+    responsibleTechnician: selectedCompany?.responsavel_tecnico || "Não informado",
   }
 
   // Estados para formulários de integração
@@ -791,13 +791,18 @@ export function SettingsComponent() {
           description: "Verificando conectividade com eSocial...",
         })
         
-        // Simular teste de conexão
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        toast({
-          title: "Conexão estabelecida",
-          description: "Conexão com eSocial estabelecida com sucesso.",
-        })
+        // TODO: Implementar teste real de conexão com eSocial
+        // Esta implementação deve usar o serviço real do eSocial
+        try {
+          // Aqui deveria chamar o serviço real de teste de conectividade
+          throw new Error("Teste de conectividade não implementado para produção")
+        } catch (error) {
+          toast({
+            title: "Erro na conexão",
+            description: "Não foi possível estabelecer conexão com eSocial.",
+            variant: "destructive"
+          })
+        }
       }
     } catch (error) {
       toast({
@@ -930,11 +935,17 @@ export function SettingsComponent() {
           description: "Verificando configuração SMTP...",
         })
         
-        // Simular teste de conexão
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        // Aqui você implementaria o teste real de SMTP
-        // const testResult = await testSmtpConnection(emailForm)
+        // TODO: Implementar teste real de SMTP
+        // Esta implementação deve usar bibliotecas de e-mail adequadas
+        try {
+          throw new Error("Teste de SMTP não implementado para produção")
+        } catch (error) {
+          toast({
+            title: "Erro na conexão",
+            description: "Não foi possível testar a configuração SMTP.",
+            variant: "destructive"
+          })
+        }
       }
     } catch (error) {
       toast({
@@ -996,11 +1007,17 @@ export function SettingsComponent() {
           description: "Verificando configuração do provedor...",
         })
         
-        // Simular teste de conexão
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        // Aqui você implementaria o teste real de SMS
-        // const testResult = await testSmsProvider(smsForm)
+        // TODO: Implementar teste real de SMS
+        // Esta implementação deve usar APIs de provedores SMS adequados
+        try {
+          throw new Error("Teste de SMS não implementado para produção")
+        } catch (error) {
+          toast({
+            title: "Erro na conexão",
+            description: "Não foi possível testar a configuração SMS.",
+            variant: "destructive"
+          })
+        }
       }
     } catch (error) {
       toast({

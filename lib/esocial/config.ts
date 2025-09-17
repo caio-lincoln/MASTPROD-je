@@ -34,14 +34,18 @@ import { EsocialConfig } from './types'
 
 export function getEsocialConfig(
   empresa_cnpj: string,
-  ambiente: "producao" | "homologacao" = "homologacao",
+  ambiente: "producao" | "homologacao" = "producao",
 ): EsocialConfig {
+  // TODO: Implementar configuração baseada em variáveis de ambiente
+  // Para produção, sempre usar ambiente de produção
+  const ambienteReal = process.env.NODE_ENV === 'production' ? 'producao' : ambiente;
+  
   return {
-    ambiente,
+    ambiente: ambienteReal,
     cnpj: empresa_cnpj,
     certificado: {
       tipo: "A1" as const, // Padrão A1, pode ser configurado por empresa
     },
-    urls: ESOCIAL_URLS[ambiente],
+    urls: ESOCIAL_URLS[ambienteReal],
   }
 }

@@ -21,12 +21,13 @@ export const swrConfig: SWRConfiguration = {
   onError: (error) => {
     console.error("SWR Error:", error)
   },
-  // Global success handler for debugging
+  // Global success handler for debugging (apenas em desenvolvimento)
   onSuccess: (data, key) => {
     if (process.env.NODE_ENV === "development") {
       console.log(`SWR Success for ${key}:`, data)
     }
   },
+
 }
 
 export const supabaseFetcher = async (key: string) => {
