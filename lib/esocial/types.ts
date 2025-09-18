@@ -11,6 +11,7 @@ export interface EsocialConfig {
     recepcaoLote: string
     consultaLote: string
     downloadEvento: string
+    consultaEventos: string
   }
 }
 

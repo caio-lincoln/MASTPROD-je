@@ -80,6 +80,8 @@ export function ESocial() {
   const [loading, setLoading] = useState(false)
   const [sendingEvent, setSendingEvent] = useState(false)
   const [generatingEvent, setGeneratingEvent] = useState(false)
+  const [syncingEmployees, setSyncingEmployees] = useState(false)
+  const [employeeSyncStatus, setEmployeeSyncStatus] = useState<string>("")
   
   const [searchTerm, setSearchTerm] = useState("")
   const [filtroTipo, setFiltroTipo] = useState("todos")
@@ -333,6 +335,66 @@ export function ESocial() {
       })
     } finally {
       setSendingEvent(false)
+    }
+  }
+
+  const syncEmployees = async () => {
+    if (!selectedCompany?.id) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma empresa selecionada",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSyncingEmployees(true)
+    setEmployeeSyncStatus("Iniciando sincronização...")
+
+    try {
+      setEmployeeSyncStatus("Consultando funcionários no eSocial...")
+      
+      const response = await fetch("/api/esocial/sync-employees", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // Incluir cookies de autenticação
+        body: JSON.stringify({
+          empresa_id: selectedCompany.id,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Erro ao sincronizar funcionários")
+      }
+
+      setEmployeeSyncStatus(`Sincronização concluída! ${result.count || 0} funcionários processados.`)
+      
+      toast({
+        title: "Sucesso",
+        description: `Funcionários sincronizados com sucesso! ${result.count || 0} registros processados.`,
+      })
+
+      // Recarregar a lista de funcionários
+      await carregarFuncionarios()
+      
+    } catch (error) {
+      console.error("Erro ao sincronizar funcionários:", error)
+      setEmployeeSyncStatus("Erro na sincronização")
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Erro ao sincronizar funcionários",
+        variant: "destructive",
+      })
+    } finally {
+      setSyncingEmployees(false)
+      // Limpar status após 5 segundos
+      setTimeout(() => {
+        setEmployeeSyncStatus("")
+      }, 5000)
     }
   }
 
@@ -609,6 +671,10 @@ export function ESocial() {
           </p>
         </div>
         <div className="flex space-x-2">
+          <Button variant="outline" onClick={syncEmployees} disabled={syncingEmployees}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncingEmployees ? "animate-spin" : ""}`} />
+            {syncingEmployees ? "Sincronizando..." : "Sincronizar Funcionários"}
+          </Button>
           <Button variant="outline" onClick={consultarStatus} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Consultar Status
@@ -710,6 +776,15 @@ export function ESocial() {
           </Dialog>
         </div>
       </div>
+
+      {employeeSyncStatus && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center space-x-2">
+            {syncingEmployees && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
+            <span className="text-sm text-blue-800">{employeeSyncStatus}</span>
+          </div>
+        </div>
+      )}
 
       <Tabs defaultValue="eventos" className="space-y-4">
         <TabsList>

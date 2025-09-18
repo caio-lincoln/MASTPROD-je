@@ -74,6 +74,7 @@ const menuGroups = [
     items: [
       { id: "reports", label: "Relatórios", icon: BarChart3 },
       { id: "esocial", label: "eSocial", icon: Database },
+      { id: "funcionarios-sst", label: "Funcionários SST", icon: Users },
     ],
   },
   {

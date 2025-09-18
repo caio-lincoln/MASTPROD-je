@@ -151,6 +151,21 @@ export function ESocialIntegration() {
     incidentes: any[]
   }>({ asos: [], riscos: [], incidentes: [] })
 
+  // Estados para sincronização de funcionários
+  const [syncingEmployees, setSyncingEmployees] = useState(false)
+  const [employeeSyncStatus, setEmployeeSyncStatus] = useState<{
+    lastSync?: string
+    status: 'idle' | 'syncing' | 'completed' | 'error'
+    message?: string
+    stats?: {
+      processed: number
+      new: number
+      updated: number
+    }
+  }>({ status: 'idle' })
+  const [employees, setEmployees] = useState<any[]>([])
+  const [loadingEmployees, setLoadingEmployees] = useState(false)
+
   const supabase = createClient()
 
   const loadEventTypes = async () => {
@@ -590,6 +605,121 @@ export function ESocialIntegration() {
     }
   }
 
+  // Função para sincronizar funcionários
+  const syncEmployees = async () => {
+    if (!selectedCompany) return
+
+    setSyncingEmployees(true)
+    setEmployeeSyncStatus({ status: 'syncing', message: 'Iniciando sincronização...' })
+
+    try {
+      // Buscar funcionários da empresa
+      const { data: funcionarios, error: funcionariosError } = await supabase
+        .from("funcionarios")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+
+      if (funcionariosError) throw funcionariosError
+
+      let processed = 0
+      let newEmployees = 0
+      let updatedEmployees = 0
+
+      // Simular processamento de sincronização
+      for (const funcionario of funcionarios || []) {
+        setEmployeeSyncStatus({
+          status: 'syncing',
+          message: `Processando ${funcionario.nome}...`,
+          stats: { processed, new: newEmployees, updated: updatedEmployees }
+        })
+
+        // Simular delay de processamento
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+        // Verificar se funcionário já existe no eSocial
+        const { data: existingEvent } = await supabase
+          .from("eventos_esocial")
+          .select("id")
+          .eq("funcionario_cpf", funcionario.cpf)
+          .eq("evento", "S-2200") // Admissão
+          .single()
+
+        if (!existingEvent) {
+          // Criar evento de admissão S-2200
+          const { error: eventError } = await supabase
+            .from("eventos_esocial")
+            .insert({
+              evento: "S-2200",
+              descricao: "Cadastramento Inicial do Vínculo e Admissão/Ingresso de Trabalhador",
+              funcionario_nome: funcionario.nome,
+              funcionario_cpf: funcionario.cpf,
+              data_evento: funcionario.data_admissao || new Date().toISOString(),
+              status: "Pendente",
+              empresa_id: selectedCompany.id
+            })
+
+          if (!eventError) {
+            newEmployees++
+          }
+        } else {
+          updatedEmployees++
+        }
+
+        processed++
+      }
+
+      setEmployeeSyncStatus({
+        status: 'completed',
+        message: 'Sincronização concluída com sucesso!',
+        stats: { processed, new: newEmployees, updated: updatedEmployees },
+        lastSync: new Date().toLocaleString('pt-BR')
+      })
+
+      toast({
+        title: "Sincronização concluída",
+        description: `${newEmployees} novos funcionários, ${updatedEmployees} atualizados`,
+      })
+
+      // Recarregar eventos
+      await loadEvents()
+
+    } catch (error) {
+      console.error("Erro na sincronização:", error)
+      setEmployeeSyncStatus({
+        status: 'error',
+        message: 'Erro durante a sincronização'
+      })
+      toast({
+        title: "Erro na sincronização",
+        description: "Falha ao sincronizar funcionários",
+        variant: "destructive",
+      })
+    } finally {
+      setSyncingEmployees(false)
+    }
+  }
+
+  // Função para carregar funcionários
+  const loadEmployees = async () => {
+    if (!selectedCompany) return
+
+    setLoadingEmployees(true)
+    try {
+      const { data: funcionarios, error } = await supabase
+        .from("funcionarios")
+        .select("*")
+        .eq("empresa_id", selectedCompany.id)
+        .order("nome")
+
+      if (error) throw error
+      setEmployees(funcionarios || [])
+    } catch (error) {
+      console.error("Erro ao carregar funcionários:", error)
+    } finally {
+      setLoadingEmployees(false)
+    }
+  }
+
   const generateEventXML = async (eventType: string, data: any): Promise<string> => {
     const { data: tipoEvento, error } = await supabase
       .from("esocial_tipos_eventos")
@@ -968,6 +1098,7 @@ export function ESocialIntegration() {
     loadConnectionStatus()
     loadStatistics()
     loadActivityLogs()
+    loadEmployees()
   }, [selectedCompany])
 
   useEffect(() => {
@@ -1077,6 +1208,7 @@ export function ESocialIntegration() {
       <Tabs defaultValue="eventos" className="space-y-4">
         <TabsList>
           <TabsTrigger value="eventos">Eventos</TabsTrigger>
+          <TabsTrigger value="funcionarios">Funcionários</TabsTrigger>
           <TabsTrigger value="tipos">Tipos de Evento</TabsTrigger>
           <TabsTrigger value="monitoramento">Monitoramento</TabsTrigger>
           <TabsTrigger value="certificados">Certificados</TabsTrigger>
@@ -1302,6 +1434,133 @@ export function ESocialIntegration() {
                   </TableBody>
                 </Table>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="funcionarios" className="space-y-4">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <div>
+                <CardTitle>Sincronização de Funcionários</CardTitle>
+                <CardDescription>
+                  Sincronize os funcionários da empresa com o eSocial
+                </CardDescription>
+              </div>
+              <Button
+                onClick={syncEmployees}
+                disabled={syncingEmployees || !globalConfig.certificateConfigured}
+              >
+                {syncingEmployees ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                {syncingEmployees ? "Sincronizando..." : "Sincronizar Funcionários"}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Status da Sincronização */}
+              {employeeSyncStatus.status !== 'idle' && (
+                <Card className={`border-l-4 ${
+                  employeeSyncStatus.status === 'completed' ? 'border-l-green-500 bg-green-50' :
+                  employeeSyncStatus.status === 'error' ? 'border-l-red-500 bg-red-50' :
+                  'border-l-blue-500 bg-blue-50'
+                }`}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2">
+                      {employeeSyncStatus.status === 'syncing' && (
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                      )}
+                      {employeeSyncStatus.status === 'completed' && (
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      )}
+                      {employeeSyncStatus.status === 'error' && (
+                        <XCircle className="h-4 w-4 text-red-600" />
+                      )}
+                      <span className="font-medium">{employeeSyncStatus.message}</span>
+                    </div>
+                    
+                    {employeeSyncStatus.stats && (
+                      <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
+                        <div className="text-center">
+                          <div className="font-bold text-lg">{employeeSyncStatus.stats.processed}</div>
+                          <div className="text-muted-foreground">Processados</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-bold text-lg text-green-600">{employeeSyncStatus.stats.new}</div>
+                          <div className="text-muted-foreground">Novos</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-bold text-lg text-blue-600">{employeeSyncStatus.stats.updated}</div>
+                          <div className="text-muted-foreground">Atualizados</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {employeeSyncStatus.lastSync && (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Última sincronização: {employeeSyncStatus.lastSync}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Informações sobre Certificado */}
+              {!globalConfig.certificateConfigured && (
+                <Card className="border-l-4 border-l-yellow-500 bg-yellow-50">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center space-x-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                      <span className="font-medium">Certificado não configurado</span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Configure um certificado digital válido na aba "Certificados" para habilitar a sincronização.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Lista de Funcionários */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Funcionários da Empresa</CardTitle>
+                  <CardDescription>
+                    {employees.length} funcionários cadastrados
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loadingEmployees ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin" />
+                    </div>
+                  ) : employees.length > 0 ? (
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {employees.map((funcionario) => (
+                        <div
+                          key={funcionario.id}
+                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                        >
+                          <div>
+                            <div className="font-medium">{funcionario.nome}</div>
+                            <div className="text-sm text-muted-foreground">
+                              CPF: {funcionario.cpf} | Matrícula: {funcionario.matricula}
+                            </div>
+                          </div>
+                          <Badge variant="outline">
+                            {funcionario.ativo ? "Ativo" : "Inativo"}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      Nenhum funcionário encontrado
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </CardContent>
           </Card>
         </TabsContent>

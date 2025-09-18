@@ -48,18 +48,28 @@ export class EsocialXmlBuilder {
 
   // Gerar S-2240 (Riscos) baseado em funcionário e riscos ocupacionais
   async gerarS2240FromFuncionario(funcionario_id: string, empresa_id: string): Promise<string> {
+    console.log(`[DEBUG] Buscando funcionário - ID: ${funcionario_id}, Empresa ID: ${empresa_id}`)
+    
     const { data: funcionario, error: funcError } = await this.supabase
       .from("funcionarios")
       .select(`
         *,
-        empresas!inner(cnpj, razao_social)
+        empresas!inner(cnpj, nome)
       `)
       .eq("id", funcionario_id)
       .eq("empresa_id", empresa_id)
       .single()
 
-    if (funcError || !funcionario) {
-      throw new Error(`Funcionário não encontrado: ${funcError?.message}`)
+    console.log(`[DEBUG] Resultado da consulta:`, { funcionario, funcError })
+
+    if (funcError) {
+      console.error(`[ERROR] Erro na consulta do funcionário:`, funcError)
+      throw new Error(`Erro ao buscar funcionário: ${funcError.message}`)
+    }
+
+    if (!funcionario) {
+      console.error(`[ERROR] Funcionário não encontrado - ID: ${funcionario_id}, Empresa: ${empresa_id}`)
+      throw new Error(`Funcionário não encontrado com ID ${funcionario_id} na empresa ${empresa_id}`)
     }
 
     // Buscar riscos ocupacionais da empresa

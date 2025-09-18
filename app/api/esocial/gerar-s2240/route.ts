@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
     const supabase = createRouteHandlerClient({ cookies })
     const { empresa_id, funcionario_id } = await request.json()
 
+    console.log(`[DEBUG API] Parâmetros recebidos - empresa_id: ${empresa_id}, funcionario_id: ${funcionario_id}`)
+
     if (!empresa_id || !funcionario_id) {
       return NextResponse.json(
         { error: "empresa_id e funcionario_id são obrigatórios" },
@@ -21,19 +23,26 @@ export async function POST(request: NextRequest) {
       .from("funcionarios")
       .select(`
         *,
-        empresas (*),
-        gestao_riscos (
-          *,
-          riscos_identificados (*)
-        )
+        empresas (*)
       `)
       .eq("id", funcionario_id)
       .eq("empresa_id", empresa_id)
       .single()
 
-    if (funcionarioError || !funcionario) {
+    console.log(`[DEBUG API] Resultado da consulta funcionário:`, { funcionario: funcionario?.id, funcionarioError })
+
+    if (funcionarioError) {
+      console.error(`[ERROR API] Erro na consulta:`, funcionarioError)
       return NextResponse.json(
-        { error: "Funcionário não encontrado" },
+        { error: `Erro ao buscar funcionário: ${funcionarioError.message}` },
+        { status: 500 }
+      )
+    }
+
+    if (!funcionario) {
+      console.error(`[ERROR API] Funcionário não encontrado - ID: ${funcionario_id}, Empresa: ${empresa_id}`)
+      return NextResponse.json(
+        { error: `Funcionário não encontrado com ID ${funcionario_id} na empresa ${empresa_id}` },
         { status: 404 }
       )
     }
