@@ -73,6 +73,10 @@ export function FuncionariosSST() {
   const { toast } = useToast()
   const supabase = createClient()
 
+  console.log("FuncionariosSST - selectedCompany:", selectedCompany)
+  console.log("FuncionariosSST - toast:", toast)
+  console.log("FuncionariosSST - supabase:", supabase)
+
   const [funcionarios, setFuncionarios] = useState<FuncionarioSST[]>([])
   const [estatisticas, setEstatisticas] = useState<EstatisticasSST | null>(null)
   const [loading, setLoading] = useState(false)
