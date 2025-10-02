@@ -39,6 +39,7 @@ import {
   Upload,
   CheckCircle,
   XCircle,
+  Loader2,
 } from "lucide-react"
 
 interface User {
@@ -132,6 +133,71 @@ export function SettingsComponent() {
     phone: '',
     address: ''
   })
+
+  // Estados para busca de CNPJ
+  const [isFetchingCnpj, setIsFetchingCnpj] = useState(false)
+  const [cnpjFetchError, setCnpjFetchError] = useState<string | null>(null)
+  const [lastFetchedCnpj, setLastFetchedCnpj] = useState<string | null>(null)
+
+  // Utilitário: normalizar para dígitos
+  const normalizeCNPJ = (value: string) => value.replace(/\D/g, '')
+
+  // Utilitário: formatar máscara de CNPJ conforme digitação
+  const formatCNPJ = (value: string) => {
+    const digits = normalizeCNPJ(value).slice(0, 14)
+    let out = ''
+    if (digits.length > 0) out = digits.slice(0, 2)
+    if (digits.length >= 3) out = `${digits.slice(0, 2)}.${digits.slice(2, 5)}`
+    if (digits.length >= 6) out = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}`
+    if (digits.length >= 9) out = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}`
+    if (digits.length >= 13) out = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`
+    return out
+  }
+
+  // Utilitário: montar endereço a partir da resposta da BrasilAPI
+  const formatAddressFromBrasilAPI = (data: any) => {
+    const parts = [
+      [data.logradouro, data.numero].filter(Boolean).join(', '),
+      data.bairro,
+      [data.municipio, data.uf].filter(Boolean).join(' - '),
+      data.cep ? `CEP ${data.cep}` : ''
+    ].filter(Boolean)
+    return parts.join(' • ')
+  }
+
+  // Buscar dados do CNPJ (razão social e endereço) na BrasilAPI
+  const fetchCompanyByCNPJ = async (cnpjDigits: string) => {
+    try {
+      setIsFetchingCnpj(true)
+      setCnpjFetchError(null)
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjDigits}`)
+      if (!res.ok) {
+        throw new Error('Não foi possível obter dados do CNPJ')
+      }
+      const data = await res.json()
+      setCompanyForm(prev => ({
+        ...prev,
+        name: prev.name || data.razao_social || prev.name,
+        address: prev.address || formatAddressFromBrasilAPI(data) || prev.address,
+        phone: prev.phone || data.telefone || prev.phone,
+        email: prev.email || data.email || prev.email,
+      }))
+      setLastFetchedCnpj(cnpjDigits)
+    } catch (err: any) {
+      setCnpjFetchError(err?.message || 'Erro ao buscar dados do CNPJ')
+      setLastFetchedCnpj(cnpjDigits)
+    } finally {
+      setIsFetchingCnpj(false)
+    }
+  }
+
+  // Disparar busca automática quando CNPJ atingir 14 dígitos
+  useEffect(() => {
+    const digits = normalizeCNPJ(companyForm.cnpj)
+    if (digits.length === 14 && digits !== lastFetchedCnpj) {
+      fetchCompanyByCNPJ(digits)
+    }
+  }, [companyForm.cnpj])
 
   // Estados para paginação de empresas
   const [currentPage, setCurrentPage] = useState(1)
@@ -550,6 +616,10 @@ export function SettingsComponent() {
         address: ''
       })
     }
+    // Resetar estados relativos à busca de CNPJ ao abrir o diálogo
+    setIsFetchingCnpj(false)
+    setCnpjFetchError(null)
+    setLastFetchedCnpj(null)
     setIsCompanyDialogOpen(true)
   }
 
@@ -1411,16 +1481,29 @@ export function SettingsComponent() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="company-cnpj">CNPJ *</Label>
-                  <Input
-                    id="company-cnpj"
-                    value={companyForm.cnpj}
-                    onChange={(e) => setCompanyForm(prev => ({ ...prev, cnpj: e.target.value }))}
-                    placeholder="00.000.000/0000-00"
-                  />
-                  {companyForm.cnpj && !/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(companyForm.cnpj) && (
-                    <p className="text-sm text-red-500">Formato de CNPJ inválido</p>
-                  )}
+          <Label htmlFor="company-cnpj">CNPJ *</Label>
+          <div className="relative">
+            <Input
+              id="company-cnpj"
+              value={companyForm.cnpj}
+              onChange={(e) => {
+                const masked = formatCNPJ(e.target.value)
+                setCompanyForm(prev => ({ ...prev, cnpj: masked }))
+              }}
+              placeholder="00.000.000/0000-00"
+            />
+            {isFetchingCnpj && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </span>
+            )}
+          </div>
+          {companyForm.cnpj && !/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/.test(companyForm.cnpj) && (
+            <p className="text-sm text-red-500">Formato de CNPJ inválido</p>
+          )}
+          {cnpjFetchError && (
+            <p className="text-sm text-amber-600">{cnpjFetchError}</p>
+          )}
                 </div>
               </div>
               <div className="space-y-2">
