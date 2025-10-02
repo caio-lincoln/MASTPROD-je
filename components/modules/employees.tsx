@@ -19,12 +19,23 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { AlertCircle, Eye, MoreHorizontal, Plus, UserPlus, Users } from "lucide-react"
+import { AlertCircle, Eye, MoreHorizontal, Plus, UserPlus, Users, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useCompany } from "@/contexts/company-context"
 import { useLoading } from "@/hooks/use-loading"
 import { createClient } from "@/lib/supabase/client"
 import { formatDateSafe, isValidDate } from "@/lib/utils/date-utils"
+import { useToast } from "@/hooks/use-toast"
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog"
 
 interface Employee {
   id: string
@@ -57,6 +68,9 @@ export function Employees() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isNewEmployeeDialogOpen, setIsNewEmployeeDialogOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [formData, setFormData] = useState({
     nome: "",
     cpf: "",
@@ -68,6 +82,7 @@ export function Employees() {
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const supabase = createClient()
+  const { toast } = useToast()
 
   useEffect(() => {
     if (selectedCompany) {
@@ -97,6 +112,34 @@ export function Employees() {
         // Error handling
       }
     })
+  }
+
+  const confirmDelete = async () => {
+    if (!deletingEmployee) return
+
+    try {
+      setIsDeleting(true)
+      const { error } = await supabase.from("funcionarios").delete().eq("id", deletingEmployee.id)
+
+      if (error) throw error
+
+      await loadEmployees()
+      setIsDeleteDialogOpen(false)
+      setDeletingEmployee(null)
+      toast({
+        title: "Funcionário excluído",
+        description: "Exclusão realizada com sucesso.",
+      })
+    } catch (error) {
+      console.error("Erro ao excluir funcionário:", error)
+      toast({
+        title: "Erro ao excluir",
+        description: "Erro ao excluir funcionário. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const validateForm = () => {
@@ -388,6 +431,15 @@ export function Employees() {
                                 Visualizar
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleEdit(employee)}>Editar</DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setDeletingEmployee(employee)
+                                  setIsDeleteDialogOpen(true)
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -450,6 +502,15 @@ export function Employees() {
                                 Visualizar
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleEdit(employee)}>Editar</DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setDeletingEmployee(employee)
+                                  setIsDeleteDialogOpen(true)
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -491,6 +552,15 @@ export function Employees() {
                             Visualizar
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEdit(employee)}>Editar</DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setDeletingEmployee(employee)
+                              setIsDeleteDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -768,6 +838,30 @@ export function Employees() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de Confirmação de Exclusão */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingEmployee
+                ? `Tem certeza que deseja excluir o funcionário "${deletingEmployee.nome}"? Esta ação não pode ser desfeita.`
+                : "Tem certeza que deseja excluir este funcionário?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
