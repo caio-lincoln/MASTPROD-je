@@ -13,6 +13,15 @@ export function CompanySelector() {
   const { selectedCompany, companies, setSelectedCompany, isLoading } = useCompany()
   const [open, setOpen] = useState(false)
 
+  const compactName = (name: string) => {
+    if (!name) return ""
+    const maxLen = 18
+    if (name.length <= maxLen) return name
+    const start = name.slice(0, 8)
+    const end = name.slice(-6)
+    return `${start}...${end}`
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center space-x-2">
@@ -38,13 +47,19 @@ export function CompanySelector() {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-[280px] justify-between bg-transparent"
+          className="w-[480px] justify-center bg-transparent relative"
         >
           <div className="flex items-center space-x-2">
             <Building2 className="h-4 w-4" />
             {selectedCompany ? (
               <div className="flex items-center space-x-2">
-                <span className="truncate">{selectedCompany.name}</span>
+                <span
+                  className="cursor-pointer"
+                  onClick={() => setOpen(true)}
+                  title={selectedCompany.name}
+                >
+                  {compactName(selectedCompany.name)}
+                </span>
                 <Badge variant="secondary" className="text-xs">
                   {selectedCompany.cnpj?.split("/")[0] || ''}
                 </Badge>
@@ -53,12 +68,12 @@ export function CompanySelector() {
               <span className="text-muted-foreground">Selecionar empresa...</span>
             )}
           </div>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="absolute right-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0">
+      <PopoverContent className="w-[480px] p-0">
         <Command>
-          <CommandInput placeholder="Buscar empresa..." />
+          <CommandInput placeholder="Buscar empresa..." className="w-full" />
           <CommandList>
             <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
             <CommandGroup>

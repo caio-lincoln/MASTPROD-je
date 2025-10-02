@@ -122,7 +122,7 @@ export function TopBar({
           </div>
         </div>
 
-        <div className="hidden lg:flex flex-1 justify-center max-w-xs xl:max-w-md mx-2 xl:mx-4">
+        <div className="hidden lg:flex flex-1 justify-center max-w-xl xl:max-w-2xl mx-2 xl:mx-4">
           <div className="w-full">
             <CompanySelector />
           </div>
