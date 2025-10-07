@@ -8,12 +8,13 @@ import { LoadingButton } from "@/components/ui/loading-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Shield, Building2, Eye, EyeOff } from "lucide-react"
+import { Shield, Building2, Eye, EyeOff, Sun, Moon } from "lucide-react"
 import { Logo } from "@/components/logo"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
+import { useTheme } from "next-themes"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -22,6 +23,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const { isLoading, withLoading } = useLoading()
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,7 +46,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4">
+    <div className="min-h-screen w-full relative flex items-center justify-center bg-background p-4">
+      {/* Botão de tema no topo direito, igual ao do dashboard */}
+      <div className="absolute top-4 right-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          className="h-9 w-9 p-0"
+          aria-label="Alternar tema"
+        >
+          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+        </Button>
+      </div>
       <div className="w-full max-w-md">
         <div className="flex flex-col gap-6">
           {/* Logo e Header */}
@@ -52,14 +67,10 @@ export default function LoginPage() {
             <div className="flex justify-center">
               <Logo variant="original" width={200} height={60} priority />
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">MASTPROD SST</h1>
-              <p className="text-muted-foreground">Segurança e Saúde no Trabalho</p>
-            </div>
           </div>
 
           {/* Card de Login */}
-          <Card className="shadow-lg border-0 bg-white dark:bg-gray-800 backdrop-blur-sm">
+          <Card className="shadow-lg border bg-card backdrop-blur-sm">
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-2xl font-semibold text-center text-foreground">Fazer Login</CardTitle>
               <CardDescription className="text-center text-muted-foreground">

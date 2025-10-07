@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import type React from "react"
+import { useTheme } from "next-themes"
 
 interface LogoProps {
   variant?: "original" | "branca" | "preta"
@@ -17,8 +18,10 @@ const srcByVariant = {
   preta: "/logo/LogoPreta.png",
 }
 
-export function Logo({ variant = "original", width = 160, height = 48, className, priority = false }: LogoProps) {
-  const src = srcByVariant[variant]
+export function Logo({ variant, width = 160, height = 48, className, priority = false }: LogoProps) {
+  const { resolvedTheme } = useTheme()
+  const finalVariant: keyof typeof srcByVariant = variant ?? (resolvedTheme === "dark" ? "branca" : "original")
+  const src = srcByVariant[finalVariant]
   return (
     <Image
       src={src}
