@@ -11,6 +11,7 @@ import { Shield, Lock, Eye, EyeOff } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
+import { Logo } from "@/components/logo"
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("")
@@ -64,15 +65,9 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-md">
         <div className="flex flex-col gap-6">
           {/* Logo e Header */}
-          <div className="text-center space-y-4">
+          <div className="text-center">
             <div className="flex justify-center">
-              <div className="bg-primary/10 p-4 rounded-full">
-                <Shield className="h-12 w-12 text-primary" />
-              </div>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">MASTPROD SST</h1>
-              <p className="text-muted-foreground">Segurança e Saúde no Trabalho</p>
+              <Logo width={200} height={60} priority />
             </div>
           </div>
 

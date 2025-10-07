@@ -12,6 +12,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Menu, Moon, Sun, User, LogOut } from "lucide-react"
 import { useTheme } from "next-themes"
+import { Logo } from "@/components/logo"
 import { CompanySelector } from "@/components/company-selector"
 import { MobileCompanySelector } from "@/components/mobile-company-selector"
 import { NotificationCenter } from "@/components/notifications/notification-center"
@@ -113,12 +114,12 @@ export function TopBar({
           </Button>
 
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm sm:text-base lg:text-lg font-semibold text-foreground truncate">
-              {isMobile ? "SST" : "MASTPROD SST"}
-            </h2>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block truncate">
-              Gestão completa de Segurança e Saúde no Trabalho
-            </p>
+            <Logo
+              width={isMobile ? 120 : 160}
+              height={isMobile ? 36 : 48}
+              className="select-none"
+              priority
+            />
           </div>
         </div>
 

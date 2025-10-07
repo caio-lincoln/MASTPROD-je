@@ -65,7 +65,7 @@ export default function LoginPage() {
           {/* Logo e Header */}
           <div className="text-center space-y-4">
             <div className="flex justify-center">
-              <Logo variant="original" width={200} height={60} priority />
+              <Logo width={200} height={60} priority />
             </div>
           </div>
 
