@@ -14,11 +14,22 @@ export function getSecurityHeaders(): Record<string, string> {
   const supabaseHost = getHostFromUrl(supabaseUrl) || ""
   const isDev = process.env.NODE_ENV !== "production"
 
-  const scriptSrc = ["'self'", "'wasm-unsafe-eval'", "'inline-speculation-rules'", ...(isDev ? ["'unsafe-eval'"] : [])]
+  const scriptSrc = [
+    "'self'",
+    "'wasm-unsafe-eval'",
+    "'inline-speculation-rules'",
+    // Permitir inline scripts do Next.js (ex.: __NEXT_DATA__ e speculation rules)
+    "'unsafe-inline'",
+    // Em dev, permitir eval
+    ...(isDev ? ["'unsafe-eval'"] : []),
+  ]
   const connectSrc = [
     "'self'",
     `https://${supabaseHost}`,
     `wss://${supabaseHost}`,
+    // Permitir conexões externas seguras (analytics, etc.) e websockets
+    "https:",
+    "wss:",
     ...(isDev ? ["ws:"] : []),
   ]
 
