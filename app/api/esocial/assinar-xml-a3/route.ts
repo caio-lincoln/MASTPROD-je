@@ -1,15 +1,33 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { sanitizeString } from "@/lib/security/validation"
 
 export async function POST(request: NextRequest) {
   try {
+    // Bloqueio explícito para ambientes não compatíveis com A3
+    const a3Supported = process.env.A3_SUPPORTED === "true"
+    if (!a3Supported) {
+      return NextResponse.json(
+        {
+          error: "Assinatura A3 não suportada neste ambiente",
+          message:
+            "Habilite A3 com A3_SUPPORTED=true em ambiente compatível (ex.: Windows com acesso ao store de certificados)",
+        },
+        { status: 501 },
+      )
+    }
+
     const { xml, thumbprint, senha, tipo } = await request.json()
 
     if (!xml || !thumbprint) {
       return NextResponse.json({ message: "XML e thumbprint são obrigatórios" }, { status: 400 })
     }
 
+    const safeXml = sanitizeString(xml)
+    const safeThumbprint = sanitizeString(thumbprint)
+    const safeSenha = senha ? sanitizeString(senha) : undefined
+
     // Para certificados A3, usar PKCS#11 ou Windows Crypto API
-    const xmlAssinado = await assinarXMLComCertificadoA3(xml, thumbprint, senha)
+    const xmlAssinado = await assinarXMLComCertificadoA3(safeXml, safeThumbprint, safeSenha)
 
     return NextResponse.json({
       sucesso: true,

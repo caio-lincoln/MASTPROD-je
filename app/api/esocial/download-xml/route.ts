@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isUuid, sanitizeString } from '@/lib/security/validation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,6 +10,13 @@ export async function GET(request: NextRequest) {
     if (!eventoId) {
       return NextResponse.json(
         { error: 'ID do evento é obrigatório' },
+        { status: 400 }
+      )
+    }
+
+    if (!isUuid(eventoId)) {
+      return NextResponse.json(
+        { error: 'ID do evento inválido' },
         { status: 400 }
       )
     }
@@ -68,7 +76,9 @@ export async function GET(request: NextRequest) {
       })
 
     // Retornar XML como download
-    const fileName = `${evento.tipo_evento}_${evento.numero_recibo || eventoId}.xml`
+    const safeTipo = sanitizeString(evento.tipo_evento)
+    const safeReciboOrId = sanitizeString(evento.numero_recibo || eventoId)
+    const fileName = `${safeTipo}_${safeReciboOrId}.xml`
     
     return new NextResponse(xmlContent, {
       status: 200,

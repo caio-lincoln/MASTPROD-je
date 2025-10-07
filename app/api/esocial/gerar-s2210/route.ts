@@ -3,6 +3,7 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { EsocialEventManager } from "@/lib/esocial/event-manager"
 import { EsocialXmlBuilder } from "@/lib/esocial/xml-builder"
+import { isUuid } from "@/lib/security/validation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,14 @@ export async function POST(request: NextRequest) {
     if (!empresa_id || !incidente_id) {
       return NextResponse.json(
         { error: "empresa_id e incidente_id são obrigatórios" },
+        { status: 400 }
+      )
+    }
+
+    // Validação básica contra SQL Injection e entradas inválidas
+    if (!isUuid(empresa_id) || !isUuid(incidente_id)) {
+      return NextResponse.json(
+        { error: "Parâmetros inválidos" },
         { status: 400 }
       )
     }

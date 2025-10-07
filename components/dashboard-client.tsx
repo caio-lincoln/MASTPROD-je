@@ -18,7 +18,6 @@ const DigitalLibrary = lazy(() => import("@/components/modules/digital-library")
 const Reports = lazy(() => import("@/components/modules/reports"))
 const ESocial = lazy(() => import("@/components/modules/esocial"))
 const ESocialIntegration = lazy(() => import("@/components/modules/esocial-integration"))
-const FuncionariosSST = lazy(() => import("@/components/modules/funcionarios-sst"))
 const NonConformities = lazy(() => import("@/components/modules/non-conformities").then((module) => ({ default: module.NonConformities })))
 const WorkplaceSafety = lazy(() => import("@/components/modules/workplace-safety"))
 const Settings = lazy(() => import("@/components/modules/settings"))
@@ -107,11 +106,6 @@ export function DashboardClient({ user }: DashboardClientProps) {
         component: ESocialIntegration,
         name: "Integração eSocial",
         fallback: <ModuleLoadingFallback moduleName="Integração eSocial" />,
-      },
-      "funcionarios-sst": {
-        component: FuncionariosSST,
-        name: "Funcionários SST",
-        fallback: <ModuleLoadingFallback moduleName="Funcionários SST" />,
       },
       "non-conformities": {
         component: NonConformities,

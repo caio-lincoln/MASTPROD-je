@@ -101,25 +101,12 @@ async function testUsers() {
  */
 async function testFuncionariosNoAuth() {
   console.log('\n📋 === TESTE: FUNCIONÁRIOS (SEM AUTH) ===');
-  
-  const result = await makeAuthenticatedRequest(`/api/sst/empresas/${CNPJ_TESTE}/funcionarios`, {
-    headers: {
-      'X-Test-Mode': 'true',
-      'X-Skip-Auth': 'true'
-    }
-  });
-  
-  if (result.success) {
-    console.log('✅ Endpoint de funcionários acessível!');
-    
-    if (result.data && result.data.funcionarios) {
-      console.log(`📊 Total de funcionários: ${result.data.funcionarios.length}`);
-    }
-  } else {
-    console.log('❌ Falha no endpoint de funcionários');
-  }
-  
-  return result;
+  console.log('   ⚠️ Rota removida: /api/sst/empresas/[cnpj]/funcionarios');
+  return {
+    success: true,
+    status: 410,
+    data: { skipped: true, reason: 'Rota SST de funcionários removida' }
+  };
 }
 
 /**

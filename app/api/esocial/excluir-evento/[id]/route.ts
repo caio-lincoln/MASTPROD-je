@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import { isUuid } from "@/lib/security/validation"
 
 export async function DELETE(
   request: NextRequest,
@@ -14,6 +15,13 @@ export async function DELETE(
     if (!eventoId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório" },
+        { status: 400 }
+      )
+    }
+
+    if (!isUuid(eventoId)) {
+      return NextResponse.json(
+        { error: "Parâmetro inválido" },
         { status: 400 }
       )
     }

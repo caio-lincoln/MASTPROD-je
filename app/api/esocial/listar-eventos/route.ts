@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { isUuid, sanitizeString } from '@/lib/security/validation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,23 +27,29 @@ export async function GET(request: NextRequest) {
 
     // Aplicar filtros
     if (status) {
-      query = query.eq('status', status)
+      query = query.eq('status', sanitizeString(status))
     }
 
     if (tipoEvento) {
-      query = query.eq('tipo_evento', tipoEvento)
+      query = query.eq('tipo_evento', sanitizeString(tipoEvento))
     }
 
     if (funcionarioId) {
+      if (!isUuid(funcionarioId)) {
+        return NextResponse.json(
+          { error: 'funcionario_id inválido' },
+          { status: 400 }
+        )
+      }
       query = query.eq('funcionario_id', funcionarioId)
     }
 
     if (dataInicio) {
-      query = query.gte('created_at', dataInicio)
+      query = query.gte('created_at', sanitizeString(dataInicio))
     }
 
     if (dataFim) {
-      query = query.lte('created_at', dataFim)
+      query = query.lte('created_at', sanitizeString(dataFim))
     }
 
     // Contar total de registros

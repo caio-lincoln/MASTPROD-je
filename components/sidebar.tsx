@@ -71,11 +71,10 @@ const menuGroups = [
     id: "reports",
     label: "Relatórios",
     icon: FileBarChart,
-    items: [
-      { id: "reports", label: "Relatórios", icon: BarChart3 },
-      { id: "esocial", label: "eSocial", icon: Database },
-      { id: "funcionarios-sst", label: "Funcionários SST", icon: Users },
-    ],
+      items: [
+        { id: "reports", label: "Relatórios", icon: BarChart3 },
+        { id: "esocial", label: "eSocial", icon: Database },
+      ],
   },
   {
     id: "settings",

@@ -2,7 +2,7 @@ import { updateSession } from '@/lib/supabase/middleware'
 import { type NextRequest } from 'next/server'
 
 // Configurar runtime para edge (otimizado para Vercel)
-export const runtime = 'experimental-edge'
+export const runtime = process.env.NODE_ENV === 'production' ? 'experimental-edge' : 'nodejs'
 
 export async function middleware(request: NextRequest) {
   return await updateSession(request)
@@ -11,12 +11,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Include API routes for authentication processing
+     * Evita interceptar rotas internas do Next.js e arquivos estáticos,
+     * incluindo HMR (/_next/webpack-hmr) e dados (/_next/data).
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/.*|_vercel/.*|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map)$).*)',
   ],
 }

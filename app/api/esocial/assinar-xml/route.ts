@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { signXMLWithSupabaseCertificate } from "@/lib/esocial/xml-signer"
+import { sanitizeString, isUuid } from "@/lib/security/validation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,11 +17,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Sanitização e validação básica
+    const safeEmpresaId = sanitizeString(empresaId)
+    const safeCertPassword = sanitizeString(certPassword)
+    const safeXml = sanitizeString(rawXml)
+
+    if (!isUuid(safeEmpresaId)) {
+      return NextResponse.json(
+        { success: false, error: "empresaId inválido" },
+        { status: 400 }
+      )
+    }
+
     // Assinar XML
     const result = await signXMLWithSupabaseCertificate({
-      empresaId,
-      certPassword,
-      rawXml,
+      empresaId: safeEmpresaId,
+      certPassword: safeCertPassword,
+      rawXml: safeXml,
     })
 
     if (result.success) {

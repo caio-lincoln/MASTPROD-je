@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { EsocialService } from "@/lib/esocial/esocial-service"
+import { isUuid } from "@/lib/security/validation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +12,13 @@ export async function POST(request: NextRequest) {
     if (!empresa_id) {
       return NextResponse.json(
         { error: "empresa_id é obrigatório" },
+        { status: 400 }
+      )
+    }
+
+    if (!isUuid(empresa_id)) {
+      return NextResponse.json(
+        { error: "Parâmetro inválido" },
         { status: 400 }
       )
     }

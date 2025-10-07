@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import { isUuid } from "@/lib/security/validation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,13 @@ export async function POST(request: NextRequest) {
     if (!evento_id || !empresa_id) {
       return NextResponse.json(
         { error: "evento_id e empresa_id são obrigatórios" },
+        { status: 400 }
+      )
+    }
+
+    if (!isUuid(evento_id) || !isUuid(empresa_id)) {
+      return NextResponse.json(
+        { error: "Parâmetros inválidos" },
         { status: 400 }
       )
     }

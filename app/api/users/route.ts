@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseUrl, getSupabaseServiceRoleKey } from '@/lib/config/supabase-config'
+import { isUuid, sanitizeString } from '@/lib/security/validation'
 
 // Cliente Supabase com service role key para operações administrativas
 const supabaseAdmin = createClient(
@@ -22,6 +23,13 @@ export async function GET(request: NextRequest) {
     if (!empresaId) {
       return NextResponse.json(
         { error: 'empresa_id é obrigatório' },
+        { status: 400 }
+      )
+    }
+
+    if (!isUuid(empresaId)) {
+      return NextResponse.json(
+        { error: 'empresa_id inválido' },
         { status: 400 }
       )
     }
@@ -99,13 +107,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!isUuid(empresa_id)) {
+      return NextResponse.json(
+        { error: 'empresa_id inválido' },
+        { status: 400 }
+      )
+    }
+
+    const safeEmail = sanitizeString(email)
+    const safePassword = sanitizeString(password)
+    const safeRole = sanitizeString(role)
+    const safeName = name ? sanitizeString(name) : undefined
+
     // Criar usuário no auth
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
+      email: safeEmail,
+      password: safePassword,
       email_confirm: true,
       user_metadata: {
-        name: name || email.split('@')[0]
+        name: safeName || safeEmail.split('@')[0]
       }
     })
 
@@ -123,7 +143,7 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: authUser.user.id,
         empresa_id,
-        role
+        role: safeRole
       })
 
     if (relationError) {
@@ -165,11 +185,18 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    if (!isUuid(user_id) || !isUuid(empresa_id)) {
+      return NextResponse.json(
+        { error: 'Parâmetros inválidos' },
+        { status: 400 }
+      )
+    }
+
     // Atualizar dados do usuário no auth se fornecidos
     if (email || name) {
       const updateData: any = {}
-      if (email) updateData.email = email
-      if (name) updateData.user_metadata = { name }
+      if (email) updateData.email = sanitizeString(email)
+      if (name) updateData.user_metadata = { name: sanitizeString(name) }
 
       const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
         user_id,
@@ -189,7 +216,7 @@ export async function PUT(request: NextRequest) {
     if (role) {
       const { error: roleError } = await supabaseAdmin
         .from('usuario_empresas')
-        .update({ role })
+        .update({ role: sanitizeString(role) })
         .eq('user_id', user_id)
         .eq('empresa_id', empresa_id)
 
@@ -221,6 +248,13 @@ export async function DELETE(request: NextRequest) {
     if (!userId || !empresaId) {
       return NextResponse.json(
         { error: 'user_id e empresa_id são obrigatórios' },
+        { status: 400 }
+      )
+    }
+
+    if (!isUuid(userId) || !isUuid(empresaId)) {
+      return NextResponse.json(
+        { error: 'Parâmetros inválidos' },
         { status: 400 }
       )
     }

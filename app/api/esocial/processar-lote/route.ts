@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { getSupabaseUrl, getSupabaseServiceRoleKey } from '@/lib/config/supabase-config'
 import { EsocialService } from '@/lib/esocial/esocial-service'
 import { EsocialEventManager } from '@/lib/esocial/event-manager'
+import { isUuid } from '@/lib/security/validation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +17,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = createClient()
+    // Validar formato UUID dos IDs
+    const allValidUuids = eventoIds.every((id: any) => typeof id === 'string' && isUuid(id))
+    if (!allValidUuids) {
+      return NextResponse.json(
+        { error: 'IDs dos eventos inválidos' },
+        { status: 400 }
+      )
+    }
+
+    const isInternalJob = request.headers.get('x-internal-job') === 'true'
+    const supabase = isInternalJob
+      ? createAdminClient(getSupabaseUrl(), getSupabaseServiceRoleKey(), { auth: { autoRefreshToken: false, persistSession: false } })
+      : createClient()
+    const useEdgeProcessing = process.env.USE_EDGE_PROCESSING === 'true'
+    const forceSync = request.headers.get('x-force-sync') === 'true'
     
     // Verificar se todos os eventos existem e estão pendentes
     const { data: eventos, error: eventosError } = await supabase
@@ -38,7 +55,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Buscar certificado digital
+    // Se estiver habilitado para Edge, delega o enfileiramento do lote
+    if (useEdgeProcessing && !forceSync) {
+      const empresas = new Set(eventos.map((e: any) => e.empresa_id))
+      if (empresas.size !== 1) {
+        return NextResponse.json(
+          { error: 'Todos os eventos do lote devem pertencer à mesma empresa' },
+          { status: 400 }
+        )
+      }
+      const [empresaId] = Array.from(empresas)
+
+      // Invocar Edge Function para enfileirar o processamento
+      const { data: invokeData, error: invokeError } = await supabase.functions.invoke('processar-lote-esocial', {
+        body: { empresa_id: empresaId, evento_ids: eventoIds },
+      })
+
+      if (invokeError) {
+        console.error('Falha ao enfileirar lote na Edge Function:', invokeError)
+        return NextResponse.json(
+          { error: 'Falha ao enfileirar processamento do lote' },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json(
+        { success: true, delegated: true, jobId: invokeData?.job_id },
+        { status: 202 }
+      )
+    }
+
+    // Buscar certificado digital (modo síncrono)
     const { data: certificado, error: certificadoError } = await supabase
       .from('certificados_digitais')
       .select('*')
