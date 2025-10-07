@@ -25,3 +25,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ignore dev/test scripts
+# root-level helpers and tests (future additions)
+debug-*.js
+test-*.js
+test-*.ts
+create-*.js
+reset-password.js
+
+# scripts folder: ignore non-SQL files (keep migrations)
+scripts/**/*.js
+scripts/**/*.ts
+scripts/**/*.py
+scripts/**/*.mjs
+scripts/**/debug*
+scripts/**/test-*
+!scripts/**/*.sql

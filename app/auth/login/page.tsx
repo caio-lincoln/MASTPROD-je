@@ -9,12 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Shield, Building2, Eye, EyeOff, Sun, Moon } from "lucide-react"
-import { Logo } from "@/components/logo"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
 import { useTheme } from "next-themes"
+import { Logo } from "@/components/logo"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -37,10 +37,14 @@ export default function LoginPage() {
           email,
           password,
         })
-        if (error) throw error
+        if (error) {
+          // Substitui mensagem padrão por texto amigável em PT-BR
+          setError("E-mail / ou Senha errados")
+          return
+        }
         router.push("/")
       } catch (error: unknown) {
-        setError(error instanceof Error ? error.message : "Erro ao fazer login")
+        setError("E-mail / ou Senha errados")
       }
     })
   }
@@ -62,11 +66,9 @@ export default function LoginPage() {
       </div>
       <div className="w-full max-w-md">
         <div className="flex flex-col gap-6">
-          {/* Logo e Header */}
+          {/* Header com logo */}
           <div className="text-center space-y-4">
-            <div className="flex justify-center">
-              <Logo width={200} height={60} priority />
-            </div>
+            <Logo className="mx-auto" priority />
           </div>
 
           {/* Card de Login */}

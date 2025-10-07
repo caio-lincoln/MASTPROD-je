@@ -48,11 +48,9 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col gap-6">
-          {/* Logo e Header */}
+          {/* Header com logo */}
           <div className="text-center">
-            <div className="flex justify-center">
-              <Logo width={200} height={60} priority />
-            </div>
+            <Logo className="mx-auto" priority />
           </div>
 
           {/* Card de Recuperação */}
