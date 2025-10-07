@@ -28,6 +28,7 @@ import {
   Cog,
 } from "lucide-react"
 import { useState, useEffect } from "react"
+import { Logo } from "@/components/logo"
 
 interface SidebarProps {
   activeModule: string
@@ -192,16 +193,8 @@ export function Sidebar({
       >
         <div className="flex items-center justify-between p-3 sm:p-4 border-b border-sidebar-border bg-sidebar/50">
           {(!collapsed || isMobile) && (
-            <div className="flex items-center space-x-2 min-w-0 flex-1">
-              <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center shrink-0">
-                <Shield className="h-4 w-4 text-sidebar-primary-foreground" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base sm:text-lg font-bold text-sidebar-foreground truncate">
-                  {isMobile ? "SST" : "MASTPROD SST"}
-                </h1>
-                <p className="text-xs text-sidebar-foreground/60 truncate hidden sm:block">Gestão Integrada</p>
-              </div>
+            <div className="flex items-center justify-center min-w-0 flex-1">
+              <Logo variant="original" width={140} height={42} className="shrink-0" />
             </div>
           )}
           {!isMobile && (
