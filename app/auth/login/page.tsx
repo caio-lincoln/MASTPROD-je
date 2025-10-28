@@ -27,24 +27,25 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
-
     await withLoading(async () => {
       setError(null)
 
       try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+        const resp = await fetch("/api/auth/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
         })
-        if (error) {
-          // Substitui mensagem padrão por texto amigável em PT-BR
-          setError("E-mail / ou Senha errados")
+        const json = await resp.json()
+        if (!resp.ok || json.success === false) {
+          const msg = json?.error?.message || json?.error || "E-mail / ou Senha errados"
+          setError(msg)
           return
         }
         router.push("/")
       } catch (error: unknown) {
-        setError("E-mail / ou Senha errados")
+        const msg = error instanceof Error ? error.message : "E-mail / ou Senha errados"
+        setError(msg)
       }
     })
   }
