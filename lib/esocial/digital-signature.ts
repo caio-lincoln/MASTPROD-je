@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
+import { apiFetch } from "@/lib/security/client-csrf"
 
 export interface CertificadoDigital {
   id: string
@@ -74,7 +75,7 @@ export class DigitalSignatureService {
     const certificadoBuffer = await this.downloadCertificadoFromStorage(certificado.arquivo_url, certificado.empresa_id)
 
     // Chamar API de assinatura no servidor
-    const response = await fetch("/api/esocial/assinar-xml", {
+    const response = await apiFetch("/api/esocial/assinar-xml", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -103,7 +104,7 @@ export class DigitalSignatureService {
     }
 
     // Para certificado A3, usar API específica que acessa o token
-    const response = await fetch("/api/esocial/assinar-xml-a3", {
+    const response = await apiFetch("/api/esocial/assinar-xml-a3", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

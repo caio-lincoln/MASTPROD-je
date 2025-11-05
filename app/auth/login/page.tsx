@@ -15,6 +15,7 @@ import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/logo"
+import { apiFetch } from "@/lib/security/client-csrf"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -31,7 +32,7 @@ export default function LoginPage() {
       setError(null)
 
       try {
-        const resp = await fetch("/api/auth/signin", {
+        const resp = await apiFetch("/api/auth/signin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),

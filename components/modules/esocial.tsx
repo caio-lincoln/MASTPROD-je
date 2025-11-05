@@ -35,6 +35,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { useToast } from "@/hooks/use-toast"
 import { useCompany } from "@/contexts/company-context"
 import { supabase } from "@/lib/supabase/client"
+import { apiFetch } from "@/lib/security/client-csrf"
 
 interface EventoEsocial {
   id: string
@@ -303,7 +304,7 @@ export function ESocial() {
   const enviarEvento = async (eventoId: string) => {
     setSendingEvent(true)
     try {
-      const response = await fetch("/api/esocial/enviar-evento", {
+      const response = await apiFetch("/api/esocial/enviar-evento", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -354,12 +355,11 @@ export function ESocial() {
     try {
       setEmployeeSyncStatus("Consultando funcionários no eSocial...")
       
-      const response = await fetch("/api/esocial/sync-employees", {
+      const response = await apiFetch("/api/esocial/sync-employees", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include", // Incluir cookies de autenticação
         body: JSON.stringify({
           empresa_id: selectedCompany.id,
         }),
@@ -403,7 +403,7 @@ export function ESocial() {
 
     setLoading(true)
     try {
-      const response = await fetch("/api/esocial/consultar-status", {
+      const response = await apiFetch("/api/esocial/consultar-status", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
