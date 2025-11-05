@@ -62,6 +62,10 @@ const getStatusText = (status: boolean) => {
 export function Employees() {
   const { selectedCompany } = useCompany()
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const PER_PAGE = 20
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const { isLoading, withLoading } = useLoading({ initialState: true })
   const { isLoading: isSaving, withLoading: withSaving } = useLoading()
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
@@ -85,29 +89,46 @@ export function Employees() {
   const { toast } = useToast()
 
   useEffect(() => {
+     if (selectedCompany) {
+       // Sempre volta para a primeira página ao trocar de empresa
+       setCurrentPage(1)
+       loadEmployees()
+     } else {
+       setEmployees([])
+       setTotalCount(0)
+       setTotalPages(1)
+     }
+   }, [selectedCompany])
+
+  // Recarrega ao mudar página
+  useEffect(() => {
     if (selectedCompany) {
       loadEmployees()
-    } else {
-      setEmployees([])
     }
-  }, [selectedCompany])
+  }, [currentPage])
 
   const loadEmployees = async () => {
     if (!selectedCompany) return
 
     await withLoading(async () => {
       try {
-        const { data, error } = await supabase
+        const from = (currentPage - 1) * PER_PAGE
+        const to = from + PER_PAGE - 1
+
+        const { data, error, count } = await supabase
           .from("funcionarios")
-          .select("*")
+          .select("*", { count: "exact" })
           .eq("empresa_id", selectedCompany.id)
           .order("nome")
+          .range(from, to)
 
         if (error) {
           return
         }
 
         setEmployees(data || [])
+        setTotalCount(count || 0)
+        setTotalPages(Math.max(1, Math.ceil((count || 0) / PER_PAGE)))
       } catch (error) {
         // Error handling
       }
@@ -342,7 +363,7 @@ export function Employees() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{employees.length}</div>
+            <div className="text-2xl font-bold">{totalCount}</div>
           </CardContent>
         </Card>
         <Card>
@@ -582,6 +603,34 @@ export function Employees() {
                     </div>
                   </Card>
                 ))}
+              </div>
+              {/* Paginação */}
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-sm text-muted-foreground">
+                  Mostrando {employees.length > 0 ? (currentPage - 1) * PER_PAGE + 1 : 0}
+                  –{employees.length > 0 ? (currentPage - 1) * PER_PAGE + employees.length : 0} de {totalCount}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1 || isLoading}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Página {currentPage} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages || isLoading}
+                  >
+                    Próxima
+                  </Button>
+                </div>
               </div>
             </div>
           )}

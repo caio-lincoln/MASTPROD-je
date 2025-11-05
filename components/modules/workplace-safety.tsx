@@ -176,6 +176,24 @@ export function WorkplaceSafety() {
   const [isInvestigateDialogOpen, setIsInvestigateDialogOpen] = useState(false)
   const [isEvidenceDialogOpen, setIsEvidenceDialogOpen] = useState(false)
   const [isInspectDialogOpen, setIsInspectDialogOpen] = useState(false)
+  // Diálogos de criação
+  const [isCreateInspectionDialogOpen, setIsCreateInspectionDialogOpen] = useState(false)
+  const [isCreateIncidentDialogOpen, setIsCreateIncidentDialogOpen] = useState(false)
+
+  // Formulário: Nova Inspeção
+  const [newInspectionSetor, setNewInspectionSetor] = useState("")
+  const [newInspectionResponsavel, setNewInspectionResponsavel] = useState("")
+  const [newInspectionData, setNewInspectionData] = useState("")
+  const [newInspectionStatus, setNewInspectionStatus] = useState("scheduled")
+  const [newInspectionObservacoes, setNewInspectionObservacoes] = useState("")
+
+  // Formulário: Reportar Incidente
+  const [newIncidentTipo, setNewIncidentTipo] = useState("")
+  const [newIncidentDescricao, setNewIncidentDescricao] = useState("")
+  const [newIncidentData, setNewIncidentData] = useState("")
+  const [newIncidentGravidade, setNewIncidentGravidade] = useState("")
+  const [newIncidentStatus, setNewIncidentStatus] = useState("aberto")
+  const [newIncidentEvidenciasUrl, setNewIncidentEvidenciasUrl] = useState("")
   const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false)
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false)
   
@@ -798,11 +816,15 @@ export function WorkplaceSafety() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <Button variant="outline" className="w-full sm:w-auto bg-transparent">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto bg-transparent"
+            onClick={() => setIsCreateInspectionDialogOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nova Inspeção
           </Button>
-          <Button className="w-full sm:w-auto">
+          <Button className="w-full sm:w-auto" onClick={() => setIsCreateIncidentDialogOpen(true)}>
             <AlertTriangle className="h-4 w-4 mr-2" />
             Reportar Incidente
           </Button>
@@ -1287,6 +1309,201 @@ export function WorkplaceSafety() {
             <Button onClick={handleSaveNextInspection}>
               <Calendar className="h-4 w-4 mr-2" />
               Agendar Inspeção
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo: Nova Inspeção */}
+      <Dialog open={isCreateInspectionDialogOpen} onOpenChange={setIsCreateInspectionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Inspeção</DialogTitle>
+            <DialogDescription>Cadastre uma nova inspeção de segurança</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="setor">Setor *</Label>
+              <Input id="setor" value={newInspectionSetor} onChange={(e) => setNewInspectionSetor(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="responsavel">Responsável *</Label>
+              <Input
+                id="responsavel"
+                value={newInspectionResponsavel}
+                onChange={(e) => setNewInspectionResponsavel(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="data_inspecao">Data da Inspeção *</Label>
+              <Input
+                id="data_inspecao"
+                type="date"
+                value={newInspectionData}
+                onChange={(e) => setNewInspectionData(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Status *</Label>
+              <Select value={newInspectionStatus} onValueChange={setNewInspectionStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scheduled">Agendada</SelectItem>
+                  <SelectItem value="done">Concluída</SelectItem>
+                  <SelectItem value="critical">Crítica</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="observacoes">Observações</Label>
+              <Textarea
+                id="observacoes"
+                value={newInspectionObservacoes}
+                onChange={(e) => setNewInspectionObservacoes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateInspectionDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!newInspectionSetor || !newInspectionResponsavel || !newInspectionData) {
+                  toast({
+                    title: "Erro",
+                    description: "Preencha setor, responsável e data.",
+                    variant: "destructive",
+                  })
+                  return
+                }
+                await handleCreateInspection({
+                  setor: newInspectionSetor,
+                  responsavel: newInspectionResponsavel,
+                  data_inspecao: newInspectionData,
+                  status: newInspectionStatus,
+                  observacoes: newInspectionObservacoes,
+                })
+                setIsCreateInspectionDialogOpen(false)
+                setNewInspectionSetor("")
+                setNewInspectionResponsavel("")
+                setNewInspectionData("")
+                setNewInspectionStatus("scheduled")
+                setNewInspectionObservacoes("")
+              }}
+            >
+              Criar Inspeção
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo: Reportar Incidente */}
+      <Dialog open={isCreateIncidentDialogOpen} onOpenChange={setIsCreateIncidentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reportar Incidente</DialogTitle>
+            <DialogDescription>Registre um novo incidente ou acidente</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Tipo *</Label>
+              <Select value={newIncidentTipo} onValueChange={setNewIncidentTipo}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="incidente">Incidente</SelectItem>
+                  <SelectItem value="acidente">Acidente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="descricao">Descrição *</Label>
+              <Textarea
+                id="descricao"
+                value={newIncidentDescricao}
+                onChange={(e) => setNewIncidentDescricao(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="data_ocorrencia">Data da Ocorrência *</Label>
+              <Input
+                id="data_ocorrencia"
+                type="date"
+                value={newIncidentData}
+                onChange={(e) => setNewIncidentData(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Gravidade *</Label>
+              <Select value={newIncidentGravidade} onValueChange={setNewIncidentGravidade}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione a gravidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="leve">Leve</SelectItem>
+                  <SelectItem value="moderada">Moderada</SelectItem>
+                  <SelectItem value="grave">Grave</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select value={newIncidentStatus} onValueChange={setNewIncidentStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="aberto">Aberto</SelectItem>
+                  <SelectItem value="em análise">Em Análise</SelectItem>
+                  <SelectItem value="resolvido">Resolvido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="evidencias">Evidências (URL)</Label>
+              <Input
+                id="evidencias"
+                value={newIncidentEvidenciasUrl}
+                onChange={(e) => setNewIncidentEvidenciasUrl(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateIncidentDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!newIncidentTipo || !newIncidentDescricao || !newIncidentData || !newIncidentGravidade) {
+                  toast({
+                    title: "Erro",
+                    description: "Preencha tipo, descrição, data e gravidade.",
+                    variant: "destructive",
+                  })
+                  return
+                }
+                await handleCreateIncident({
+                  tipo: newIncidentTipo,
+                  descricao: newIncidentDescricao,
+                  data_ocorrencia: newIncidentData,
+                  gravidade: newIncidentGravidade,
+                  status: newIncidentStatus,
+                  evidencias_url: newIncidentEvidenciasUrl,
+                })
+                setIsCreateIncidentDialogOpen(false)
+                setNewIncidentTipo("")
+                setNewIncidentDescricao("")
+                setNewIncidentData("")
+                setNewIncidentGravidade("")
+                setNewIncidentStatus("aberto")
+                setNewIncidentEvidenciasUrl("")
+              }}
+            >
+              Registrar Incidente
             </Button>
           </DialogFooter>
         </DialogContent>

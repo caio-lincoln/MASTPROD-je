@@ -1447,17 +1447,7 @@ export function ESocialIntegration() {
                   Sincronize os funcionários da empresa com o eSocial
                 </CardDescription>
               </div>
-              <Button
-                onClick={syncEmployees}
-                disabled={syncingEmployees || !globalConfig.certificateConfigured}
-              >
-                {syncingEmployees ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                {syncingEmployees ? "Sincronizando..." : "Sincronizar Funcionários"}
-              </Button>
+              {/* Botão de sincronização removido conforme solicitado */}
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Status da Sincronização */}

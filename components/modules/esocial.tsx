@@ -671,10 +671,6 @@ export function ESocial() {
           </p>
         </div>
         <div className="flex space-x-2">
-          <Button variant="outline" onClick={syncEmployees} disabled={syncingEmployees}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${syncingEmployees ? "animate-spin" : ""}`} />
-            {syncingEmployees ? "Sincronizando..." : "Sincronizar Funcionários"}
-          </Button>
           <Button variant="outline" onClick={consultarStatus} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Consultar Status
