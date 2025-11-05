@@ -32,6 +32,16 @@ export function getSecurityHeaders(): Record<string, string> {
     "wss:",
     ...(isDev ? ["ws:"] : []),
   ]
+  // Permitir carregamento de imagens locais, data URLs, blobs e do Supabase/HTTPS
+  const imgSrc = [
+    "'self'",
+    "data:",
+    "blob:",
+    // Supabase Storage (ex.: https://<project>.supabase.co/storage/..)
+    ...(supabaseHost ? [`https://${supabaseHost}`] : []),
+    // Demais CDNs/hosts seguros via HTTPS
+    "https:",
+  ]
 
   const csp = [
     "default-src 'self'",
@@ -39,7 +49,7 @@ export function getSecurityHeaders(): Record<string, string> {
     "object-src 'none'",
     `script-src ${scriptSrc.join(" ")}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    `img-src ${imgSrc.join(" ")}`,
     "font-src 'self' data:",
     `connect-src ${connectSrc.join(" ")}`,
     isDev ? "frame-ancestors *" : "frame-ancestors 'none'",
