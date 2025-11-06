@@ -15,6 +15,7 @@ interface FileUploadProps {
   maxSizeMB?: number
   accept?: string
   className?: string
+  empresaId?: string
 }
 
 interface UploadingFile {
@@ -32,6 +33,7 @@ export function FileUpload({
   maxSizeMB = 10,
   accept,
   className = "",
+  empresaId,
 }: FileUploadProps) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
@@ -77,7 +79,7 @@ export function FileUpload({
           )
         }, 100)
 
-        const result = await uploadArquivo(file, type)
+        const result = await uploadArquivo(file, type, undefined, empresaId)
 
         clearInterval(progressInterval)
 

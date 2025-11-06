@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { formatDateSafe } from "@/lib/utils/date-utils"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { uploadArquivo } from "@/lib/supabase/storage"
+import { uploadArquivo, getSignedUrl } from "@/lib/supabase/storage"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 
@@ -195,6 +195,7 @@ export function WorkplaceSafety() {
   const [newIncidentGravidade, setNewIncidentGravidade] = useState("")
   const [newIncidentStatus, setNewIncidentStatus] = useState("aberto")
   const [newIncidentEvidenciasUrl, setNewIncidentEvidenciasUrl] = useState("")
+  const [newIncidentEvidencePaths, setNewIncidentEvidencePaths] = useState<string[]>([])
   const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false)
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false)
   
@@ -385,9 +386,16 @@ export function WorkplaceSafety() {
   const handleUploadEvidence = async (file: File, incidentId: string) => {
     try {
       const fileName = `incident-${incidentId}-${Date.now()}-${file.name}`
-      const filePath = await uploadArquivo(file, "evidencias", selectedCompany?.id || "", fileName)
+      const result = await uploadArquivo(file, "evidencias", fileName, selectedCompany?.id || "")
 
-      const { error } = await supabase.from("incidentes").update({ evidencia_url: filePath }).eq("id", incidentId)
+      if (!result || result.error) {
+        throw new Error(result?.error || "Erro no upload")
+      }
+
+      const { error } = await supabase
+        .from("incidentes")
+        .update({ evidencias_url: result.path })
+        .eq("id", incidentId)
 
       if (error) throw error
 
@@ -1021,7 +1029,18 @@ export function WorkplaceSafety() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(incident.evidencias_url, "_blank")}
+                            onClick={async () => {
+                              const signed = await getSignedUrl(incident.evidencias_url!, "evidencias")
+                              if (signed) {
+                                window.open(signed, "_blank")
+                              } else {
+                                toast({
+                                  title: "Erro",
+                                  description: "Não foi possível gerar link de download.",
+                                  variant: "destructive",
+                                })
+                              }
+                            }}
                           >
                             <Download className="h-4 w-4 mr-1" />
                             Download
@@ -1472,6 +1491,36 @@ export function WorkplaceSafety() {
                 onChange={(e) => setNewIncidentEvidenciasUrl(e.target.value)}
               />
             </div>
+            <div>
+              <Label>Evidências (Upload)</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Formatos aceitos: Imagens (JPG, PNG, GIF, WEBP), Vídeos (MP4, AVI, MOV, WMV, WEBM),
+                Áudios (MP3, WAV, OGG, M4A, AAC), Documentos (PDF, DOC, DOCX, TXT)
+              </p>
+              <FileUpload
+                type="evidencias"
+                maxFiles={5}
+                empresaId={selectedCompany?.id}
+                onUploadComplete={(url, path) => {
+                  if (path) {
+                    setNewIncidentEvidencePaths((prev) => [...prev, path])
+                  }
+                }}
+                onUploadError={(error) => {
+                  toast({
+                    title: "Erro no upload",
+                    description: error || "Falha ao enviar arquivo de evidência.",
+                    variant: "destructive",
+                  })
+                }}
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.txt,.mp4,.avi,.mov,.wmv,.webm,.mp3,.wav,.m4a,.ogg,.aac"
+              />
+              {newIncidentEvidencePaths.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {newIncidentEvidencePaths.length} arquivo(s) de evidência anexado(s)
+                </p>
+              )}
+              </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateIncidentDialogOpen(false)}>
@@ -1493,7 +1542,7 @@ export function WorkplaceSafety() {
                   data_ocorrencia: newIncidentData,
                   gravidade: newIncidentGravidade,
                   status: newIncidentStatus,
-                  evidencias_url: newIncidentEvidenciasUrl,
+                  evidencias_url: newIncidentEvidenciasUrl || newIncidentEvidencePaths[0] || "",
                 })
                 setIsCreateIncidentDialogOpen(false)
                 setNewIncidentTipo("")
@@ -1502,6 +1551,7 @@ export function WorkplaceSafety() {
                 setNewIncidentGravidade("")
                 setNewIncidentStatus("aberto")
                 setNewIncidentEvidenciasUrl("")
+                setNewIncidentEvidencePaths([])
               }}
             >
               Registrar Incidente
@@ -1569,7 +1619,18 @@ export function WorkplaceSafety() {
                        <Button
                          variant="outline"
                          size="sm"
-                         onClick={() => window.open(selectedIncident.evidencias_url, '_blank')}
+                         onClick={async () => {
+                           const signed = await getSignedUrl(selectedIncident.evidencias_url!, "evidencias")
+                           if (signed) {
+                             window.open(signed, '_blank')
+                           } else {
+                             toast({
+                               title: "Erro",
+                               description: "Não foi possível gerar link de download.",
+                               variant: "destructive",
+                             })
+                           }
+                         }}
                        >
                          <Download className="h-4 w-4 mr-1" />
                          Baixar
@@ -1620,9 +1681,10 @@ export function WorkplaceSafety() {
                 <p className="text-xs text-muted-foreground mb-2">
                   Formatos aceitos: Imagens (JPG, PNG), Vídeos (MP4, AVI), Áudios (MP3, WAV), Documentos (PDF, DOC)
                 </p>
-                <FileUpload
-                  type="evidencias"
-                  onUploadComplete={async (url, path) => {
+                  <FileUpload
+                    type="evidencias"
+                    empresaId={selectedCompany?.id}
+                    onUploadComplete={async (url, path) => {
                     if (selectedIncident && path) {
                       try {
                         const { error } = await supabase

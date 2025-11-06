@@ -1,10 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
-import { getSupabaseUrl, getSupabaseAnonKey } from "@/lib/config/supabase-config"
-
-const supabaseUrl = getSupabaseUrl()
-const supabaseKey = getSupabaseAnonKey()
-
-const supabase = createClient(supabaseUrl, supabaseKey)
+import { supabase } from "@/lib/supabase/client"
 
 export type FileType =
   | "aso"
@@ -28,7 +22,7 @@ export interface UploadResult {
 const BUCKET_MAPPING: Record<FileType, string> = {
   aso: "asos",
   certificados: "certificados",
-  evidencias: "documentos",
+  evidencias: "evidencias-incidentes",
   epis: "documentos",
   logos: "documentos",
   usuarios: "documentos",
@@ -61,6 +55,7 @@ export async function uploadArquivo(
     const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
       cacheControl: "3600",
       upsert: false,
+      contentType: file.type || undefined,
     })
 
     if (error) {
@@ -156,7 +151,31 @@ export function validarTipoArquivo(file: File, type: FileType): boolean {
   const allowedTypes: Record<FileType, string[]> = {
     aso: ["application/pdf", "image/jpeg", "image/png"],
     certificados: ["application/pdf", "image/jpeg", "image/png"],
-    evidencias: ["image/jpeg", "image/png", "video/mp4", "application/pdf"],
+    evidencias: [
+      // Imagens
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      // Vídeos
+      "video/mp4",
+      "video/avi",
+      "video/mov",
+      "video/wmv",
+      "video/webm",
+      // Áudio
+      "audio/mp3",
+      "audio/wav",
+      "audio/ogg",
+      "audio/m4a",
+      "audio/aac",
+      // Documentos
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ],
     epis: ["image/jpeg", "image/png", "application/pdf"],
     logos: ["image/jpeg", "image/png", "image/svg+xml"],
     usuarios: ["image/jpeg", "image/png"],
@@ -186,7 +205,7 @@ export function validarTamanhoArquivo(file: File, type: FileType): boolean {
   const maxSizes: Record<FileType, number> = {
     aso: 10,
     certificados: 10,
-    evidencias: 25,
+    evidencias: 100,
     epis: 10,
     logos: 5,
     usuarios: 5,
