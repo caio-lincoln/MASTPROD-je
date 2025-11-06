@@ -155,13 +155,14 @@ export function ProfileEditDialog({
     if (!avatarFile) return null
 
     const fileExt = avatarFile.name.split('.').pop()
-    const fileName = `${user.id}/avatar.${fileExt}`
+    const fileName = `${user.id}/avatar-${Date.now()}.${fileExt}`
 
     const { error: uploadError } = await supabase.storage
       .from('profile-pictures')
       .upload(fileName, avatarFile, {
         upsert: true,
-        contentType: avatarFile.type
+        contentType: avatarFile.type,
+        cacheControl: '0',
       })
 
     if (uploadError) {
@@ -172,7 +173,8 @@ export function ProfileEditDialog({
       .from('profile-pictures')
       .getPublicUrl(fileName)
 
-    return data.publicUrl
+    // Cache busting para garantir atualização imediata no cliente
+    return `${data.publicUrl}?v=${Date.now()}`
   }
 
   const handleSave = async () => {
