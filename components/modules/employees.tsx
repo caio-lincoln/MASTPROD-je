@@ -639,7 +639,7 @@ export function Employees() {
 
       {/* Dialog de Visualização */}
       <Dialog open={!!selectedEmployee} onOpenChange={() => setSelectedEmployee(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Funcionário</DialogTitle>
             <DialogDescription>Informações completas do funcionário selecionado</DialogDescription>
@@ -702,7 +702,7 @@ export function Employees() {
 
       {/* Dialog de Novo Funcionário */}
       <Dialog open={isNewEmployeeDialogOpen} onOpenChange={setIsNewEmployeeDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Funcionário</DialogTitle>
             <DialogDescription>Cadastre um novo funcionário na empresa</DialogDescription>
@@ -796,7 +796,7 @@ export function Employees() {
 
       {/* Dialog de Edição */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Funcionário</DialogTitle>
             <DialogDescription>Atualize as informações do funcionário</DialogDescription>
@@ -890,7 +890,7 @@ export function Employees() {
 
       {/* Dialog de Confirmação de Exclusão */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-lg sm:max-w-xl max-h-[80vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
             <AlertDialogDescription>
@@ -899,7 +899,7 @@ export function Employees() {
                 : "Tem certeza que deseja excluir este funcionário?"}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:space-x-2 justify-end">
             <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}

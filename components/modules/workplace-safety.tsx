@@ -121,18 +121,25 @@ interface SafetyReport {
 }
 
 const getStatusColor = (status: string) => {
-  switch (status) {
-    case "Concluída":
-    case "Ativo":
-    case "Resolvido":
+  const s = (status || "").toLowerCase()
+  switch (s) {
+    // Estados gerais
+    case "concluída":
+    case "concluida":
+    case "ativo":
+    case "resolvido":
       return "default"
-    case "Pendente":
-    case "Investigando":
+    case "pendente":
+    case "investigando":
+    case "em análise":
+    case "em analise":
       return "secondary"
-    case "Vencida":
-    case "Crítico":
+    case "vencida":
+    case "crítico":
+    case "critico":
       return "destructive"
-    case "Manutenção":
+    case "manutenção":
+    case "manutencao":
       return "outline"
     default:
       return "secondary"
@@ -140,14 +147,21 @@ const getStatusColor = (status: string) => {
 }
 
 const getSeverityColor = (severity: string) => {
-  switch (severity) {
-    case "Baixa":
+  const s = (severity || "").toLowerCase()
+  switch (s) {
+    // Gravidades com variações
+    case "baixa":
+    case "leve":
       return "default"
-    case "Média":
+    case "média":
+    case "media":
+    case "moderada":
       return "secondary"
-    case "Alta":
+    case "alta":
+    case "grave":
       return "destructive"
-    case "Crítica":
+    case "crítica":
+    case "critica":
       return "destructive"
     default:
       return "secondary"
@@ -1204,7 +1218,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo de Detalhes da Inspeção */}
       <Dialog open={isInspectionDialogOpen} onOpenChange={setIsInspectionDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes da Inspeção</DialogTitle>
             <DialogDescription>
@@ -1422,7 +1436,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo: Reportar Incidente */}
       <Dialog open={isCreateIncidentDialogOpen} onOpenChange={setIsCreateIncidentDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Reportar Incidente</DialogTitle>
             <DialogDescription>Registre um novo incidente ou acidente</DialogDescription>
@@ -1562,7 +1576,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo de Detalhes do Incidente */}
       <Dialog open={isIncidentDialogOpen} onOpenChange={setIsIncidentDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Incidente</DialogTitle>
             <DialogDescription>
@@ -1735,7 +1749,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo de Detalhes do Equipamento */}
       <Dialog open={isEquipmentDialogOpen} onOpenChange={setIsEquipmentDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Equipamento</DialogTitle>
             <DialogDescription>
@@ -1744,7 +1758,7 @@ export function WorkplaceSafety() {
           </DialogHeader>
           {selectedEquipment && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Nome</Label>
                   <div className="mt-1 p-3 bg-muted rounded-lg">
@@ -1758,7 +1772,7 @@ export function WorkplaceSafety() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Quantidade</Label>
                   <div className="mt-1 p-3 bg-muted rounded-lg">
@@ -1793,7 +1807,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo de Inspeção do Equipamento */}
       <Dialog open={isInspectDialogOpen} onOpenChange={setIsInspectDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Inspecionar Equipamento</DialogTitle>
             <DialogDescription>
@@ -1890,7 +1904,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo de Manutenção do Equipamento */}
       <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Agendar Manutenção</DialogTitle>
             <DialogDescription>
@@ -1908,7 +1922,7 @@ export function WorkplaceSafety() {
                   <strong>Tipo:</strong> {selectedEquipment.tipo}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="maintenance-date">Data da Manutenção</Label>
                   <Input
@@ -1987,7 +2001,7 @@ export function WorkplaceSafety() {
 
       {/* Diálogo de Histórico do Equipamento */}
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Histórico do Equipamento</DialogTitle>
             <DialogDescription>

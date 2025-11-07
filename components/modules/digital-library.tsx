@@ -779,7 +779,7 @@ export default function DigitalLibraryComponent() {
 
       {/* New Document Dialog */}
       <Dialog open={isNewDocumentDialogOpen} onOpenChange={setIsNewDocumentDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Documento</DialogTitle>
             <DialogDescription>Adicione um novo documento à biblioteca digital.</DialogDescription>
@@ -875,7 +875,7 @@ export default function DigitalLibraryComponent() {
 
       {/* Edit Document Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Documento</DialogTitle>
             <DialogDescription>Edite as informações do documento selecionado.</DialogDescription>
@@ -974,7 +974,7 @@ export default function DigitalLibraryComponent() {
 
       {/* Details Document Dialog */}
       <Dialog open={isDetailsDialogOpen} onOpenChange={() => setIsDetailsDialogOpen(false)}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedDocument?.titulo}</DialogTitle>
             <DialogDescription>Detalhes do documento.</DialogDescription>

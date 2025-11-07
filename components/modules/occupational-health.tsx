@@ -47,6 +47,7 @@ interface ExameAso {
   tipo_exame: string
   data_exame: string
   data_proximo_exame: string
+  medico_id?: string
   medico_responsavel: string
   resultado: string
   status: string
@@ -60,6 +61,16 @@ interface Funcionario {
   id: string
   nome: string
   cargo: string
+}
+
+interface Medico {
+  id: string
+  nome: string
+  crm?: string
+  especialidade?: string
+  email?: string
+  telefone?: string
+  ativo: boolean
 }
 
 const getStatusColor = (status: string) => {
@@ -102,12 +113,14 @@ const calculateExamStatus = (proximoExame: string): string => {
 export function OccupationalHealth() {
   const [exames, setExames] = useState<ExameAso[]>([])
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
+  const [medicos, setMedicos] = useState<Medico[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedExam, setSelectedExam] = useState<ExameAso | null>(null)
   const [showExamDetails, setShowExamDetails] = useState(false)
   const [showAsoDialog, setShowAsoDialog] = useState(false)
   const [showNewExamDialog, setShowNewExamDialog] = useState(false)
+  const [showNewDoctorDialog, setShowNewDoctorDialog] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<ExameAso | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -115,7 +128,7 @@ export function OccupationalHealth() {
     funcionario_id: "",
     tipo_exame: "",
     data_exame: "",
-    medico_responsavel: "",
+    medico_responsavel_id: "",
     observacoes: "",
   })
 
@@ -123,12 +136,21 @@ export function OccupationalHealth() {
     funcionario_id: "",
     tipo_exame: "",
     data_exame: "",
-    medico_responsavel: "",
+    medico_responsavel_id: "",
     resultado: "apto",
     data_proximo_exame: "",
     observacoes: "",
     riscos_ocupacionais: "",
     arquivo_url: "",
+  })
+
+  const [newDoctorData, setNewDoctorData] = useState({
+    nome: "",
+    crm: "",
+    especialidade: "",
+    email: "",
+    telefone: "",
+    ativo: true,
   })
 
   const { selectedCompany } = useCompany()
@@ -138,6 +160,7 @@ export function OccupationalHealth() {
     if (selectedCompany) {
       loadExames()
       loadFuncionarios()
+      loadMedicos()
     }
   }, [selectedCompany])
 
@@ -165,7 +188,8 @@ export function OccupationalHealth() {
         tipo_exame: exam.tipo_exame,
         data_exame: exam.data_exame,
         data_proximo_exame: exam.data_proximo_exame,
-        medico_responsavel: exam.medico_responsavel,
+        medico_id: exam.medico_id,
+        medico_responsavel: exam.medico_responsavel || exam.medico_nome,
         resultado: exam.resultado,
         status: calculateExamStatus(exam.data_proximo_exame),
         observacoes: exam.observacoes,
@@ -177,6 +201,50 @@ export function OccupationalHealth() {
       setExames(transformedExames)
     } catch (error) {
       console.error("Erro ao carregar exames:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadMedicos = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from("medicos")
+        .select("id, nome, crm, especialidade, email, telefone, ativo")
+        .eq("empresa_id", selectedCompany.id)
+        .order("nome")
+
+      if (error) throw error
+      setMedicos(data || [])
+    } catch (error) {
+      console.error("Erro ao carregar médicos:", error)
+    }
+  }
+
+  const handleCreateDoctor = async () => {
+    if (!selectedCompany || !newDoctorData.nome) return
+
+    try {
+      setLoading(true)
+      const { error } = await supabase.from("medicos").insert({
+        empresa_id: selectedCompany.id,
+        nome: newDoctorData.nome,
+        crm: newDoctorData.crm || null,
+        especialidade: newDoctorData.especialidade || null,
+        email: newDoctorData.email || null,
+        telefone: newDoctorData.telefone || null,
+        ativo: newDoctorData.ativo,
+      })
+
+      if (error) throw error
+
+      setShowNewDoctorDialog(false)
+      setNewDoctorData({ nome: "", crm: "", especialidade: "", email: "", telefone: "", ativo: true })
+      await loadMedicos()
+    } catch (error) {
+      console.error("Erro ao cadastrar médico:", error)
     } finally {
       setLoading(false)
     }
@@ -219,11 +287,14 @@ export function OccupationalHealth() {
 
   const handleGenerateAso = (exam?: ExameAso) => {
     if (exam) {
+      const matchedMedico = exam.medico_id
+        ? medicos.find((m) => m.id === exam.medico_id)
+        : medicos.find((m) => m.nome === exam.medico_responsavel)
       setAsoData({
         funcionario_id: exam.funcionario_id,
         tipo_exame: exam.tipo_exame,
         data_exame: exam.data_exame,
-        medico_responsavel: exam.medico_responsavel,
+        medico_responsavel_id: matchedMedico ? matchedMedico.id : "",
         resultado: exam.resultado || "apto",
         data_proximo_exame: exam.data_proximo_exame,
         observacoes: exam.observacoes || "",
@@ -236,7 +307,7 @@ export function OccupationalHealth() {
   }
 
   const handleCreateExam = async () => {
-    if (!selectedCompany || !newExamData.funcionario_id || !newExamData.tipo_exame) return
+    if (!selectedCompany || !newExamData.funcionario_id || !newExamData.tipo_exame || !newExamData.medico_responsavel_id) return
 
     try {
       setLoading(true)
@@ -246,13 +317,17 @@ export function OccupationalHealth() {
       const nextExamDate = new Date(examDate)
       nextExamDate.setFullYear(nextExamDate.getFullYear() + 1)
 
+      const selectedMedico = medicos.find((m) => m.id === newExamData.medico_responsavel_id)
+      const medicoNome = selectedMedico ? selectedMedico.nome : ""
+
       const { error } = await supabase.from("exames_aso").insert({
         empresa_id: selectedCompany.id,
         funcionario_id: newExamData.funcionario_id,
         tipo_exame: newExamData.tipo_exame,
         data_exame: newExamData.data_exame,
         data_proximo_exame: nextExamDate.toISOString().split("T")[0],
-        medico_responsavel: newExamData.medico_responsavel,
+        medico_id: newExamData.medico_responsavel_id,
+        medico_responsavel: medicoNome,
         resultado: "Agendado",
         observacoes: newExamData.observacoes,
       })
@@ -264,7 +339,7 @@ export function OccupationalHealth() {
         funcionario_id: "",
         tipo_exame: "",
         data_exame: "",
-        medico_responsavel: "",
+        medico_responsavel_id: "",
         observacoes: "",
       })
       setShowNewExamDialog(false)
@@ -277,19 +352,23 @@ export function OccupationalHealth() {
   }
 
   const handleAsoSubmit = async () => {
-    if (!selectedCompany || !asoData.funcionario_id) return
+    if (!selectedCompany || !asoData.funcionario_id || !asoData.medico_responsavel_id) return
 
     try {
       setUploading(true)
 
       // Update or create ASO record
+      const selectedMedico = medicos.find((m) => m.id === asoData.medico_responsavel_id)
+      const medicoNome = selectedMedico ? selectedMedico.nome : ""
+
       const { error } = await supabase.from("exames_aso").upsert({
         empresa_id: selectedCompany.id,
         funcionario_id: asoData.funcionario_id,
         tipo_exame: asoData.tipo_exame,
         data_exame: asoData.data_exame,
         data_proximo_exame: asoData.data_proximo_exame,
-        medico_responsavel: asoData.medico_responsavel,
+        medico_id: asoData.medico_responsavel_id,
+        medico_responsavel: medicoNome,
         resultado: asoData.resultado,
         observacoes: asoData.observacoes,
         arquivo_url: asoData.arquivo_url || undefined,
@@ -375,7 +454,7 @@ export function OccupationalHealth() {
               Agendar Exame
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Agendar Novo Exame</DialogTitle>
               <DialogDescription>
@@ -383,7 +462,7 @@ export function OccupationalHealth() {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Funcionário *</Label>
                   <Select
@@ -422,7 +501,7 @@ export function OccupationalHealth() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Data do Exame *</Label>
                   <Input
@@ -431,23 +510,30 @@ export function OccupationalHealth() {
                     onChange={(e) => setNewExamData((prev) => ({ ...prev, data_exame: e.target.value }))}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Médico Responsável *</Label>
-                  <Select
-                    value={newExamData.medico_responsavel}
-                    onValueChange={(value) => setNewExamData((prev) => ({ ...prev, medico_responsavel: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o médico" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Dr. Carlos Santos">Dr. Carlos Santos</SelectItem>
-                      <SelectItem value="Dra. Ana Costa">Dra. Ana Costa</SelectItem>
-                      <SelectItem value="Dr. Roberto Lima">Dr. Roberto Lima</SelectItem>
-                      <SelectItem value="Dra. Fernanda Silva">Dra. Fernanda Silva</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Médico Responsável *</Label>
+                <Select
+                  value={newExamData.medico_responsavel_id}
+                  onValueChange={(value) => setNewExamData((prev) => ({ ...prev, medico_responsavel_id: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o médico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {medicos.length > 0 ? (
+                      medicos.filter((m) => m.ativo).map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.nome}{m.crm ? ` • CRM ${m.crm}` : ""}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="" disabled>
+                        Nenhum médico cadastrado
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
               </div>
 
               <div className="space-y-2">
@@ -476,6 +562,7 @@ export function OccupationalHealth() {
           <TabsTrigger value="exames">Controle de Exames</TabsTrigger>
           <TabsTrigger value="calendario">Calendário</TabsTrigger>
           <TabsTrigger value="asos">ASOs</TabsTrigger>
+          <TabsTrigger value="medicos">Médicos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="exames" className="space-y-4">
@@ -716,17 +803,152 @@ export function OccupationalHealth() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="medicos" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-xl font-semibold">Médicos da Empresa</h2>
+              <p className="text-muted-foreground">Gerencie os médicos vinculados a {selectedCompany.name}</p>
+            </div>
+            <Dialog open={showNewDoctorDialog} onOpenChange={setShowNewDoctorDialog}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Médico
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Novo Médico</DialogTitle>
+                  <DialogDescription>Cadastre um médico responsável para exames e ASO.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Nome *</Label>
+                      <Input
+                        value={newDoctorData.nome}
+                        onChange={(e) => setNewDoctorData((prev) => ({ ...prev, nome: e.target.value }))}
+                        placeholder="Nome completo"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>CRM</Label>
+                      <Input
+                        value={newDoctorData.crm}
+                        onChange={(e) => setNewDoctorData((prev) => ({ ...prev, crm: e.target.value }))}
+                        placeholder="Número de CRM"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Especialidade</Label>
+                      <Input
+                        value={newDoctorData.especialidade}
+                        onChange={(e) => setNewDoctorData((prev) => ({ ...prev, especialidade: e.target.value }))}
+                        placeholder="Ex.: Medicina do Trabalho"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Telefone</Label>
+                      <Input
+                        value={newDoctorData.telefone}
+                        onChange={(e) => setNewDoctorData((prev) => ({ ...prev, telefone: e.target.value }))}
+                        placeholder="(11) 99999-9999"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        value={newDoctorData.email}
+                        onChange={(e) => setNewDoctorData((prev) => ({ ...prev, email: e.target.value }))}
+                        placeholder="email@exemplo.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select
+                        value={newDoctorData.ativo ? "ativo" : "inativo"}
+                        onValueChange={(value) => setNewDoctorData((prev) => ({ ...prev, ativo: value === "ativo" }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ativo">Ativo</SelectItem>
+                          <SelectItem value="inativo">Inativo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setShowNewDoctorDialog(false)}>Cancelar</Button>
+                  <Button onClick={handleCreateDoctor} disabled={loading}>{loading ? "Salvando..." : "Salvar"}</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Lista de Médicos</CardTitle>
+              <CardDescription>Médicos disponíveis para seleção como responsável</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>CRM</TableHead>
+                    <TableHead>Especialidade</TableHead>
+                    <TableHead>Contato</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {medicos.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">{m.nome}</TableCell>
+                      <TableCell>{m.crm || "-"}</TableCell>
+                      <TableCell>{m.especialidade || "-"}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {m.email && <div className="text-sm text-muted-foreground">{m.email}</div>}
+                          {m.telefone && <div className="text-sm text-muted-foreground">{m.telefone}</div>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={m.ativo ? "default" : "secondary"}>{m.ativo ? "Ativo" : "Inativo"}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {medicos.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhum médico cadastrado para {selectedCompany.name}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
 
       <Dialog open={showExamDetails} onOpenChange={setShowExamDetails}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes do Exame Médico</DialogTitle>
             <DialogDescription>Informações completas do exame ocupacional</DialogDescription>
           </DialogHeader>
           {selectedExam && (
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Funcionário</Label>
                   <p className="font-medium">{selectedExam.funcionario_nome}</p>
@@ -736,7 +958,7 @@ export function OccupationalHealth() {
                   <p>{selectedExam.funcionario_cargo}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Tipo de Exame</Label>
                   <p>{selectedExam.tipo_exame}</p>
@@ -799,7 +1021,7 @@ export function OccupationalHealth() {
       </Dialog>
 
       <Dialog open={showAsoDialog} onOpenChange={setShowAsoDialog}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gerar Atestado de Saúde Ocupacional (ASO)</DialogTitle>
             <DialogDescription>
@@ -808,7 +1030,7 @@ export function OccupationalHealth() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Funcionário *</Label>
                 <Select
@@ -847,7 +1069,7 @@ export function OccupationalHealth() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Data do Exame *</Label>
                 <Input
@@ -859,23 +1081,30 @@ export function OccupationalHealth() {
               <div className="space-y-2">
                 <Label>Médico Responsável *</Label>
                 <Select
-                  value={asoData.medico_responsavel}
-                  onValueChange={(value) => setAsoData((prev) => ({ ...prev, medico_responsavel: value }))}
+                  value={asoData.medico_responsavel_id}
+                  onValueChange={(value) => setAsoData((prev) => ({ ...prev, medico_responsavel_id: value }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o médico" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Dr. Carlos Santos">Dr. Carlos Santos</SelectItem>
-                    <SelectItem value="Dra. Ana Costa">Dra. Ana Costa</SelectItem>
-                    <SelectItem value="Dr. Roberto Lima">Dr. Roberto Lima</SelectItem>
-                    <SelectItem value="Dra. Fernanda Silva">Dra. Fernanda Silva</SelectItem>
+                    {medicos.length > 0 ? (
+                      medicos.filter((m) => m.ativo).map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.nome}{m.crm ? ` • CRM ${m.crm}` : ""}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="" disabled>
+                        Nenhum médico cadastrado
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Resultado do Exame *</Label>
                 <Select

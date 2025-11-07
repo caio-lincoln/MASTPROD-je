@@ -1461,7 +1461,7 @@ export function SettingsComponent() {
 
         {/* Dialog para Empresa */}
         <Dialog open={isCompanyDialogOpen} onOpenChange={setIsCompanyDialogOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingCompany ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
               <DialogDescription>
@@ -1840,7 +1840,7 @@ export function SettingsComponent() {
         setIsUserDialogOpen(open)
         if (!open) setEditingUser(null)
       }}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingUser ? "Editar Usuário" : "Novo Usuário"}</DialogTitle>
             <DialogDescription>
@@ -1861,7 +1861,7 @@ export function SettingsComponent() {
 
       {/* Dialog de Função */}
       <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingRole ? "Editar Função" : "Nova Função"}</DialogTitle>
             <DialogDescription>
@@ -1922,7 +1922,7 @@ export function SettingsComponent() {
 
       {/* Dialog de Configuração eSocial */}
       <Dialog open={isEsocialDialogOpen} onOpenChange={setIsEsocialDialogOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Configuração Global eSocial</DialogTitle>
             <DialogDescription>
@@ -2122,7 +2122,7 @@ export function SettingsComponent() {
 
        {/* Dialog de Configuração de E-mail */}
        <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
-         <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
            <DialogHeader>
              <DialogTitle>Configuração de E-mail</DialogTitle>
              <DialogDescription>
@@ -2206,7 +2206,7 @@ export function SettingsComponent() {
 
        {/* Dialog de Configuração de SMS */}
        <Dialog open={isSmsDialogOpen} onOpenChange={setIsSmsDialogOpen}>
-         <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
            <DialogHeader>
              <DialogTitle>Configuração SMS</DialogTitle>
              <DialogDescription>
@@ -2277,7 +2277,7 @@ export function SettingsComponent() {
 
        {/* Dialog de Configuração de Backup */}
        <Dialog open={isBackupDialogOpen} onOpenChange={setIsBackupDialogOpen}>
-         <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
            <DialogHeader>
              <DialogTitle>Configuração de Backup</DialogTitle>
              <DialogDescription>

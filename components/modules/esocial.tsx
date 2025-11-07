@@ -682,7 +682,7 @@ export function ESocial() {
                 Gerar Evento
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Gerar Novo Evento eSocial</DialogTitle>
                 <DialogDescription>
@@ -758,7 +758,7 @@ export function ESocial() {
                   </div>
                 )}
 
-                <div className="flex justify-end space-x-2">
+                <div className="flex flex-col-reverse sm:flex-row gap-2 sm:space-x-2 justify-end">
                   <Button variant="outline" onClick={() => setShowGerarDialog(false)}>
                     Cancelar
                   </Button>

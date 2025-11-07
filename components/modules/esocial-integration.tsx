@@ -554,6 +554,13 @@ export function ESocialIntegration() {
         .from("exames_aso")
         .select(`
           *,
+          medico_id,
+          medico_responsavel,
+          medicos (
+            id,
+            nome,
+            crm
+          ),
           funcionarios (
             id,
             nome,
@@ -2163,7 +2170,7 @@ export function ESocialIntegration() {
       </Tabs>
 
       <Dialog open={showEventTypeDialog} onOpenChange={setShowEventTypeDialog}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedEventTypeForEdit ? "Editar Tipo de Evento" : "Novo Tipo de Evento"}</DialogTitle>
             <DialogDescription>Configure as informações e layout XML do tipo de evento eSocial</DialogDescription>
@@ -2244,7 +2251,7 @@ export function ESocialIntegration() {
       </Dialog>
 
       <Dialog open={showEventGenerationDialog} onOpenChange={setShowEventGenerationDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gerar Eventos eSocial</DialogTitle>
             <DialogDescription>Selecione os dados para gerar eventos automaticamente</DialogDescription>

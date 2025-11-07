@@ -497,13 +497,13 @@ export function NonConformities() {
               Nova Não Conformidade
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Nova Não Conformidade</DialogTitle>
               <DialogDescription>Registre uma nova não conformidade para {selectedCompany.name}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Título *</Label>
                   <Input
@@ -532,7 +532,7 @@ export function NonConformities() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Categoria *</Label>
                   <Select
@@ -571,7 +571,7 @@ export function NonConformities() {
                   <Label>Data Prazo *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant={"outline"} className={cn("w-[280px]", "pl-3", "text-sm", "font-normal")}>
+                      <Button variant={"outline"} className={cn("w-full sm:w-[280px]", "pl-3", "text-sm", "font-normal")}>
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {format(formData.data_prazo, "dd/MM/yyyy")}
                       </Button>
@@ -891,14 +891,14 @@ export function NonConformities() {
 
       {/* View NC Dialog */}
       <Dialog open={isViewNCOpen} onOpenChange={setIsViewNCOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes da Não Conformidade</DialogTitle>
             <DialogDescription>Informações completas da não conformidade</DialogDescription>
           </DialogHeader>
           {selectedNC && (
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Título</Label>
                   <p className="font-medium">{selectedNC.titulo}</p>
@@ -912,7 +912,7 @@ export function NonConformities() {
                 <Label className="text-sm font-medium text-muted-foreground">Descrição</Label>
                 <p className="text-sm">{selectedNC.descricao}</p>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Categoria</Label>
                   <p>{getTypeLabel(selectedNC.categoria)}</p>
@@ -933,7 +933,7 @@ export function NonConformities() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-muted-foreground">Responsável</Label>
                   <p>{selectedNC.responsavel}</p>
@@ -971,7 +971,7 @@ export function NonConformities() {
 
       {/* Edit NC Dialog */}
       <Dialog open={isEditNCOpen} onOpenChange={setIsEditNCOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Não Conformidade</DialogTitle>
             <DialogDescription>
@@ -979,7 +979,7 @@ export function NonConformities() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Título *</Label>
                 <Input
@@ -1008,7 +1008,7 @@ export function NonConformities() {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Categoria *</Label>
                 <Select
@@ -1047,7 +1047,7 @@ export function NonConformities() {
                 <Label>Data Prazo *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant={"outline"} className={cn("w-[280px]", "pl-3", "text-sm", "font-normal")}>
+                    <Button variant={"outline"} className={cn("w-full sm:w-[280px]", "pl-3", "text-sm", "font-normal")}>
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {format(formData.data_prazo, "dd/MM/yyyy")}
                     </Button>
@@ -1108,7 +1108,7 @@ export function NonConformities() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg sm:max-w-xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Confirmar Exclusão</DialogTitle>
             <DialogDescription>
@@ -1121,7 +1121,7 @@ export function NonConformities() {
               <p className="text-sm text-muted-foreground">{deletingNC.local}</p>
             </div>
           )}
-          <div className="flex justify-end space-x-2">
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:space-x-2 justify-end">
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
               Cancelar
             </Button>
@@ -1134,7 +1134,7 @@ export function NonConformities() {
 
       {/* Resolve Confirmation Dialog */}
       <Dialog open={isResolveDialogOpen} onOpenChange={setIsResolveDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg sm:max-w-xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Confirmar Resolução</DialogTitle>
             <DialogDescription>Tem certeza que deseja marcar esta não conformidade como resolvida?</DialogDescription>
@@ -1145,7 +1145,7 @@ export function NonConformities() {
               <p className="text-sm text-muted-foreground">{resolvingNC.local}</p>
             </div>
           )}
-          <div className="flex justify-end space-x-2">
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:space-x-2 justify-end">
             <Button variant="outline" onClick={() => setIsResolveDialogOpen(false)}>
               Cancelar
             </Button>

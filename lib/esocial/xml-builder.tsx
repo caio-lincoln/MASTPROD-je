@@ -11,7 +11,8 @@ export class EsocialXmlBuilder {
       .select(`
         *,
         funcionarios!inner(cpf, pis_pasep, nome, data_nascimento),
-        empresas!inner(cnpj, razao_social)
+        empresas!inner(cnpj, razao_social),
+        medicos (nome, crm)
       `)
       .eq("id", exame_id)
       .eq("empresa_id", empresa_id)
@@ -32,8 +33,8 @@ export class EsocialXmlBuilder {
         tipo: this.mapearTipoExameASO(exame.tipo_exame),
         data_exame: exame.data_exame,
         data_validade: exame.data_validade,
-        medico_crm: exame.medico_crm || "",
-        medico_nome: exame.medico_nome || "",
+        medico_crm: (exame.medicos?.crm as string) || exame.medico_crm || "",
+        medico_nome: (exame.medicos?.nome as string) || exame.medico_nome || exame.medico_responsavel || "",
         resultado: exame.resultado_aso === "Apto" ? "Apto" : "Inapto",
         observacoes: exame.observacoes,
       },

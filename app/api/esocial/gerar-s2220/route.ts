@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
       .from("exames_aso")
       .select(`
         *,
+        medicos (nome, crm),
         funcionarios (
           *,
           empresas (*)
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // Gerar XML do evento
     const xmlBuilder = new EsocialXmlBuilder()
-    const xmlContent = await xmlBuilder.gerarS2220(exame)
+    const xmlContent = await xmlBuilder.gerarS2220FromExame(exame_id, empresa_id)
 
     // Criar evento no banco
     const eventManager = new EsocialEventManager()
@@ -77,8 +78,8 @@ export async function POST(request: NextRequest) {
         tipo_exame: exame.tipo_exame,
         data_exame: exame.data_exame,
         resultado: exame.resultado,
-        medico_responsavel: exame.medico_responsavel,
-        crm: exame.crm,
+        medico_responsavel: exame.medicos?.nome || exame.medico_responsavel,
+        crm: exame.medicos?.crm || null,
       }
     })
 

@@ -963,13 +963,13 @@ function Reports() {
               Novo Relatório
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Gerar Novo Relatório - {selectedCompany.name}</DialogTitle>
               <DialogDescription>Configure um relatório personalizado com os dados desejados</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nome do Relatório</Label>
                   <Input placeholder="Ex: Relatório Mensal de SST" />
@@ -1744,7 +1744,7 @@ function Reports() {
 
       {/* Modal para Criar Modelo */}
       <Dialog open={showCreateTemplateModal} onOpenChange={setShowCreateTemplateModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Criar Novo Modelo de Relatório</DialogTitle>
             <DialogDescription>
@@ -1752,7 +1752,7 @@ function Reports() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nome do Modelo</Label>
                 <Input 
@@ -1855,7 +1855,7 @@ function Reports() {
 
       {/* Modal para Criar Agendamento */}
       <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Novo Agendamento de Relatório</DialogTitle>
             <DialogDescription>
@@ -1863,7 +1863,7 @@ function Reports() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Modelo de Relatório</Label>
                 <Select 

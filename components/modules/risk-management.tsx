@@ -390,7 +390,7 @@ export function RiskManagement() {
               Novo Risco
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Cadastrar Novo Risco</DialogTitle>
               <DialogDescription>
@@ -907,7 +907,7 @@ export function RiskManagement() {
               <DialogTitle>Detalhes do Risco</DialogTitle>
               <DialogDescription>Informações completas do risco identificado</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-6 py-4">
+            <div className="grid gap-4 py-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardHeader>
@@ -984,7 +984,7 @@ export function RiskManagement() {
 
       {editingRisk && (
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Editar Risco</DialogTitle>
               <DialogDescription>Atualize as informações do risco "{editingRisk.risco}"</DialogDescription>

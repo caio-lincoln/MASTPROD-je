@@ -488,7 +488,7 @@ export default function TrainingComponent() {
               Novo Treinamento
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Cadastrar Novo Treinamento</DialogTitle>
               <DialogDescription>
@@ -1058,13 +1058,13 @@ export default function TrainingComponent() {
       </Tabs>
 
       <Dialog open={isEditTrainingOpen} onOpenChange={setIsEditTrainingOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Treinamento</DialogTitle>
             <DialogDescription>Edite as informações do treinamento para {selectedCompany.name}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nome do Treinamento *</Label>
                 <Input
@@ -1172,13 +1172,13 @@ export default function TrainingComponent() {
       </Dialog>
 
       <Dialog open={isViewTrainingOpen} onOpenChange={setIsViewTrainingOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedTraining?.nome}</DialogTitle>
             <DialogDescription>Detalhes completos do treinamento</DialogDescription>
           </DialogHeader>
           {selectedTraining && (
-            <div className="grid gap-6 py-4">
+            <div className="grid gap-4 py-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardHeader>
