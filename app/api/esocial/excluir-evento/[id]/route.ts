@@ -10,6 +10,11 @@ export async function DELETE(
   try {
     const cookieStore = await cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { data: authData, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !authData?.user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+    }
     const eventoId = params.id
 
     if (!eventoId) {
@@ -87,17 +92,20 @@ export async function DELETE(
       )
     }
 
-    // Log de auditoria
+    // Log de auditoria padronizado
     await supabase.from("logs_auditoria").insert({
+      user_id: authData.user.id,
       empresa_id: evento.empresa_id,
-      usuario_id: null, // TODO: Implementar autenticação
       acao: "excluir_evento_esocial",
-      tabela: "eventos_esocial",
-      registro_id: eventoId,
-      detalhes: {
+      entidade: "eventos_esocial",
+      entidade_id: eventoId,
+      descricao: "Exclusão de evento do eSocial",
+      dados_anteriores: {
         tipo_evento: evento.tipo_evento,
-        status_anterior: evento.status
-      }
+        status_anterior: evento.status,
+      },
+      dados_novos: null,
+      created_at: new Date().toISOString(),
     })
 
     return NextResponse.json({

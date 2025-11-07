@@ -11,6 +11,20 @@ export async function GET(
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const eventoId = params.id
 
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError) {
+      console.error('Erro de autenticação:', authError)
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Não autorizado. Faça login para continuar.' },
+        { status: 401 }
+      )
+    }
+
     if (!eventoId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório" },
@@ -68,6 +82,21 @@ export async function GET(
         { status: 404 }
       )
     }
+
+    // Log de auditoria do download
+    await supabase.from('logs_auditoria').insert({
+      user_id: user.id,
+      empresa_id: null,
+      acao: 'baixar_xml_esocial',
+      entidade: 'eventos_esocial',
+      entidade_id: eventoId,
+      descricao: 'Download de XML do evento do eSocial',
+      dados_novos: {
+        tipo_evento: evento.tipo_evento,
+        origem_xml: evento.xml_url ? 'storage' : (evento.xml_original ? 'original' : 'indisponivel'),
+      },
+      created_at: new Date().toISOString(),
+    })
 
     // Retornar o XML como download
     const fileName = `evento_${evento.tipo_evento}_${eventoId}.xml`

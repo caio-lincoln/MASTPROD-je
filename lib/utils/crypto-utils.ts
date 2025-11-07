@@ -29,23 +29,18 @@ export async function sha1(data: string): Promise<string> {
 }
 
 /**
- * Gera hash MD5 de uma string (usando Web Crypto API não é possível, então simulamos)
- * @param data String para gerar hash
- * @returns Hash MD5 simulado (não usar em produção para segurança)
+ * Hash seguro baseado em SHA-256 com salt opcional
+ * @param data String a ser hasheada
+ * @param salt Salt opcional a ser concatenado
+ * @returns Promise com hash em hexadecimal
  */
-export function md5Simple(data: string): string {
-  // Esta é uma implementação simplificada para compatibilidade
-  // Em produção, use uma biblioteca dedicada como crypto-js
-  let hash = 0
-  if (data.length === 0) return hash.toString()
-  
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  
-  return Math.abs(hash).toString(16)
+export async function hashSecure(data: string, salt?: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const input = typeof salt === 'string' ? `${salt}:${data}` : data
+  const buffer = encoder.encode(input)
+  const digest = await crypto.subtle.digest('SHA-256', buffer)
+  const bytes = new Uint8Array(digest)
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 /**

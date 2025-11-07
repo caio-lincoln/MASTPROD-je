@@ -11,6 +11,20 @@ export async function GET(
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     const eventoId = params.id
 
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError) {
+      console.error('Erro de autenticação:', authError)
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Não autorizado. Faça login para continuar.' },
+        { status: 401 }
+      )
+    }
+
     if (!eventoId) {
       return NextResponse.json(
         { error: "ID do evento é obrigatório" },
@@ -69,6 +83,21 @@ export async function GET(
     if (!xmlContent && evento.xml_original) {
       xmlContent = evento.xml_original
     }
+
+    // Log de auditoria
+    await supabase.from('logs_auditoria').insert({
+      user_id: user.id,
+      empresa_id: null,
+      acao: 'visualizar_evento_esocial',
+      entidade: 'eventos_esocial',
+      entidade_id: eventoId,
+      descricao: 'Visualização de evento do eSocial',
+      dados_novos: {
+        tipo_evento: evento.tipo_evento,
+        xml_disponivel: Boolean(xmlContent),
+      },
+      created_at: new Date().toISOString(),
+    })
 
     return NextResponse.json({
       evento: {

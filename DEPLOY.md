@@ -32,7 +32,12 @@ SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_do_supabase
 ### Assinatura Digital XML (eSocial)
 - Utiliza `node-forge` e `xml-crypto` para assinatura
 - Certificados A1 são suportados via upload
-- Certificados A3 requerem configuração adicional
+- Certificados A3 não são suportados
+
+### Teste de Conexão eSocial
+- Endpoint: `POST /api/esocial/test-connection`
+- Requer autenticação e `empresa_id`
+- Retorna status de conectividade e ambiente
 
 ### Autenticação
 - Sistema de autenticação via Supabase

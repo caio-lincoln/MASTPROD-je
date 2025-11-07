@@ -6,6 +6,8 @@ export const ESOCIAL_URLS = {
       "https://webservices.producaorestrita.esocial.gov.br/servicos/empregador/consultarloteeventos/ConsultarLoteEventos.svc",
     downloadEvento:
       "https://webservices.producaorestrita.esocial.gov.br/servicos/empregador/download/DownloadEvento.svc",
+    consultaEventos:
+      "https://webservices.producaorestrita.esocial.gov.br/servicos/empregador/consultarloteeventos/ConsultarLoteEventos.svc",
   },
   homologacao: {
     recepcaoLote:
@@ -13,6 +15,8 @@ export const ESOCIAL_URLS = {
     consultaLote:
       "https://webservices.homologacao.esocial.gov.br/servicos/empregador/consultarloteeventos/ConsultarLoteEventos.svc",
     downloadEvento: "https://webservices.homologacao.esocial.gov.br/servicos/empregador/download/DownloadEvento.svc",
+    consultaEventos:
+      "https://webservices.homologacao.esocial.gov.br/servicos/empregador/consultarloteeventos/ConsultarLoteEventos.svc",
   },
 }
 
@@ -32,19 +36,74 @@ export const TIPOS_EVENTO = {
 
 import { EsocialConfig } from './types'
 
+function sanitizeCNPJ(cnpj: string) {
+  return (cnpj || '').replace(/\D/g, '')
+}
+
+function isValidCNPJ(cnpj: string) {
+  const cleaned = sanitizeCNPJ(cnpj)
+  return cleaned.length === 14
+}
+
+export function validateEsocialConfig(config: EsocialConfig) {
+  const errors: string[] = []
+
+  if (!config.cnpj || !isValidCNPJ(config.cnpj)) {
+    errors.push('CNPJ inválido: deve conter 14 dígitos')
+  }
+
+  if (!['producao', 'homologacao'].includes(config.ambiente)) {
+    errors.push('Ambiente inválido: use "producao" ou "homologacao"')
+  }
+
+  if (config.certificado?.tipo !== 'A1') {
+    errors.push('Tipo de certificado não suportado: apenas A1 é aceito')
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  }
+}
+
 export function getEsocialConfig(
   empresa_cnpj: string,
   ambiente: "producao" | "homologacao" = "producao",
 ): EsocialConfig {
-  // TODO: Implementar configuração baseada em variáveis de ambiente
-  // Para produção, sempre usar ambiente de produção
-  const ambienteReal = process.env.NODE_ENV === 'production' ? 'producao' : ambiente;
+  // Configuração baseada em variáveis de ambiente com fallback seguro
+  const envAmbiente =
+    (process.env.NEXT_PUBLIC_ESOCIAL_AMBIENTE || process.env.ESOCIAL_AMBIENTE) as
+      | "producao"
+      | "homologacao"
+      | undefined
+
+  // Em produção força "producao"; em dev usa env ou parâmetro
+  const ambienteReal =
+    process.env.NODE_ENV === "production"
+      ? "producao"
+      : envAmbiente || ambiente
+
+  const envCertTipo =
+    (process.env.NEXT_PUBLIC_ESOCIAL_CERT_TIPO || process.env.ESOCIAL_CERT_TIPO) as
+      | "A1"
+      | "A3"
+      | undefined
+
+  // Apenas A1 é suportado. Se A3 vier por env, normaliza para A1.
+  const certificadoTipo: "A1" = "A1"
+  const certificadoArquivo = process.env.ESOCIAL_CERT_ARQUIVO || undefined
+  const certificadoSenha = process.env.ESOCIAL_CERT_SENHA || undefined
+  const certificadoThumb = process.env.ESOCIAL_CERT_THUMBPRINT || undefined
+  const empresaCNPJ = sanitizeCNPJ(empresa_cnpj)
   
   return {
     ambiente: ambienteReal,
-    cnpj: empresa_cnpj,
+    cnpj: empresaCNPJ,
     certificado: {
-      tipo: "A1" as const, // Padrão A1, pode ser configurado por empresa
+      tipo: certificadoTipo,
+      arquivo: certificadoArquivo,
+      senha: certificadoSenha,
+      thumbprint: certificadoThumb,
     },
     urls: ESOCIAL_URLS[ambienteReal],
   }

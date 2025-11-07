@@ -154,7 +154,9 @@ export class EsocialConsultaRealFuncionarios {
   ): Promise<any[]> {
     const envelope = this.criarEnvelopeConsultaEventos(tipoEvento, dataInicio, dataFim)
     
-    const fetchOptions = createEsocialFetchOptions(this.config, envelope)
+    const fetchOptions = createEsocialFetchOptions('POST', envelope, {
+      SOAPAction: "http://www.esocial.gov.br/servicos/empregador/consulta/eventos/v1_0_0/ServicoConsultarEventos/ConsultarEventos",
+    })
     
     const response = await fetch(this.config.url_consulta_eventos, fetchOptions)
     

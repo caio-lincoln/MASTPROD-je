@@ -43,13 +43,13 @@ export class DigitalSignatureService {
         }
       }
 
-      // Assinar XML baseado no tipo de certificado
+      // Assinar XML apenas com A1. A3 não é suportado.
       let xmlAssinado: string
 
       if (certificado.tipo === "A1") {
         xmlAssinado = await this.assinarComCertificadoA1(xml_original, certificado, senha_certificado)
       } else {
-        xmlAssinado = await this.assinarComCertificadoA3(xml_original, certificado, senha_certificado)
+        throw new Error("Assinatura com certificado A3 não suportada neste ambiente")
       }
 
       return {
@@ -98,32 +98,8 @@ export class DigitalSignatureService {
   }
 
   // Assinar com certificado A3 (token/smartcard)
-  private async assinarComCertificadoA3(xml: string, certificado: CertificadoDigital, senha?: string): Promise<string> {
-    if (!certificado.thumbprint) {
-      throw new Error("Thumbprint do certificado A3 não encontrado")
-    }
-
-    // Para certificado A3, usar API específica que acessa o token
-    const response = await apiFetch("/api/esocial/assinar-xml-a3", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        xml,
-        thumbprint: certificado.thumbprint,
-        senha,
-        tipo: "A3",
-      }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.message || "Erro na assinatura do XML com certificado A3")
-    }
-
-    const result = await response.json()
-    return result.xml_assinado
+  private async assinarComCertificadoA3(): Promise<string> {
+    throw new Error("Assinatura A3 não suportada")
   }
 
   // Obter certificado ativo da empresa
@@ -173,10 +149,10 @@ export class DigitalSignatureService {
         }
       }
 
-      if (certificado.tipo === "A3" && !certificado.thumbprint) {
+      if (certificado.tipo === "A3") {
         return {
           valido: false,
-          erro: "Thumbprint do certificado A3 não encontrado",
+          erro: "Certificado A3 não suportado",
         }
       }
 
@@ -277,49 +253,9 @@ export class DigitalSignatureService {
     }
   }
 
-  // Configurar certificado A3
-  async configurarCertificadoA3(
-    empresa_id: string,
-    thumbprint: string,
-  ): Promise<{
-    sucesso: boolean
-    erro?: string
-  }> {
-    try {
-      // Validar thumbprint
-      if (!thumbprint || thumbprint.length < 20) {
-        return {
-          sucesso: false,
-          erro: "Thumbprint inválido",
-        }
-      }
-
-      // Atualizar configuração da empresa
-      const { error } = await this.supabase
-        .from("esocial_config")
-        .update({
-          certificado_tipo: "A3",
-          certificado_thumbprint: thumbprint.toUpperCase(),
-          certificado_arquivo: null,
-          certificado_senha_encrypted: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("empresa_id", empresa_id)
-
-      if (error) {
-        return {
-          sucesso: false,
-          erro: `Erro ao salvar configuração: ${error.message}`,
-        }
-      }
-
-      return { sucesso: true }
-    } catch (error) {
-      return {
-        sucesso: false,
-        erro: error instanceof Error ? error.message : "Erro desconhecido",
-      }
-    }
+  // Configurar certificado A3 não suportado
+  async configurarCertificadoA3(): Promise<{ sucesso: boolean; erro?: string }> {
+    return { sucesso: false, erro: "Certificado A3 não suportado" }
   }
 
   // Verificar se XML está assinado

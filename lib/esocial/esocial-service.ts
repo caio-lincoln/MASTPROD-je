@@ -44,7 +44,7 @@ export class EsocialService {
       )
 
       if (!assinaturaResult.sucesso) {
-        await this.eventManager.atualizarStatusEvento(evento_id, "erro", {
+        await this.eventManager.atualizarStatusEvento(evento_id, "erro", empresa_id, {
           erros: [assinaturaResult.erro || "Erro na assinatura"],
         })
         return { sucesso: false, erro: assinaturaResult.erro }
@@ -73,14 +73,14 @@ export class EsocialService {
       const envioResult = await soapClient.enviarLoteEventos(assinaturaResult.xml_assinado!)
 
       if (!envioResult.sucesso) {
-        await this.eventManager.atualizarStatusEvento(evento_id, "erro", {
+        await this.eventManager.atualizarStatusEvento(evento_id, "erro", empresa_id, {
           erros: envioResult.erros?.map((e) => e.descricao) || ["Erro no envio"],
         })
         return { sucesso: false, erro: envioResult.erros?.[0]?.descricao || "Erro no envio" }
       }
 
       // 6. Atualizar evento com protocolo
-      await this.eventManager.atualizarStatusEvento(evento_id, "enviado", {
+      await this.eventManager.atualizarStatusEvento(evento_id, "enviado", empresa_id, {
         protocolo: envioResult.protocolo,
         retorno_xml: envioResult.xml_retorno,
       })
@@ -195,7 +195,7 @@ export class EsocialService {
             novoStatus = "erro"
           }
 
-          await this.eventManager.atualizarStatusEvento(evento.id, novoStatus, {
+          await this.eventManager.atualizarStatusEvento(evento.id, novoStatus, empresa_id, {
             retorno_xml: consultaResult.xml_retorno,
           })
         }

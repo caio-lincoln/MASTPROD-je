@@ -22,10 +22,23 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError) {
+      console.error('Erro de autenticação:', authError)
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Não autorizado. Faça login para continuar.' },
+        { status: 401 }
+      )
+    }
     
     // Buscar evento
     const { data: evento, error: eventoError } = await supabase
-      .from('esocial_eventos')
+      .from('eventos_esocial')
       .select('*')
       .eq('id', eventoId)
       .single()
@@ -38,17 +51,35 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    if (!evento.xml_path) {
+    // Compatibilidade: usar `xml_url` (EventManager) ou `xml_path` (legado)
+    const xmlUrl: string | null = evento.xml_url || null
+    const xmlPathLegacy: string | null = evento.xml_path || null
+
+    if (!xmlUrl && !xmlPathLegacy) {
       return NextResponse.json(
         { error: 'XML não disponível para este evento' },
         { status: 404 }
       )
     }
 
-    // Fazer download do XML do storage
-    const { data: xmlData, error: downloadError } = await supabase.storage
-      .from('esocial-xmls')
-      .download(evento.xml_path)
+    // Fazer download do XML do storage (bucket "esocial" com `xml_url`)
+    let xmlData: Blob | null = null
+    let downloadError: any = null
+
+    if (xmlUrl) {
+      const { data, error } = await supabase.storage
+        .from('esocial')
+        .download(xmlUrl)
+      xmlData = data
+      downloadError = error
+    } else if (xmlPathLegacy) {
+      // Suporte legado: bucket antigo 'esocial-xmls' com `xml_path`
+      const { data, error } = await supabase.storage
+        .from('esocial-xmls')
+        .download(xmlPathLegacy)
+      xmlData = data
+      downloadError = error
+    }
 
     if (downloadError || !xmlData) {
       console.error('Erro ao fazer download do XML:', downloadError)
@@ -61,18 +92,21 @@ export async function GET(request: NextRequest) {
     // Converter blob para texto
     const xmlContent = await xmlData.text()
 
-    // Criar log de auditoria
+    // Criar log de auditoria (logs_auditoria)
     await supabase
-      .from('audit_logs')
+      .from('logs_auditoria')
       .insert({
-        user_id: 'system',
-        action: 'download_xml_esocial',
-        table_name: 'esocial_eventos',
-        record_id: eventoId,
-        changes: {
-          xml_path: evento.xml_path
+        user_id: user.id,
+        empresa_id: evento.empresa_id || null,
+        acao: 'download_xml_esocial',
+        entidade: 'eventos_esocial',
+        entidade_id: eventoId,
+        descricao: 'Download do XML de evento do eSocial',
+        dados_novos: {
+          xml_url: xmlUrl,
+          xml_path_legacy: xmlPathLegacy,
         },
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
 
     // Retornar XML como download

@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useCompany } from "@/contexts/company-context"
 import { supabase } from "@/lib/supabase/client"
 import { apiFetch } from "@/lib/security/client-csrf"
+import { getFriendlyErrorMessage } from "@/lib/utils/ui-error"
 
 interface EventoEsocial {
   id: string
@@ -331,7 +332,7 @@ export function ESocial() {
       console.error("Erro ao enviar evento:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao enviar evento",
+        description: getFriendlyErrorMessage(error, "Erro ao enviar evento"),
         variant: "destructive",
       })
     } finally {
@@ -386,7 +387,7 @@ export function ESocial() {
       setEmployeeSyncStatus("Erro na sincronização")
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao sincronizar funcionários",
+        description: getFriendlyErrorMessage(error, "Erro ao sincronizar funcionários"),
         variant: "destructive",
       })
     } finally {
@@ -429,7 +430,7 @@ export function ESocial() {
       console.error("Erro ao consultar status:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao consultar status",
+        description: getFriendlyErrorMessage(error, "Erro ao consultar status"),
         variant: "destructive",
       })
     } finally {
@@ -497,7 +498,7 @@ export function ESocial() {
       console.error("Erro ao visualizar evento:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao visualizar evento",
+        description: getFriendlyErrorMessage(error, "Erro ao visualizar evento"),
         variant: "destructive",
       })
     }
@@ -532,7 +533,7 @@ export function ESocial() {
       console.error("Erro ao duplicar evento:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao duplicar evento",
+        description: getFriendlyErrorMessage(error, "Erro ao duplicar evento"),
         variant: "destructive",
       })
     }
@@ -564,7 +565,7 @@ export function ESocial() {
       console.error("Erro ao excluir evento:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao excluir evento",
+        description: getFriendlyErrorMessage(error, "Erro ao excluir evento"),
         variant: "destructive",
       })
     }
@@ -598,7 +599,7 @@ export function ESocial() {
       console.error("Erro ao baixar XML:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao baixar XML",
+        description: getFriendlyErrorMessage(error, "Erro ao baixar XML"),
         variant: "destructive",
       })
     }
@@ -633,7 +634,7 @@ export function ESocial() {
       console.error("Erro ao reenviar evento:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao reenviar evento",
+        description: getFriendlyErrorMessage(error, "Erro ao reenviar evento"),
         variant: "destructive",
       })
     }

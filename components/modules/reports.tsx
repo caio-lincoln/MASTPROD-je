@@ -576,7 +576,7 @@ function Reports() {
       const { error } = await supabase.from("eventos_esocial").insert({
         empresa_id: selectedCompany.id,
         tipo_evento: "S-2220",
-        status: "pendente",
+        status: "preparando",
         data_evento: new Date().toISOString(),
       })
 
@@ -607,7 +607,7 @@ function Reports() {
       const { error } = await supabase.from("eventos_esocial").insert({
         empresa_id: selectedCompany.id,
         tipo_evento: "S-2240",
-        status: "pendente",
+        status: "preparando",
         data_evento: new Date().toISOString(),
       })
 
@@ -833,7 +833,7 @@ function Reports() {
 
     setIsResending(true)
     try {
-      const { error } = await supabase.from("eventos_esocial").update({ status: "pendente" }).eq("id", event.id)
+      const { error } = await supabase.from("eventos_esocial").update({ status: "preparando" }).eq("id", event.id)
 
       if (error) throw error
 
@@ -970,7 +970,7 @@ function Reports() {
       case "enviado":
         return "default"
       case "processando":
-      case "pendente":
+      case "preparando":
         return "secondary"
       case "erro":
         return "destructive"
@@ -999,7 +999,7 @@ function Reports() {
     switch (s) {
       case "enviado":
         return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "pendente":
+      case "preparando":
         return <Clock className="h-4 w-4 text-yellow-500" />
       case "erro":
         return <XCircle className="h-4 w-4 text-red-500" />
@@ -1539,7 +1539,7 @@ function Reports() {
           <Card>
             <CardHeader>
               <CardTitle>Relatórios eSocial - {selectedCompany.name}</CardTitle>
-              <CardDescription>Eventos eSocial transmitidos e pendentes</CardDescription>
+              <CardDescription>Eventos eSocial transmitidos e em preparação</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-center mb-4">

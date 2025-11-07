@@ -7,6 +7,11 @@ export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies()
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
+    const { data: authData, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !authData?.user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
+    }
     
     const { evento_id, empresa_id } = await request.json()
 
@@ -106,18 +111,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Log de auditoria
+    // Log de auditoria padronizado
     await supabase.from("logs_auditoria").insert({
+      user_id: authData.user.id,
       empresa_id,
-      usuario_id: null, // TODO: Implementar autenticação
       acao: "duplicar_evento_esocial",
-      tabela: "eventos_esocial",
-      registro_id: novoEvento.id,
-      detalhes: {
+      entidade: "eventos_esocial",
+      entidade_id: novoEvento.id,
+      descricao: "Duplicação de evento do eSocial",
+      dados_anteriores: {
         evento_original_id: evento_id,
         tipo_evento: eventoOriginal.tipo_evento,
-        novo_evento_id: novoEvento.id
-      }
+      },
+      dados_novos: {
+        novo_evento_id: novoEvento.id,
+        status: novoEvento.status,
+      },
+      created_at: new Date().toISOString(),
     })
 
     return NextResponse.json({

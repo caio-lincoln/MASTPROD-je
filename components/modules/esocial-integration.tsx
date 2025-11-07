@@ -41,6 +41,7 @@ import { createClient } from "@/lib/supabase/client"
 import { DigitalSignatureService } from "@/lib/esocial/digital-signature"
 import { signXMLWithSupabaseCertificate } from "@/lib/esocial/xml-signer"
 import { ESocialService } from "@/lib/esocial/esocial-service"
+import { getFriendlyErrorMessage } from "@/lib/utils/ui-error"
 import {
   Dialog,
   DialogContent,
@@ -58,7 +59,7 @@ interface ESocialEvent {
   funcionario_cpf: string
   data_evento: string
   data_envio: string | null
-  status: "Enviado" | "Pendente" | "Erro"
+  status: "Enviado" | "Preparando" | "Erro"
   protocolo: string | null
   retorno: string | null
   empresa_id: string
@@ -86,7 +87,7 @@ const getStatusColor = (status: string) => {
   switch (status) {
     case "Enviado":
       return "default"
-    case "Pendente":
+    case "Preparando":
       return "secondary"
     case "Erro":
       return "destructive"
@@ -101,7 +102,7 @@ const getStatusIcon = (status: string) => {
   switch (status) {
     case "Enviado":
       return <CheckCircle className="h-4 w-4 text-green-500" />
-    case "Pendente":
+    case "Preparando":
       return <Clock className="h-4 w-4 text-yellow-500" />
     case "Erro":
       return <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -186,7 +187,7 @@ export function ESocialIntegration() {
         (tiposEventos || []).map(async (tipo) => {
           const typeEvents = events.filter((event) => event.evento === tipo.codigo)
           const enviados = typeEvents.filter((event) => event.status === "Enviado").length
-          const pendentes = typeEvents.filter((event) => event.status === "Pendente").length
+          const pendentes = typeEvents.filter((event) => event.status === "Preparando").length
           const erros = typeEvents.filter((event) => event.status === "Erro").length
 
           return {
@@ -370,7 +371,12 @@ export function ESocialIntegration() {
         funcionario_cpf: event.funcionarios?.cpf || "N/A",
         data_evento: event.data_evento,
         data_envio: event.data_envio,
-        status: event.status as "Enviado" | "Pendente" | "Erro",
+        status:
+          event.status === "enviado"
+            ? "Enviado"
+            : event.status === "preparando"
+            ? "Preparando"
+            : "Erro",
         protocolo: event.protocolo,
         retorno: event.retorno,
         empresa_id: event.empresa_id,
@@ -422,7 +428,7 @@ export function ESocialIntegration() {
       .map((eventType) => {
         const typeEvents = events.filter((event) => event.evento === eventType.codigo)
         const enviados = typeEvents.filter((event) => event.status === "Enviado").length
-        const pendentes = typeEvents.filter((event) => event.status === "Pendente").length
+        const pendentes = typeEvents.filter((event) => event.status === "Preparando").length
         const erros = typeEvents.filter((event) => event.status === "Erro").length
 
         return {
@@ -465,7 +471,7 @@ export function ESocialIntegration() {
     } catch (err) {
       toast({
         title: "Erro na conexão",
-        description: "Falha ao testar conectividade",
+        description: getFriendlyErrorMessage(err, "Falha ao testar conectividade"),
         variant: "destructive",
       })
     } finally {
@@ -493,21 +499,57 @@ export function ESocialIntegration() {
 
     setProcessingEvents(true)
     try {
-      const esocialService = new ESocialService()
-      // Simular processamento automático
-      const result = { sucesso: true, eventos_processados: 0 }
+      // Buscar eventos preparados para processamento
+      const { data: pendentes, error: pendentesError } = await supabase
+        .from("eventos_esocial")
+        .select("id")
+        .eq("empresa_id", selectedCompany.id)
+        .in("status", ["preparando"]) // status alinhado
 
-      toast({
-        title: "Processamento iniciado",
-        description: `${result.eventos_processados} eventos em processamento`,
+      if (pendentesError) {
+        throw pendentesError
+      }
+
+      const eventoIds = (pendentes || []).map((e: any) => e.id)
+
+      if (!eventoIds.length) {
+        toast({
+          title: "Nenhum evento para processar",
+          description: "Não há eventos em preparação",
+        })
+        return
+      }
+
+      // Chamar endpoint de processamento em lote
+      const response = await fetch("/api/esocial/processar-lote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ evento_ids: eventoIds, forceSync: true }),
       })
 
-      // Recarregar eventos após processamento
+      const json = await response.json().catch(() => ({}))
+
+      if (response.ok && json?.success) {
+        const processed = json.eventosProcessados ?? eventoIds.length
+        const loteId = json.loteId
+        toast({
+          title: "Lote processado",
+          description: `Lote ${loteId ?? "-"} com ${processed} eventos iniciado`,
+        })
+      } else if (response.status === 202 && json?.delegated) {
+        toast({
+          title: "Processamento delegado",
+          description: `Job ${json.jobId ?? "-"} enviado para processamento assíncrono`,
+        })
+      } else {
+        throw new Error(json?.error || json?.message || "Falha ao processar lote")
+      }
+
       await loadEvents()
     } catch (err) {
       toast({
         title: "Erro no processamento",
-        description: "Falha ao processar eventos",
+        description: getFriendlyErrorMessage(err, "Falha ao processar eventos"),
         variant: "destructive",
       })
     } finally {
@@ -532,14 +574,14 @@ export function ESocialIntegration() {
       } else {
         toast({
           title: "Erro na geração",
-          description: result.erro || "Falha ao gerar eventos",
+          description: getFriendlyErrorMessage(result.erro, "Falha ao gerar eventos"),
           variant: "destructive",
         })
       }
     } catch (err) {
       toast({
         title: "Erro na geração",
-        description: "Falha ao gerar eventos",
+        description: getFriendlyErrorMessage(err, "Falha ao gerar eventos"),
         variant: "destructive",
       })
     }
@@ -661,7 +703,7 @@ export function ESocialIntegration() {
               funcionario_nome: funcionario.nome,
               funcionario_cpf: funcionario.cpf,
               data_evento: funcionario.data_admissao || new Date().toISOString(),
-              status: "Pendente",
+              status: "preparando",
               empresa_id: selectedCompany.id
             })
 
@@ -826,7 +868,7 @@ export function ESocialIntegration() {
               funcionario_id: item.funcionarios.id,
               xml_original: rawXml,
               xml_assinado: signResult.signedXml,
-              status: "pendente",
+              status: "preparando",
               criado_por: (await supabase.auth.getUser()).data.user?.id,
             })
             .select()
@@ -1118,7 +1160,7 @@ export function ESocialIntegration() {
   const stats = {
     totalEvents: events.length,
     enviados: events.filter((event) => event.status === "Enviado").length,
-    pendentes: events.filter((event) => event.status === "Pendente").length,
+    pendentes: events.filter((event) => event.status === "Preparando").length,
     erros: events.filter((event) => event.status === "Erro").length,
   }
 
@@ -1250,7 +1292,7 @@ export function ESocialIntegration() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pendentes</CardTitle>
+              <CardTitle className="text-sm font-medium">Em preparação</CardTitle>
                 <Clock className="h-4 w-4 text-yellow-500" />
               </CardHeader>
               <CardContent>
@@ -1334,7 +1376,7 @@ export function ESocialIntegration() {
           <Card>
             <CardHeader>
               <CardTitle>Lista de Eventos eSocial</CardTitle>
-              <CardDescription>Histórico de eventos enviados e pendentes de {selectedCompany.name}</CardDescription>
+              <CardDescription>Histórico de eventos enviados e em preparação de {selectedCompany.name}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-center mb-4">
@@ -1358,7 +1400,7 @@ export function ESocialIntegration() {
                     <SelectContent>
                       <SelectItem value="todos">Todos</SelectItem>
                       <SelectItem value="enviado">Enviado</SelectItem>
-                      <SelectItem value="pendente">Pendente</SelectItem>
+                      <SelectItem value="preparando">Em preparação</SelectItem>
                       <SelectItem value="erro">Erro</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1667,7 +1709,7 @@ export function ESocialIntegration() {
                             </div>
                             <div className="text-center p-2 bg-yellow-50 dark:bg-yellow-950 rounded">
                               <div className="font-medium text-yellow-600">{eventType.pendentes}</div>
-                              <div className="text-muted-foreground">Pendentes</div>
+                              <div className="text-muted-foreground">Em preparação</div>
                             </div>
                             <div className="text-center p-2 bg-red-50 dark:bg-red-950 rounded">
                               <div className="font-medium text-red-600">{eventType.erros}</div>
@@ -1746,7 +1788,7 @@ export function ESocialIntegration() {
                           <div className="text-sm">
                             <div>Total: {eventType.total}</div>
                             <div className="text-muted-foreground">
-                              {eventType.enviados} enviados, {eventType.pendentes} pendentes, {eventType.erros} erros
+                              {eventType.enviados} enviados, {eventType.pendentes} em preparação, {eventType.erros} erros
                             </div>
                           </div>
                         </TableCell>
@@ -1904,7 +1946,7 @@ export function ESocialIntegration() {
                     <span className="font-medium text-red-600">{statistics.errorEvents.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span>Pendentes</span>
+                    <span>Em preparação</span>
                     <span className="font-medium text-yellow-600">{statistics.pendingEvents.toLocaleString()}</span>
                   </div>
                 </div>

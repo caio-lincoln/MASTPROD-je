@@ -14,9 +14,22 @@ export async function GET(request: NextRequest) {
     const dataFim = searchParams.get('data_fim')
 
     const supabase = createClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError) {
+      console.error('Erro de autenticação:', authError)
+    }
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Não autorizado. Faça login para continuar.' },
+        { status: 401 }
+      )
+    }
     
     let query = supabase
-      .from('esocial_eventos')
+      .from('eventos_esocial')
       .select(`
         *,
         funcionarios:funcionario_id (
@@ -52,10 +65,38 @@ export async function GET(request: NextRequest) {
       query = query.lte('created_at', sanitizeString(dataFim))
     }
 
-    // Contar total de registros
-    const { count, error: countError } = await supabase
-      .from('esocial_eventos')
-      .select('*', { count: 'exact', head: true })
+    // Contar total de registros com filtros aplicados
+    let countQuery = supabase
+      .from('eventos_esocial')
+      .select('id', { count: 'exact', head: true })
+
+    if (status) {
+      countQuery = countQuery.eq('status', sanitizeString(status))
+    }
+
+    if (tipoEvento) {
+      countQuery = countQuery.eq('tipo_evento', sanitizeString(tipoEvento))
+    }
+
+    if (funcionarioId) {
+      if (!isUuid(funcionarioId)) {
+        return NextResponse.json(
+          { error: 'funcionario_id inválido' },
+          { status: 400 }
+        )
+      }
+      countQuery = countQuery.eq('funcionario_id', funcionarioId)
+    }
+
+    if (dataInicio) {
+      countQuery = countQuery.gte('created_at', sanitizeString(dataInicio))
+    }
+
+    if (dataFim) {
+      countQuery = countQuery.lte('created_at', sanitizeString(dataFim))
+    }
+
+    const { count, error: countError } = await countQuery
 
     if (countError) {
       console.error('Erro ao contar eventos:', countError)
@@ -78,9 +119,29 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Log de auditoria da listagem
+    await supabase.from('logs_auditoria').insert({
+      user_id: user.id,
+      empresa_id: null,
+      acao: 'listar_eventos_esocial',
+      entidade: 'esocial_eventos',
+      entidade_id: null,
+      descricao: 'Listagem de eventos do eSocial com filtros e paginação',
+      dados_novos: {
+        page,
+        limit,
+        status: status ? sanitizeString(status) : null,
+        tipo_evento: tipoEvento ? sanitizeString(tipoEvento) : null,
+        funcionario_id: funcionarioId || null,
+        data_inicio: dataInicio ? sanitizeString(dataInicio) : null,
+        data_fim: dataFim ? sanitizeString(dataFim) : null,
+      },
+      created_at: new Date().toISOString(),
+    })
+
     // Buscar estatísticas
     const { data: stats, error: statsError } = await supabase
-      .from('esocial_eventos')
+      .from('eventos_esocial')
       .select('status')
 
     if (statsError) {

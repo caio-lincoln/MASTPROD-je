@@ -32,13 +32,31 @@ export async function POST(request: NextRequest) {
       : createClient()
     const useEdgeProcessing = process.env.USE_EDGE_PROCESSING === 'true'
     const forceSync = request.headers.get('x-force-sync') === 'true'
+
+    // Autenticação obrigatória para chamadas externas (não internas)
+    let userId: string | null = null
+    if (!isInternalJob) {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+      if (authError) {
+        console.error('Erro de autenticação:', authError)
+      }
+      if (!user) {
+        return NextResponse.json(
+          { error: 'Não autorizado. Faça login para continuar.' },
+          { status: 401 }
+        )
+      }
+      userId = user.id
+    }
     
-    // Verificar se todos os eventos existem e estão pendentes
+    // Verificar se todos os eventos existem
     const { data: eventos, error: eventosError } = await supabase
-      .from('esocial_eventos')
+      .from('eventos_esocial')
       .select('*')
       .in('id', eventoIds)
-      .eq('status', 'pendente')
 
     if (eventosError) {
       console.error('Erro ao buscar eventos:', eventosError)
@@ -50,21 +68,25 @@ export async function POST(request: NextRequest) {
 
     if (!eventos || eventos.length !== eventoIds.length) {
       return NextResponse.json(
-        { error: 'Alguns eventos não foram encontrados ou não estão pendentes' },
+        { error: 'Alguns eventos não foram encontrados' },
         { status: 400 }
       )
     }
 
+    // Inferir empresa_id se todos os eventos forem da mesma empresa
+    const empresas = new Set(eventos.map((e: any) => e.empresa_id))
+    const empresaId = empresas.size === 1 ? (Array.from(empresas)[0] as string) : null
+
     // Se estiver habilitado para Edge, delega o enfileiramento do lote
     if (useEdgeProcessing && !forceSync) {
-      const empresas = new Set(eventos.map((e: any) => e.empresa_id))
-      if (empresas.size !== 1) {
+      const empresasEdge = new Set(eventos.map((e: any) => e.empresa_id))
+      if (empresasEdge.size !== 1) {
         return NextResponse.json(
           { error: 'Todos os eventos do lote devem pertencer à mesma empresa' },
           { status: 400 }
         )
       }
-      const [empresaId] = Array.from(empresas)
+      const [empresaId] = Array.from(empresasEdge)
 
       // Invocar Edge Function para enfileirar o processamento
       const { data: invokeData, error: invokeError } = await supabase.functions.invoke('processar-lote-esocial', {
@@ -103,39 +125,49 @@ export async function POST(request: NextRequest) {
     const eventManager = new EsocialEventManager()
     const esocialService = new EsocialService()
 
+    if (!empresaId) {
+      return NextResponse.json(
+        { error: 'Os eventos devem pertencer à mesma empresa para processamento em lote' },
+        { status: 400 }
+      )
+    }
+
     // Criar lote de eventos
-    const loteId = await eventManager.criarLoteEventos(eventoIds)
+    const lote = await eventManager.criarLoteEventos(eventoIds, empresaId)
 
     // Atualizar status dos eventos para "processando"
     await supabase
-      .from('esocial_eventos')
+      .from('eventos_esocial')
       .update({ 
         status: 'processando',
         updated_at: new Date().toISOString()
       })
       .in('id', eventoIds)
+      .eq('empresa_id', empresaId)
 
     // Processar lote
-    const resultado = await esocialService.processarLoteEventos(loteId, certificado)
+    const resultado = await esocialService.processarLoteEventos(eventoIds, empresaId, certificado?.senha)
 
-    // Criar log de auditoria
+    // Criar log de auditoria (logs_auditoria)
     await supabase
-      .from('audit_logs')
+      .from('logs_auditoria')
       .insert({
-        user_id: 'system',
-        action: 'processar_lote_esocial',
-        table_name: 'esocial_eventos',
-        record_id: loteId,
-        changes: {
+        user_id: userId,
+        empresa_id: empresaId,
+        acao: 'processar_lote_esocial',
+        entidade: 'eventos_esocial',
+        entidade_id: lote.id,
+        descricao: 'Processamento de lote de eventos do eSocial',
+        dados_novos: {
           eventos_processados: eventoIds.length,
-          resultado: resultado
+          resultado: resultado,
         },
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
 
     return NextResponse.json({
       success: true,
-      loteId,
+      loteId: lote.id,
       eventosProcessados: eventoIds.length,
       resultado
     })

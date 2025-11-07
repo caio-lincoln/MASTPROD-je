@@ -10,7 +10,7 @@
 - [ ] Obter credenciais de produção
 
 ### 2. Certificados Digitais
-- [ ] Certificado A1 ou A3 válido para eSocial
+- [ ] Certificado A1 válido para eSocial (A3 não suportado)
 - [ ] Configurar armazenamento seguro dos certificados
 - [ ] Testar conectividade com ambiente de produção do eSocial
 
@@ -91,15 +91,19 @@ vercel --prod
 
 ### ⚠️ CRÍTICO - Implementar antes do deploy:
 
-#### 1. Assinatura Digital XML A3
-**Arquivo:** `app/api/esocial/assinar-xml-a3/route.ts`
-- [ ] Implementar `buscarCertificadoPorThumbprint()`
-- [ ] Implementar `gerarAssinaturaA3()`
-- [ ] Integrar com HSM ou store de certificados
+#### 1. Assinatura Digital XML
+- A aplicação suporta apenas certificados A1 para assinatura digital.
+- Suporte a certificados A3 foi descontinuado e removido.
+- Qualquer tentativa de uso de A3 retornará erro explícito.
+
+#### 1.1 Teste de Conexão com eSocial
+**Endpoint:** `POST /api/esocial/test-connection`
+- Requer autenticação e `empresa_id` no corpo da requisição.
+- Retorna `conectado`, `ambiente` e `erro` (se houver).
 
 #### 2. Configurações de Sistema
 **Arquivo:** `components/modules/settings.tsx`
-- [ ] Implementar teste real de conexão eSocial
+- ✅ Teste real de conexão eSocial implementado
 - [ ] Implementar teste real de conexão SMTP
 - [ ] Implementar teste real de conexão SMS
 

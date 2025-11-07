@@ -539,10 +539,10 @@ export function SettingsComponent() {
   const companyData = {
     name: selectedCompany?.name || "Empresa não selecionada",
     cnpj: selectedCompany?.cnpj || "Não informado",
-    address: selectedCompany?.endereco || "Não informado",
-    phone: selectedCompany?.telefone || "Não informado",
+    address: selectedCompany?.address || "Não informado",
+    phone: selectedCompany?.phone || "Não informado",
     email: selectedCompany?.email || "Não informado",
-    responsibleTechnician: selectedCompany?.responsavel_tecnico || "Não informado",
+    responsibleTechnician: "Não informado",
   }
 
   // Estados para formulários de integração
@@ -883,7 +883,14 @@ export function SettingsComponent() {
       setIsUploadingCertificate(true)
       
       // Preparar dados para salvamento
-      const configData = {
+      const configData: {
+        ambiente: "homologacao" | "producao"
+        ativo: boolean
+        data_configuracao: string
+        nome_arquivo?: string
+        data_upload?: string
+        senha_certificado?: string
+      } = {
         ambiente: esocialForm.ambiente,
         ativo: true,
         data_configuracao: new Date().toISOString(),
@@ -950,21 +957,33 @@ export function SettingsComponent() {
           description: "Verificando conectividade com eSocial...",
         })
         
-        // TODO: Implementar teste real de conexão com eSocial
-        // Esta implementação deve usar o serviço real do eSocial
         try {
-          // Aqui deveria chamar o serviço real de teste de conectividade
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          
+          const empresaId = selectedCompany?.id
+          if (!empresaId) {
+            throw new Error("Empresa não selecionada")
+          }
+
+          const res = await fetch("/api/esocial/test-connection", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ empresa_id: empresaId }),
+          })
+
+          const data = await res.json()
+
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || data.erro || "Falha na conexão")
+          }
+
           toast({
             title: "Conexão bem-sucedida",
-            description: "Conectividade com eSocial verificada com sucesso.",
+            description: `Ambiente: ${data.ambiente}. Conectividade verificada com sucesso.`,
           })
-        } catch (error) {
+        } catch (error: any) {
           toast({
             title: "Erro na conexão",
-            description: "Não foi possível estabelecer conexão com eSocial.",
-            variant: "destructive"
+            description: error?.message || "Não foi possível estabelecer conexão com eSocial.",
+            variant: "destructive",
           })
         }
       }
@@ -1201,15 +1220,38 @@ export function SettingsComponent() {
           description: "Verificando configuração do provedor...",
         })
         
-        // TODO: Implementar teste real de SMS
-        // Esta implementação deve usar APIs de provedores SMS adequados
+        // Validação do número de teste
+        if (!smsForm.testeEnvio) {
+          toast({
+            title: "Número de teste",
+            description: "Informe um número para receber o SMS de teste.",
+            variant: "destructive",
+          })
+          return
+        }
+
         try {
-          throw new Error("Teste de SMS não implementado para produção")
-        } catch (error) {
+          const response = await fetch("/api/sms/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provedor: smsForm.provedor,
+              to: smsForm.testeEnvio,
+              from: smsForm.numeroRemetente,
+            }),
+          })
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}))
+            throw new Error(data?.error || "Falha ao enviar SMS de teste")
+          }
+
+          toast({ title: "Conexão OK", description: "SMS de teste enviado com sucesso." })
+        } catch (error: any) {
           toast({
             title: "Erro na conexão",
-            description: "Não foi possível testar a configuração SMS.",
-            variant: "destructive"
+            description: String(error?.message || "Não foi possível testar a configuração de SMS."),
+            variant: "destructive",
           })
         }
       }
@@ -2308,18 +2350,31 @@ export function SettingsComponent() {
              </div>
              
              <div className="space-y-2">
-               <Label>Número Remetente</Label>
-               <Input
-                 value={smsForm.numeroRemetente}
-                 onChange={(e) => setSmsForm(prev => ({ ...prev, numeroRemetente: e.target.value }))}
-                 placeholder="+5511999999999"
-               />
-             </div>
+             <Label>Número Remetente</Label>
+             <Input
+               value={smsForm.numeroRemetente}
+               onChange={(e) => setSmsForm(prev => ({ ...prev, numeroRemetente: e.target.value }))}
+               placeholder="+5511999999999"
+             />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Número de Teste</Label>
+              <Input
+                value={smsForm.testeEnvio}
+                onChange={(e) => setSmsForm(prev => ({ ...prev, testeEnvio: e.target.value }))}
+                placeholder="Destinatário para teste, ex: +5511999999999"
+              />
+            </div>
            </div>
            
            <DialogFooter>
              <Button variant="outline" onClick={() => setIsSmsDialogOpen(false)}>
                Cancelar
+             </Button>
+             <Button variant="outline" onClick={() => handleSaveSmsConfig(true)}>
+               <CheckCircle className="h-4 w-4 mr-2" />
+               Salvar e Testar
              </Button>
              <Button onClick={() => handleSaveSmsConfig()}>
                <Save className="h-4 w-4 mr-2" />
@@ -2445,10 +2500,10 @@ export function SettingsComponent() {
        <DeleteCompanyDialog
          open={isDeleteCompanyDialogOpen}
          onOpenChange={setIsDeleteCompanyDialogOpen}
-         company={companyToDelete}
-         onConfirm={confirmDeleteCompany}
-         isLoading={isDeletingCompany}
-       />
+       company={companyToDelete}
+       onConfirm={confirmDeleteCompany}
+        isDeleting={isDeletingCompany}
+      />
      </div>
    )
  }

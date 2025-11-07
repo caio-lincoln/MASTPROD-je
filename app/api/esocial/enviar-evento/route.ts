@@ -7,6 +7,16 @@ import { isUuid } from "@/lib/security/validation"
 export async function POST(request: NextRequest) {
   try {
     const supabase = createRouteHandlerClient({ cookies })
+    // Verificar usuário autenticado
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user?.id) {
+      return NextResponse.json(
+        { error: "Não autorizado" },
+        { status: 401 }
+      )
+    }
     const { evento_id, empresa_id } = await request.json()
 
     if (!evento_id || !empresa_id) {
@@ -99,21 +109,23 @@ export async function POST(request: NextRequest) {
         .update(updateData)
         .eq("id", evento_id)
 
-      // Criar log de auditoria
+      // Criar log de auditoria (logs_auditoria)
       await supabase
-        .from("audit_logs")
+        .from("logs_auditoria")
         .insert({
+          user_id: user.id,
           empresa_id,
-          usuario_id: evento.funcionarios?.empresas?.created_by,
           acao: "envio_evento_esocial",
-          tabela: "eventos_esocial",
-          registro_id: evento_id,
-          detalhes: {
+          entidade: "eventos_esocial",
+          entidade_id: evento_id,
+          descricao: "Envio de evento para o eSocial",
+          dados_novos: {
             tipo_evento: evento.tipo_evento,
             protocolo: resultado.protocolo,
             sucesso: resultado.sucesso,
             erros: resultado.erros
-          }
+          },
+          created_at: new Date().toISOString(),
         })
 
       if (resultado.sucesso) {

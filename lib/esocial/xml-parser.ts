@@ -13,7 +13,7 @@ export interface ESocialEvent {
   periodo_apuracao: string;
   xml_content: string;
   recibo?: string;
-  status: 'processado' | 'erro' | 'pendente';
+  status: 'processado' | 'erro' | 'preparando';
   detalhes?: any;
 }
 
