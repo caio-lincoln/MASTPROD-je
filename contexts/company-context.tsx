@@ -38,7 +38,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [user, setUser] = useState<User | null>(null)
-  const [showAllCompanies, setShowAllCompanies] = useState(false)
+  const [showAllCompanies, setShowAllCompanies] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
@@ -46,8 +46,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       try {
         setIsLoading(true)
         
-        // Se já estamos mostrando todas as empresas, não recarregar
+        // Se já estamos mostrando todas as empresas, carregar diretamente todas
         if (showAllCompanies) {
+          await loadAllCompanies()
           setIsLoading(false)
           return
         }
@@ -193,8 +194,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         }
       } else if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user)
-        // Só recarregar se não estivermos mostrando todas as empresas
-        if (!showAllCompanies) {
+        // Carregar conforme preferência atual
+        if (showAllCompanies) {
+          loadAllCompanies()
+        } else {
           loadUserAndCompanies()
         }
       }

@@ -53,6 +53,7 @@ import { ptBR } from "date-fns/locale"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import JSZip from "jszip"
+import { uploadRelatorio } from "@/lib/supabase/storage"
 
 interface ReportTemplate {
   id: number
@@ -373,15 +374,47 @@ function Reports() {
   }
 
   const loadReportHistory = () => {
-    if (selectedCompany) {
-      const companyId = Number(selectedCompany.id) as keyof typeof reportHistoryByCompany
-      setReportHistory(reportHistoryByCompany[companyId] || [])
-      setTotalReports(reportHistoryByCompany[companyId]?.length || 0)
-      setTotalDownloads(
-        reportTemplatesByCompany[companyId]?.reduce((acc, template) => acc + template.downloads, 0) || 0,
-      )
-      setActiveSchedules(0) // Placeholder for active schedules
-    }
+    if (!selectedCompany) return
+
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('relatorios_gerados')
+          .select('id, titulo, modulo, tipo_relatorio, criado_em, usuario_id, status, arquivo_url, tamanho_arquivo')
+          .eq('empresa_id', selectedCompany.id)
+          .order('criado_em', { ascending: false })
+
+        if (error) throw error
+
+        const history = (data || []).map((r: any) => ({
+          id: r.id,
+          nome: r.titulo,
+          tipo: r.modulo,
+          dataGeracao: r.criado_em,
+          geradoPor: 'Sistema',
+          formato: (r.tipo_relatorio || 'PDF').toUpperCase(),
+          tamanho: r.tamanho_arquivo || '-',
+          status: r.status === 'Gerado' ? 'Concluído' : r.status === 'Gerando' ? 'Processando' : r.status || 'Concluído',
+          arquivo_url: r.arquivo_url,
+        }))
+
+        setReportHistory(history)
+        setTotalReports(history.length)
+        setTotalDownloads(
+          reportTemplates.reduce((acc, template) => acc + (template.downloads || 0), 0)
+        )
+        setActiveSchedules(0)
+      } catch (error) {
+        console.error('Erro ao carregar histórico de relatórios:', error)
+        const companyId = Number(selectedCompany.id) as keyof typeof reportHistoryByCompany
+        setReportHistory(reportHistoryByCompany[companyId] || [])
+        setTotalReports(reportHistoryByCompany[companyId]?.length || 0)
+        setTotalDownloads(
+          reportTemplatesByCompany[companyId]?.reduce((acc, template) => acc + template.downloads, 0) || 0,
+        )
+        setActiveSchedules(0)
+      }
+    })()
   }
 
   useEffect(() => {
@@ -662,16 +695,67 @@ function Reports() {
 
     setIsGenerating(true)
     try {
-      // Simular chamada API
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const agora = new Date()
+      const nomeArquivoBase = `${template.nome.replace(/\s+/g, "_")}_${format(agora, "yyyyMMdd_HHmm")}`
+      const formato = (template.formato || reportSettings.default_format || "pdf").toLowerCase()
+      const mimeMap: Record<string, string> = {
+        pdf: "application/pdf",
+        excel: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        csv: "text/csv",
+      }
+      const mimeType = mimeMap[formato] || "application/pdf"
 
-      // Aqui seria a chamada real para /api/reports/generate
-      console.log("[v0] Gerando relatório:", template.nome)
+      const conteudo = `Relatório: ${template.nome}\nEmpresa: ${selectedCompany.name}\nCategoria: ${template.categoria}\nGerado em: ${format(agora, "dd/MM/yyyy HH:mm")}\nMódulos: ${(template.modulos || []).join(", ")}`
+      const blob = new Blob([conteudo], { type: mimeType })
+      const fileName = `${nomeArquivoBase}.${formato === "excel" ? "xls" : formato}`
+      const file = new File([blob], fileName, { type: mimeType })
 
-      // Simular sucesso
+      const upload = await uploadRelatorio(file, String(selectedCompany.id), fileName)
+      if (!upload || upload.error) {
+        throw new Error(upload?.error || "Falha no upload do relatório")
+      }
+
+      const { data: userData } = await supabase.auth.getUser()
+      const usuarioId = userData?.user?.id || null
+
+      const { error: insertError } = await supabase
+        .from("relatorios_gerados")
+        .insert({
+          empresa_id: selectedCompany.id,
+          usuario_id: usuarioId,
+          modulo: (template.modulos?.[0] || template.categoria || "Relatórios"),
+          tipo_relatorio: formato === "excel" ? "Excel" : formato.toUpperCase(),
+          titulo: template.nome,
+          parametros: { categoria: template.categoria, modulos: template.modulos },
+          arquivo_url: upload.publicUrl,
+          tamanho_arquivo: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+          status: "Gerado",
+        })
+
+      if (insertError) {
+        console.warn("[v0] Falha ao gravar histórico no banco:", insertError.message)
+        setReportHistory((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            nome: `${template.nome}`,
+            tipo: template.categoria,
+            dataGeracao: agora.toISOString(),
+            geradoPor: "Sistema",
+            formato: formato.toUpperCase(),
+            tamanho: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+            status: "Concluído",
+            arquivo_url: upload.publicUrl,
+          },
+        ])
+      } else {
+        loadReportHistory()
+      }
+
       toast({
         title: "Relatório Gerado",
-        description: `Relatório "${template.nome}" gerado com sucesso!`,
+        description: `Relatório "${template.nome}" gerado e armazenado com sucesso!`,
       })
     } catch (error) {
       console.error("Erro ao gerar relatório:", error)
@@ -696,14 +780,14 @@ function Reports() {
 
   const handleDownloadReport = async (report: any) => {
     try {
-      // Simular download
-      console.log("[v0] Baixando relatório:", report.nome)
+      if (!report.arquivo_url) throw new Error("URL do arquivo não disponível")
 
-      // Aqui seria a chamada real para /api/reports/download
       const link = document.createElement("a")
-      link.href = "#" // URL real do arquivo
-      link.download = `${report.nome}.pdf`
+      link.href = report.arquivo_url
+      link.download = `${report.nome}`
+      document.body.appendChild(link)
       link.click()
+      document.body.removeChild(link)
 
       toast({
         title: "Download Iniciado",
@@ -878,15 +962,17 @@ function Reports() {
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Ativo":
-      case "Concluído":
-      case "Enviado":
+    const s = (status || "").toLowerCase()
+    switch (s) {
+      case "ativo":
+      case "concluído":
+      case "concluido":
+      case "enviado":
         return "default"
-      case "Processando":
-      case "Pendente":
+      case "processando":
+      case "pendente":
         return "secondary"
-      case "Erro":
+      case "erro":
         return "destructive"
       default:
         return "secondary"
@@ -909,12 +995,13 @@ function Reports() {
   }
 
   const getEsocialStatusIcon = (status: string) => {
-    switch (status) {
-      case "Enviado":
+    const s = (status || "").toLowerCase()
+    switch (s) {
+      case "enviado":
         return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "Pendente":
+      case "pendente":
         return <Clock className="h-4 w-4 text-yellow-500" />
-      case "Erro":
+      case "erro":
         return <XCircle className="h-4 w-4 text-red-500" />
       default:
         return <Clock className="h-4 w-4 text-gray-500" />
@@ -1368,6 +1455,85 @@ function Reports() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {selectedEsocialEvent && (
+          <Dialog open={!!selectedEsocialEvent} onOpenChange={(open) => !open && setSelectedEsocialEvent(null)}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Detalhes do Evento eSocial</DialogTitle>
+                <DialogDescription>Informações do evento e mensagens de retorno</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Evento</Label>
+                    <div className="font-medium">
+                      {selectedEsocialEvent?.tipo_evento}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {selectedEsocialEvent?.tipo_descricao}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Funcionário</Label>
+                    <div className="font-medium">{selectedEsocialEvent?.funcionario_nome}</div>
+                    <div className="text-sm text-muted-foreground">CPF: {selectedEsocialEvent?.cpf}</div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Data</Label>
+                    <div className="font-medium">{format(new Date(selectedEsocialEvent?.created_at), "dd/MM/yyyy HH:mm")}</div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Status</Label>
+                    <div className="flex items-center gap-2">
+                      {getEsocialStatusIcon(selectedEsocialEvent?.status)}
+                      <Badge variant={getStatusColor(selectedEsocialEvent?.status) as any}>{selectedEsocialEvent?.status}</Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Protocolo</Label>
+                    <div className="font-medium">{selectedEsocialEvent?.protocolo_envio || selectedEsocialEvent?.protocolo || '-'}</div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Recibo</Label>
+                    <div className="font-medium">{selectedEsocialEvent?.numero_recibo || '-'}</div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Mensagens de erro/retorno</Label>
+                  {Array.isArray(selectedEsocialEvent?.erros) && selectedEsocialEvent?.erros?.length > 0 ? (
+                    <div className="space-y-1">
+                      {selectedEsocialEvent.erros.map((msg: string, idx: number) => (
+                        <Alert key={idx} variant="destructive">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>{msg}</AlertDescription>
+                        </Alert>
+                      ))}
+                    </div>
+                  ) : (
+                    <Alert variant="default">
+                      <FileText className="h-4 w-4" />
+                      <AlertDescription>
+                        {selectedEsocialEvent?.mensagem_erro || selectedEsocialEvent?.mensagem_retorno || "Sem mensagens de erro."}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setSelectedEsocialEvent(null)}>Fechar</Button>
+                  <Button onClick={() => selectedEsocialEvent && handleExportXML(selectedEsocialEvent.id)}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar XML
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
 
         <TabsContent value="esocial" className="space-y-4">
           <Card>

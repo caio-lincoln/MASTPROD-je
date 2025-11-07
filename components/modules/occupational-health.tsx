@@ -454,7 +454,7 @@ export function OccupationalHealth() {
               Agendar Exame
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Agendar Novo Exame</DialogTitle>
               <DialogDescription>
@@ -522,12 +522,12 @@ export function OccupationalHealth() {
                   <SelectContent>
                     {medicos.length > 0 ? (
                       medicos.filter((m) => m.ativo).map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
+                        <SelectItem key={m.id} value={String(m.id)}>
                           {m.nome}{m.crm ? ` • CRM ${m.crm}` : ""}
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="no-medicos" disabled>
                         Nenhum médico cadastrado
                       </SelectItem>
                     )}
@@ -1021,7 +1021,7 @@ export function OccupationalHealth() {
       </Dialog>
 
       <Dialog open={showAsoDialog} onOpenChange={setShowAsoDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gerar Atestado de Saúde Ocupacional (ASO)</DialogTitle>
             <DialogDescription>
@@ -1090,12 +1090,12 @@ export function OccupationalHealth() {
                   <SelectContent>
                     {medicos.length > 0 ? (
                       medicos.filter((m) => m.ativo).map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
+                        <SelectItem key={m.id} value={String(m.id)}>
                           {m.nome}{m.crm ? ` • CRM ${m.crm}` : ""}
                         </SelectItem>
                       ))
                     ) : (
-                      <SelectItem value="" disabled>
+                      <SelectItem value="no-medicos" disabled>
                         Nenhum médico cadastrado
                       </SelectItem>
                     )}

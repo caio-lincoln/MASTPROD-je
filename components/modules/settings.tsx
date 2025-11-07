@@ -577,7 +577,10 @@ export function SettingsComponent() {
     usuario: '',
     senha: '',
     ssl: true,
-    remetente: ''
+    remetente: '',
+    from_nome: '',
+    ativo: true,
+    destinatarioTeste: ''
   })
 
   const [smsForm, setSmsForm] = useState({
@@ -1046,31 +1049,63 @@ export function SettingsComponent() {
   }, [])
 
   const handleSaveEmailConfig = async (testConnection = false) => {
-    // Validações básicas
-    if (!emailForm.servidor || !emailForm.usuario || !emailForm.senha || !emailForm.remetente) {
+    if (!selectedCompany) {
       toast({
-        title: "Erro de validação",
-        description: "Todos os campos são obrigatórios.",
+        title: "Selecione uma empresa",
+        description: "Escolha a empresa para associar a configuração de e-mail.",
         variant: "destructive",
       })
       return
     }
 
+    // Validações básicas
+    if (!emailForm.servidor || !emailForm.usuario || !emailForm.senha || !emailForm.remetente) {
+      toast({
+        title: "Erro de validação",
+        description: "Servidor, usuário, senha e remetente são obrigatórios.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailForm.remetente)) {
+      toast({
+        title: "E-mail inválido",
+        description: "Informe um e-mail remetente válido.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (testConnection && !emailForm.destinatarioTeste) {
+      toast({
+        title: "Destinatário de teste", 
+        description: "Informe um e-mail para receber o teste.",
+        variant: "destructive"
+      })
+      return
+    }
+
     try {
-      // Simular salvamento da configuração
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Aqui você implementaria a lógica real de salvamento
-      // const supabase = createClient()
-      // const { error } = await supabase
-      //   .from('integracoes')
-      //   .upsert({
-      //     empresa_id: selectedCompany?.id,
-      //     tipo: 'email',
-      //     configuracao: emailForm,
-      //     ativo: true
-      //   })
-      
+      const response = await fetch("/api/email/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          empresa_id: selectedCompany.id,
+          servidor: emailForm.servidor,
+          porta: emailForm.porta,
+          usuario: emailForm.usuario,
+          senha: emailForm.senha,
+          ssl: emailForm.ssl,
+          remetente: emailForm.remetente,
+          from_nome: emailForm.from_nome,
+          ativo: emailForm.ativo,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.error || "Falha ao salvar configuração")
+      }
+
       // Atualizar estado das integrações
       setIntegrations(prev => prev.map(integration => 
         integration.name === 'E-mail' 
@@ -1081,37 +1116,35 @@ export function SettingsComponent() {
             }
           : integration
       ))
-      
-      setIsEmailDialogOpen(false)
-      
+
       toast({
         title: "Configuração salva",
         description: "Configuração de e-mail salva com sucesso.",
       })
-      
+
       // Teste de conexão se solicitado
       if (testConnection) {
-        toast({
-          title: "Testando conexão",
-          description: "Verificando configuração SMTP...",
+        toast({ title: "Testando conexão", description: "Verificando configuração SMTP..." })
+        const testRes = await fetch("/api/email/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            empresa_id: selectedCompany.id,
+            destinatario: emailForm.destinatarioTeste,
+          }),
         })
-        
-        // TODO: Implementar teste real de SMTP
-        // Esta implementação deve usar bibliotecas de e-mail adequadas
-        try {
-          throw new Error("Teste de SMTP não implementado para produção")
-        } catch (error) {
-          toast({
-            title: "Erro na conexão",
-            description: "Não foi possível testar a configuração SMTP.",
-            variant: "destructive"
-          })
+        if (!testRes.ok) {
+          const td = await testRes.json().catch(() => ({}))
+          throw new Error(td?.error || "Falha ao enviar e-mail de teste")
         }
+        toast({ title: "Conexão OK", description: "E-mail de teste enviado com sucesso." })
       }
-    } catch (error) {
+
+      setIsEmailDialogOpen(false)
+    } catch (error: any) {
       toast({
         title: "Erro",
-        description: "Não foi possível salvar a configuração de e-mail.",
+        description: String(error?.message || "Não foi possível salvar/testar configuração de e-mail."),
         variant: "destructive",
       })
     }
@@ -2179,6 +2212,23 @@ export function SettingsComponent() {
                  placeholder="noreply@empresa.com"
                />
              </div>
+             <div className="space-y-2">
+               <Label>Nome do Remetente (opcional)</Label>
+               <Input
+                 value={emailForm.from_nome}
+                 onChange={(e) => setEmailForm(prev => ({ ...prev, from_nome: e.target.value }))}
+                 placeholder="MASTPROD"
+               />
+             </div>
+
+             <div className="space-y-2">
+               <Label>Destinatário para Teste</Label>
+               <Input
+                 value={emailForm.destinatarioTeste}
+                 onChange={(e) => setEmailForm(prev => ({ ...prev, destinatarioTeste: e.target.value }))}
+                 placeholder="seu-email@empresa.com"
+               />
+             </div>
              
              <div className="flex items-center space-x-2">
                <input
@@ -2195,6 +2245,10 @@ export function SettingsComponent() {
            <DialogFooter>
              <Button variant="outline" onClick={() => setIsEmailDialogOpen(false)}>
                Cancelar
+             </Button>
+             <Button variant="outline" onClick={() => handleSaveEmailConfig(true)}>
+               <CheckCircle className="h-4 w-4 mr-2" />
+               Salvar e Testar
              </Button>
              <Button onClick={() => handleSaveEmailConfig()}>
                <Save className="h-4 w-4 mr-2" />
