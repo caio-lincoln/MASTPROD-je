@@ -84,7 +84,7 @@ export async function uploadArquivo(
         publicUrl: signedData.signedUrl,
       }
     }
-  } catch (error) {
+  } catch {
     return null
   }
 }
@@ -102,7 +102,7 @@ export async function getSignedUrl(path: string, type: FileType, expiresIn = 360
     }
 
     return data.signedUrl
-  } catch (error) {
+  } catch {
     return null
   }
 }
@@ -120,7 +120,7 @@ export async function removeArquivo(path: string, type: FileType) {
     }
 
     return true
-  } catch (error) {
+  } catch {
     return false
   }
 }
@@ -139,7 +139,7 @@ export async function listarArquivos(type: FileType, empresaId?: string) {
     }
 
     return data || []
-  } catch (error) {
+  } catch {
     return []
   }
 }

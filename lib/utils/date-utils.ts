@@ -24,7 +24,7 @@ export function formatDateSafe(dateInput: Date | string | null | undefined, fall
   try {
     const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput!
     return date.toLocaleDateString("pt-BR")
-  } catch (error) {
+  } catch {
     return fallback
   }
 }
@@ -40,7 +40,7 @@ export function formatDateISO(dateInput: Date | string | null | undefined, fallb
   try {
     const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput!
     return date.toISOString()
-  } catch (error) {
+  } catch {
     return fallback
   }
 }
@@ -65,7 +65,7 @@ export function formatDateCustom(
   try {
     const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput!
     return date.toLocaleDateString(locale, options)
-  } catch (error) {
+  } catch {
     return fallback
   }
 }
@@ -93,7 +93,7 @@ export function getTimeDifference(
     if (diffInDays < 7) return `${diffInDays}d atrás`
 
     return formatDateSafe(date)
-  } catch (error) {
+  } catch {
     return fallback
   }
 }
@@ -113,7 +113,7 @@ export function isDateExpired(dateInput: Date | string | null | undefined, buffe
     buffer.setDate(now.getDate() + bufferDays)
 
     return date < buffer
-  } catch (error) {
+  } catch {
     return false
   }
 }

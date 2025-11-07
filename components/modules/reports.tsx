@@ -43,10 +43,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  Calendar as CalendarLucide,
-  Play,
-  Pause,
-  Edit,
+  
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -237,18 +234,6 @@ function Reports() {
   })
 
   // Novos estados para agendados e configurações
-  const [scheduledReports, setScheduledReports] = useState<any[]>([])
-  const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [newSchedule, setNewSchedule] = useState({
-    modelo_id: '',
-    modelo_nome: '',
-    frequencia: 'mensal',
-    dia_execucao: 1,
-    hora_execucao: '09:00',
-    ativo: true,
-    email_destinatarios: '',
-    formato: 'pdf'
-  })
   const [reportSettings, setReportSettings] = useState<any>({
     storage_path: 'relatorios/',
     retention_days: 90,
@@ -263,7 +248,7 @@ function Reports() {
   const [totalTemplates, setTotalTemplates] = useState(0)
   const [totalReports, setTotalReports] = useState(0)
   const [totalDownloads, setTotalDownloads] = useState(0)
-  const [activeSchedules, setActiveSchedules] = useState(0)
+  // Removido: contagem de agendamentos ativos
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([])
   const [reportHistory, setReportHistory] = useState<any[]>([])
   const [setores, setSetores] = useState<string[]>([])
@@ -403,7 +388,7 @@ function Reports() {
         setTotalDownloads(
           reportTemplates.reduce((acc, template) => acc + (template.downloads || 0), 0)
         )
-        setActiveSchedules(0)
+        // Removido: contagem de agendamentos ativos
       } catch (error) {
         console.error('Erro ao carregar histórico de relatórios:', error)
         const companyId = Number(selectedCompany.id) as keyof typeof reportHistoryByCompany
@@ -412,7 +397,7 @@ function Reports() {
         setTotalDownloads(
           reportTemplatesByCompany[companyId]?.reduce((acc, template) => acc + template.downloads, 0) || 0,
         )
-        setActiveSchedules(0)
+        // Removido: contagem de agendamentos ativos
       }
     })()
   }
@@ -425,47 +410,14 @@ function Reports() {
     if (selectedCompany) {
       loadReportTemplates()
       loadReportHistory()
-      loadScheduledReports()
       loadReportSettings()
       loadSetores()
     }
   }, [selectedCompany, activeTab])
 
-  // Prefill de destinatários de e-mail a partir das configurações padrão
-  useEffect(() => {
-    if (reportSettings?.default_email && (!newSchedule.email_destinatarios || newSchedule.email_destinatarios.trim() === '')) {
-      setNewSchedule((prev) => ({ ...prev, email_destinatarios: reportSettings.default_email }))
-    }
-  }, [reportSettings])
+  // Prefill de destinatários removido junto ao módulo de agendados
 
-  // Função para carregar relatórios agendados
-  const loadScheduledReports = async () => {
-    if (!selectedCompany) return
-
-    try {
-      const { data, error } = await supabase
-        .from('relatorios_agendados')
-        .select(`
-          *,
-          modelos_relatorios (nome, descricao)
-        `)
-        .eq('empresa_id', selectedCompany.id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      const formattedSchedules = data?.map(schedule => ({
-        ...schedule,
-        modelo_nome: schedule.modelos_relatorios?.nome || 'Modelo não encontrado'
-      })) || []
-
-      setScheduledReports(formattedSchedules)
-      setActiveSchedules(formattedSchedules.filter(s => s.ativo).length)
-    } catch (error) {
-      console.error('Erro ao carregar agendamentos:', error)
-      setScheduledReports([])
-    }
-  }
+  // Função de agendados removida
 
   // Função para carregar configurações
   const loadReportSettings = async () => {
@@ -1187,13 +1139,12 @@ function Reports() {
           <TabsTrigger value="templates">Modelos</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
           <TabsTrigger value="esocial">eSocial</TabsTrigger>
-          <TabsTrigger value="agendados">Agendados</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
         <TabsContent value="templates" className="space-y-4">
-          {/* Cards de Resumo */}
-          <div className="grid gap-4 md:grid-cols-4">
+          {/* Cards de Resumo (ajustado após remoção de Agendamentos) */}
+          <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Modelos Ativos</CardTitle>
@@ -1227,16 +1178,7 @@ function Reports() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Agendamentos</CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{activeSchedules}</div>
-                <p className="text-xs text-muted-foreground">Relatórios automáticos</p>
-              </CardContent>
-            </Card>
+            {/* Card de Agendamentos removido */}
           </div>
 
           {/* Lista de Modelos */}
@@ -1667,111 +1609,7 @@ function Reports() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="agendados" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Relatórios Agendados - {selectedCompany.name}</CardTitle>
-              <CardDescription>Geração automática de relatórios programados</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex space-x-2">
-                  <Input placeholder="Buscar agendamento..." className="w-64" />
-                  <Select>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="ativo">Ativo</SelectItem>
-                      <SelectItem value="pausado">Pausado</SelectItem>
-                      <SelectItem value="erro">Erro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={() => setShowScheduleModal(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Novo Agendamento
-                </Button>
-              </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Modelo</TableHead>
-                    <TableHead>Frequência</TableHead>
-                    <TableHead>Próxima Execução</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Última Execução</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {scheduledReports.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
-                        <CalendarLucide className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">Nenhum relatório agendado.</p>
-                        <Button 
-                          variant="outline" 
-                          className="mt-2"
-                          onClick={() => setShowScheduleModal(true)}
-                        >
-                          Criar Primeiro Agendamento
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    scheduledReports.map((schedule) => (
-                      <TableRow key={schedule.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{schedule.modelo_nome}</p>
-                            <p className="text-sm text-muted-foreground">{schedule.descricao}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{schedule.frequencia}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(schedule.proxima_execucao).toLocaleDateString('pt-BR')}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={schedule.ativo ? "default" : "secondary"}>
-                            {schedule.ativo ? "Ativo" : "Pausado"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {schedule.ultima_execucao 
-                            ? new Date(schedule.ultima_execucao).toLocaleDateString('pt-BR')
-                            : "Nunca"
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex space-x-1">
-                            <Button variant="ghost" size="sm" title="Editar">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              title={schedule.ativo ? "Pausar" : "Ativar"}
-                            >
-                              {schedule.ativo ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                            </Button>
-                            <Button variant="ghost" size="sm" title="Excluir">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        
 
         <TabsContent value="configuracoes" className="space-y-4">
           <div className="grid gap-4">
@@ -2019,138 +1857,7 @@ function Reports() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal para Criar Agendamento */}
-      <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Novo Agendamento de Relatório</DialogTitle>
-            <DialogDescription>
-              Configure um agendamento automático para {selectedCompany.name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Modelo de Relatório</Label>
-                <Select 
-                  value={newSchedule.modelo_id} 
-                  onValueChange={(value) => {
-                    const template = reportTemplates.find(t => t.id === value)
-                    setNewSchedule({
-                      ...newSchedule, 
-                      modelo_id: value,
-                      modelo_nome: template?.nome || ''
-                    })
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um modelo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {reportTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Frequência</Label>
-                <Select 
-                  value={newSchedule.frequencia} 
-                  onValueChange={(value) => setNewSchedule({...newSchedule, frequencia: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="diario">Diário</SelectItem>
-                    <SelectItem value="semanal">Semanal</SelectItem>
-                    <SelectItem value="mensal">Mensal</SelectItem>
-                    <SelectItem value="trimestral">Trimestral</SelectItem>
-                    <SelectItem value="semestral">Semestral</SelectItem>
-                    <SelectItem value="anual">Anual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Dia da Execução</Label>
-                <Input 
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={newSchedule.dia_execucao}
-                  onChange={(e) => setNewSchedule({...newSchedule, dia_execucao: parseInt(e.target.value)})}
-                  placeholder="1"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Horário</Label>
-                <Input 
-                  type="time"
-                  value={newSchedule.hora_execucao}
-                  onChange={(e) => setNewSchedule({...newSchedule, hora_execucao: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Destinatários de Email (separados por vírgula)</Label>
-              <Input 
-                placeholder="email1@empresa.com, email2@empresa.com"
-                value={newSchedule.email_destinatarios}
-                onChange={(e) => setNewSchedule({...newSchedule, email_destinatarios: e.target.value})}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Formato</Label>
-                <Select 
-                  value={newSchedule.formato} 
-                  onValueChange={(value) => setNewSchedule({...newSchedule, formato: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pdf">PDF</SelectItem>
-                    <SelectItem value="excel">Excel</SelectItem>
-                    <SelectItem value="csv">CSV</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center space-x-2 pt-6">
-                <Checkbox 
-                  id="ativo"
-                  checked={newSchedule.ativo}
-                  onCheckedChange={(checked) => setNewSchedule({...newSchedule, ativo: checked})}
-                />
-                <Label htmlFor="ativo">Ativar agendamento</Label>
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setShowScheduleModal(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={() => {
-              // Aqui implementaríamos a lógica de criação do agendamento
-              toast({
-                title: "Agendamento criado!",
-                description: "O relatório será gerado automaticamente conforme configurado.",
-              })
-              setShowScheduleModal(false)
-            }}>
-              Criar Agendamento
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal de Agendados removido */}
     </div>
   )
 }

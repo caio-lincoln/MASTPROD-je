@@ -2,6 +2,9 @@
  * Utilitários para manipulação de XML
  */
 
+type XMLAttributes = Record<string, string>
+type XMLObject = { [key: string]: XMLObject | XMLObject[] | string | XMLAttributes }
+
 /**
  * Valida se uma string é um XML válido
  * @param xmlString String XML para validar
@@ -13,7 +16,7 @@ export function isValidXML(xmlString: string): boolean {
     const doc = parser.parseFromString(xmlString, 'text/xml')
     const parseError = doc.getElementsByTagName('parsererror')
     return parseError.length === 0
-  } catch (error) {
+  } catch {
     return false
   }
 }
@@ -168,7 +171,7 @@ export function removeElements(xmlString: string, elementName: string): string {
  * @param xmlString String XML
  * @returns Objeto JavaScript
  */
-export function xmlToObject(xmlString: string): any {
+export function xmlToObject(xmlString: string): XMLObject | null {
   try {
     const parser = new DOMParser()
     const doc = parser.parseFromString(xmlString, 'text/xml')
@@ -187,20 +190,20 @@ export function xmlToObject(xmlString: string): any {
 /**
  * Função auxiliar para converter nó XML em objeto
  */
-function nodeToObject(node: Element): any {
-  const obj: any = {}
+function nodeToObject(node: Element): XMLObject {
+  const obj: XMLObject = {}
   
   // Adicionar atributos
   if (node.attributes.length > 0) {
     obj['@attributes'] = {}
     for (let i = 0; i < node.attributes.length; i++) {
       const attr = node.attributes[i]
-      obj['@attributes'][attr.name] = attr.value
+      ;(obj['@attributes'] as XMLAttributes)[attr.name] = attr.value
     }
   }
   
   // Processar nós filhos
-  const children: { [key: string]: any } = {}
+  const children: Record<string, XMLObject | XMLObject[]> = {}
   
   for (let i = 0; i < node.childNodes.length; i++) {
     const child = node.childNodes[i]
@@ -217,9 +220,9 @@ function nodeToObject(node: Element): any {
       
       if (children[childName]) {
         if (!Array.isArray(children[childName])) {
-          children[childName] = [children[childName]]
+          children[childName] = [children[childName] as XMLObject]
         }
-        children[childName].push(childObj)
+        ;(children[childName] as XMLObject[]).push(childObj)
       } else {
         children[childName] = childObj
       }

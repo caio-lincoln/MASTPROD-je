@@ -89,11 +89,6 @@ export function SettingsComponent() {
       description: "Configuração de envio de e-mails"
     },
     {
-      name: "SMS",
-      status: "inactive",
-      description: "Envio de notificações via SMS"
-    },
-    {
       name: "Backup",
       status: "active",
       lastSync: "2024-01-15T02:00:00Z",
@@ -108,7 +103,6 @@ export function SettingsComponent() {
   const [isDeleteCompanyDialogOpen, setIsDeleteCompanyDialogOpen] = useState(false)
   const [isEsocialDialogOpen, setIsEsocialDialogOpen] = useState(false)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
-  const [isSmsDialogOpen, setIsSmsDialogOpen] = useState(false)
   const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false)
 
   // Estados para edição
@@ -583,13 +577,6 @@ export function SettingsComponent() {
     destinatarioTeste: ''
   })
 
-  const [smsForm, setSmsForm] = useState({
-    provedor: '',
-    apiKey: '',
-    apiSecret: '',
-    numeroRemetente: '',
-    testeEnvio: ''
-  })
 
   const [backupForm, setBackupForm] = useState({
     frequencia: 'diario',
@@ -1169,100 +1156,7 @@ export function SettingsComponent() {
     }
   }
 
-  const handleSaveSmsConfig = async (testConnection = false) => {
-    // Validações básicas
-    if (!smsForm.provedor || !smsForm.apiKey || !smsForm.apiSecret) {
-      toast({
-        title: "Erro de validação",
-        description: "Provedor, API Key e API Secret são obrigatórios.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      // Simular salvamento da configuração
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Aqui você implementaria a lógica real de salvamento
-      // const supabase = createClient()
-      // const { error } = await supabase
-      //   .from('integracoes')
-      //   .upsert({
-      //     empresa_id: selectedCompany?.id,
-      //     tipo: 'sms',
-      //     configuracao: smsForm,
-      //     ativo: true
-      //   })
-      
-      // Atualizar estado das integrações
-      setIntegrations(prev => prev.map(integration => 
-        integration.name === 'SMS' 
-          ? { 
-              ...integration, 
-              status: 'active' as const,
-              lastSync: new Date().toISOString()
-            }
-          : integration
-      ))
-      
-      setIsSmsDialogOpen(false)
-      
-      toast({
-        title: "Configuração salva",
-        description: "Configuração de SMS salva com sucesso.",
-      })
-      
-      // Teste de conexão se solicitado
-      if (testConnection) {
-        toast({
-          title: "Testando conexão",
-          description: "Verificando configuração do provedor...",
-        })
-        
-        // Validação do número de teste
-        if (!smsForm.testeEnvio) {
-          toast({
-            title: "Número de teste",
-            description: "Informe um número para receber o SMS de teste.",
-            variant: "destructive",
-          })
-          return
-        }
-
-        try {
-          const response = await fetch("/api/sms/test", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provedor: smsForm.provedor,
-              to: smsForm.testeEnvio,
-              from: smsForm.numeroRemetente,
-            }),
-          })
-
-          if (!response.ok) {
-            const data = await response.json().catch(() => ({}))
-            throw new Error(data?.error || "Falha ao enviar SMS de teste")
-          }
-
-          toast({ title: "Conexão OK", description: "SMS de teste enviado com sucesso." })
-        } catch (error: any) {
-          toast({
-            title: "Erro na conexão",
-            description: String(error?.message || "Não foi possível testar a configuração de SMS."),
-            variant: "destructive",
-          })
-        }
-      }
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Não foi possível salvar a configuração de SMS.",
-        variant: "destructive",
-      })
-    }
-  }
+  
 
   const handleSaveBackupConfig = async () => {
     // Validações básicas
@@ -1893,8 +1787,6 @@ export function SettingsComponent() {
                           setIsEsocialDialogOpen(true)
                         } else if (integration.name === "E-mail") {
                           setIsEmailDialogOpen(true)
-                        } else if (integration.name === "SMS") {
-                          setIsSmsDialogOpen(true)
                         } else if (integration.name === "Backup") {
                           setIsBackupDialogOpen(true)
                         }
@@ -2300,89 +2192,6 @@ export function SettingsComponent() {
          </DialogContent>
        </Dialog>
 
-       {/* Dialog de Configuração de SMS */}
-       <Dialog open={isSmsDialogOpen} onOpenChange={setIsSmsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-           <DialogHeader>
-             <DialogTitle>Configuração SMS</DialogTitle>
-             <DialogDescription>
-               Configure o provedor de SMS para envio de mensagens
-             </DialogDescription>
-           </DialogHeader>
-           
-           <div className="space-y-4">
-             <div className="space-y-2">
-               <Label>Provedor</Label>
-               <Select 
-                 value={smsForm.provedor} 
-                 onValueChange={(value) => setSmsForm(prev => ({ ...prev, provedor: value }))}
-               >
-                 <SelectTrigger>
-                   <SelectValue placeholder="Selecione um provedor" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="twilio">Twilio</SelectItem>
-                   <SelectItem value="zenvia">Zenvia</SelectItem>
-                   <SelectItem value="totalvoice">TotalVoice</SelectItem>
-                 </SelectContent>
-               </Select>
-             </div>
-             
-             <div className="grid gap-4 md:grid-cols-2">
-               <div className="space-y-2">
-                 <Label>API Key</Label>
-                 <Input
-                   value={smsForm.apiKey}
-                   onChange={(e) => setSmsForm(prev => ({ ...prev, apiKey: e.target.value }))}
-                   placeholder="Sua chave da API"
-                 />
-               </div>
-               
-               <div className="space-y-2">
-                 <Label>API Secret</Label>
-                 <Input
-                   type="password"
-                   value={smsForm.apiSecret}
-                   onChange={(e) => setSmsForm(prev => ({ ...prev, apiSecret: e.target.value }))}
-                   placeholder="Seu secret da API"
-                 />
-               </div>
-             </div>
-             
-             <div className="space-y-2">
-             <Label>Número Remetente</Label>
-             <Input
-               value={smsForm.numeroRemetente}
-               onChange={(e) => setSmsForm(prev => ({ ...prev, numeroRemetente: e.target.value }))}
-               placeholder="+5511999999999"
-             />
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Número de Teste</Label>
-              <Input
-                value={smsForm.testeEnvio}
-                onChange={(e) => setSmsForm(prev => ({ ...prev, testeEnvio: e.target.value }))}
-                placeholder="Destinatário para teste, ex: +5511999999999"
-              />
-            </div>
-           </div>
-           
-           <DialogFooter>
-             <Button variant="outline" onClick={() => setIsSmsDialogOpen(false)}>
-               Cancelar
-             </Button>
-             <Button variant="outline" onClick={() => handleSaveSmsConfig(true)}>
-               <CheckCircle className="h-4 w-4 mr-2" />
-               Salvar e Testar
-             </Button>
-             <Button onClick={() => handleSaveSmsConfig()}>
-               <Save className="h-4 w-4 mr-2" />
-               Salvar Configuração
-             </Button>
-           </DialogFooter>
-         </DialogContent>
-       </Dialog>
 
        {/* Dialog de Configuração de Backup */}
        <Dialog open={isBackupDialogOpen} onOpenChange={setIsBackupDialogOpen}>

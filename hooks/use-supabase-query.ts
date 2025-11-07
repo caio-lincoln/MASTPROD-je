@@ -9,10 +9,10 @@ interface UseSupabaseQueryOptions {
   enabled?: boolean
   refreshInterval?: number
   revalidateOnFocus?: boolean
-  filters?: Record<string, any>
+  filters?: Record<string, unknown>
 }
 
-export function useSupabaseQuery<T = any>(table: string, options: UseSupabaseQueryOptions = {}) {
+export function useSupabaseQuery<T = unknown>(table: string, options: UseSupabaseQueryOptions = {}) {
   const { selectedCompany } = useCompany()
   const { enabled = true, filters, ...swrOptions } = options
 
@@ -146,7 +146,7 @@ export function useDashboardData() {
   }
 }
 
-export function useSupabaseCount(table: string, filters?: Record<string, any>, options: UseSupabaseQueryOptions = {}) {
+export function useSupabaseCount(table: string, filters?: Record<string, unknown>, options: UseSupabaseQueryOptions = {}) {
   const { selectedCompany } = useCompany()
   const { enabled = true } = options
 
