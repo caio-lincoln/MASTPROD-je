@@ -265,6 +265,7 @@ function Reports() {
   const [activeSchedules, setActiveSchedules] = useState(0)
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([])
   const [reportHistory, setReportHistory] = useState<any[]>([])
+  const [setores, setSetores] = useState<string[]>([])
 
   const supabase = createClientComponentClient()
 
@@ -350,6 +351,27 @@ function Reports() {
     }
   }
 
+  // Carregar lista de setores distintos da empresa atual
+  const loadSetores = async () => {
+    if (!selectedCompany) return
+
+    try {
+      const { data, error } = await supabase
+        .from('funcionarios')
+        .select('setor')
+        .eq('empresa_id', selectedCompany.id)
+        .not('setor', 'is', null)
+
+      if (error) throw error
+
+      const uniqueSetores = Array.from(new Set((data || []).map((r: any) => r.setor))).sort()
+      setSetores(uniqueSetores)
+    } catch (error) {
+      console.error('Erro ao carregar setores:', error)
+      setSetores([])
+    }
+  }
+
   const loadReportHistory = () => {
     if (selectedCompany) {
       const companyId = Number(selectedCompany.id) as keyof typeof reportHistoryByCompany
@@ -372,8 +394,16 @@ function Reports() {
       loadReportHistory()
       loadScheduledReports()
       loadReportSettings()
+      loadSetores()
     }
   }, [selectedCompany, activeTab])
+
+  // Prefill de destinatários de e-mail a partir das configurações padrão
+  useEffect(() => {
+    if (reportSettings?.default_email && (!newSchedule.email_destinatarios || newSchedule.email_destinatarios.trim() === '')) {
+      setNewSchedule((prev) => ({ ...prev, email_destinatarios: reportSettings.default_email }))
+    }
+  }, [reportSettings])
 
   // Função para carregar relatórios agendados
   const loadScheduledReports = async () => {
@@ -1023,10 +1053,9 @@ function Reports() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos os Setores</SelectItem>
-                      <SelectItem value="producao">Produção</SelectItem>
-                      <SelectItem value="manutencao">Manutenção</SelectItem>
-                      <SelectItem value="qualidade">Qualidade</SelectItem>
-                      <SelectItem value="administrativo">Administrativo</SelectItem>
+                      {setores.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

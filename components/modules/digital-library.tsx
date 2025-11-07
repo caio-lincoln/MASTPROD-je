@@ -42,6 +42,7 @@ import { format } from "date-fns"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { uploadDocumentoBiblioteca, validarTipoArquivo, validarTamanhoArquivo } from "@/lib/supabase/storage"
 
 interface Document {
   id: string
@@ -77,6 +78,8 @@ export default function DigitalLibraryComponent() {
     validade: "",
     responsavel: "",
   })
+  const [newDocFile, setNewDocFile] = useState<File | null>(null)
+  const [newDocCategoria, setNewDocCategoria] = useState("")
 
   const supabase = createClientComponentClient()
 
@@ -114,6 +117,45 @@ export default function DigitalLibraryComponent() {
 
   const handleSaveNewDocument = async (formData: any) => {
     if (!selectedCompany) return
+    if (!newDocFile) {
+      console.error("Selecione um arquivo para upload.")
+      return
+    }
+
+    // Validações de arquivo
+    if (!validarTipoArquivo(newDocFile, "biblioteca")) {
+      console.error("Tipo de arquivo não permitido para Biblioteca.")
+      return
+    }
+    if (!validarTamanhoArquivo(newDocFile, "biblioteca")) {
+      console.error("Arquivo excede o tamanho máximo permitido.")
+      return
+    }
+
+    // Derivar tipo e tamanho do arquivo
+    const ext = (newDocFile.name.split(".").pop() || "").toLowerCase()
+    const tipoDerivado =
+      ext === "pdf"
+        ? "PDF"
+        : ext === "docx" || ext === "doc"
+          ? ext.toUpperCase()
+          : ext === "txt"
+            ? "TXT"
+            : ext.toUpperCase()
+    const tamanhoFormatado = (() => {
+      const size = newDocFile.size
+      const kb = size / 1024
+      const mb = kb / 1024
+      if (mb >= 1) return `${mb.toFixed(2)} MB`
+      return `${Math.ceil(kb)} KB`
+    })()
+
+    // Upload para Storage (bucket biblioteca)
+    const uploadResult = await uploadDocumentoBiblioteca(newDocFile, selectedCompany.id)
+    if (!uploadResult || uploadResult.error) {
+      console.error("Erro no upload do arquivo:", uploadResult?.error)
+      return
+    }
 
     try {
       const { data, error } = await supabase
@@ -122,15 +164,16 @@ export default function DigitalLibraryComponent() {
           {
             empresa_id: selectedCompany.id,
             titulo: formData.titulo,
-            categoria: formData.categoria,
-            tipo: formData.tipo || "PDF",
-            tamanho: formData.tamanho || "0 KB",
+            categoria: newDocCategoria || (formData.categoria as string) || "",
+            tipo: tipoDerivado || (formData.tipo as string) || "PDF",
+            tamanho: tamanhoFormatado || (formData.tamanho as string) || "0 KB",
             versao: formData.versao,
             validade: formData.validade || null,
             responsavel: formData.responsavel,
             downloads: 0,
             visualizacoes: 0,
             status: "Ativo",
+            arquivo_url: uploadResult.publicUrl,
           },
         ])
         .select()
@@ -142,6 +185,8 @@ export default function DigitalLibraryComponent() {
 
       await loadDocuments()
       setIsNewDocumentDialogOpen(false)
+      setNewDocFile(null)
+      setNewDocCategoria("")
     } catch (error) {
       console.error("Erro ao salvar documento:", error)
     }
@@ -200,36 +245,12 @@ export default function DigitalLibraryComponent() {
     }
   }
 
-  const getCategoryDataForCompany = (documents: Document[]) => {
-    const categories = [
-      { nome: "Programas", icone: FolderOpen },
-      { nome: "Normas Regulamentadoras", icone: FileText },
-      { nome: "Procedimentos", icone: File },
-      { nome: "Manuais", icone: FileText },
-      { nome: "Formulários", icone: File },
-      { nome: "Certificados", icone: FileText },
-    ]
-
-    return categories.map((category) => ({
-      ...category,
-      quantidade: documents.filter((doc) => {
-        switch (category.nome) {
-          case "Programas":
-            return doc.categoria === "Programa"
-          case "Normas Regulamentadoras":
-            return doc.categoria === "Norma Regulamentadora"
-          case "Procedimentos":
-            return doc.categoria === "Procedimento"
-          case "Manuais":
-            return doc.categoria === "Manual"
-          case "Formulários":
-            return doc.categoria === "Formulário"
-          case "Certificados":
-            return doc.categoria === "Certificado"
-          default:
-            return false
-        }
-      }).length,
+  const categories = Array.from(new Set(documents.map((d) => d.categoria).filter(Boolean)))
+  const getCategoryDataForCompany = (docs: Document[]) => {
+    return categories.map((nome) => ({
+      nome,
+      icone: FolderOpen,
+      quantidade: docs.filter((doc) => doc.categoria === nome).length,
     }))
   }
 
@@ -283,15 +304,7 @@ export default function DigitalLibraryComponent() {
 
   const filteredDocuments = documents.filter((doc) => {
     const matchesSearch = doc.titulo.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory =
-      selectedCategory === "Todos" ||
-      (selectedCategory === "Programas" && doc.categoria === "Programa") ||
-      (selectedCategory === "Normas Regulamentadoras" && doc.categoria === "Norma Regulamentadora") ||
-      (selectedCategory === "Procedimentos" && doc.categoria === "Procedimento") ||
-      (selectedCategory === "Manuais" && doc.categoria === "Manual") ||
-      (selectedCategory === "Formulários" && doc.categoria === "Formulário") ||
-      (selectedCategory === "Certificados" && doc.categoria === "Certificado")
-
+    const matchesCategory = selectedCategory === "Todos" || doc.categoria === selectedCategory
     return matchesSearch && matchesCategory
   })
 
@@ -353,101 +366,6 @@ export default function DigitalLibraryComponent() {
             Gestão de documentos com versionamento e controle de validade - {selectedCompany.name}
           </p>
         </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Documento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Adicionar Novo Documento</DialogTitle>
-              <DialogDescription>
-                Faça upload de um novo documento para a biblioteca de {selectedCompany.name}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label>Arquivo</Label>
-                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
-                  <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Arraste e solte o arquivo aqui ou clique para selecionar
-                  </p>
-                  <Button variant="outline" size="sm">
-                    Selecionar Arquivo
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome do Documento</Label>
-                  <Input placeholder="Ex: PGR 2024" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="programa">Programa</SelectItem>
-                      <SelectItem value="nr">Norma Regulamentadora</SelectItem>
-                      <SelectItem value="procedimento">Procedimento</SelectItem>
-                      <SelectItem value="manual">Manual</SelectItem>
-                      <SelectItem value="formulario">Formulário</SelectItem>
-                      <SelectItem value="certificado">Certificado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Versão</Label>
-                  <Input placeholder="Ex: 1.0" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Data de Vencimento</Label>
-                  <Input type="date" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Responsável</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o responsável" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="joao">João Santos</SelectItem>
-                    <SelectItem value="maria">Maria Silva</SelectItem>
-                    <SelectItem value="carlos">Carlos Lima</SelectItem>
-                    <SelectItem value="ana">Ana Costa</SelectItem>
-                    <SelectItem value="roberto">Roberto Costa</SelectItem>
-                    <SelectItem value="anaferreira">Ana Ferreira</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea placeholder="Descreva o conteúdo do documento" />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <Input placeholder="Ex: segurança, procedimento, emergência (separadas por vírgula)" />
-              </div>
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline">Cancelar</Button>
-              <Button>Fazer Upload</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
       <Tabs defaultValue="documentos" className="space-y-4">
@@ -479,12 +397,11 @@ export default function DigitalLibraryComponent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Todos">Todas</SelectItem>
-                    <SelectItem value="Programa">Programas</SelectItem>
-                    <SelectItem value="Norma Regulamentadora">Normas</SelectItem>
-                    <SelectItem value="Procedimento">Procedimentos</SelectItem>
-                    <SelectItem value="Manual">Manuais</SelectItem>
-                    <SelectItem value="Formulário">Formulários</SelectItem>
-                    <SelectItem value="Certificado">Certificados</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select>
@@ -893,19 +810,22 @@ export default function DigitalLibraryComponent() {
                 <Label htmlFor="categoria" className="text-right">
                   Categoria
                 </Label>
-                <Select name="categoria" required>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Selecione uma categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Programa">Programa</SelectItem>
-                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
-                    <SelectItem value="Procedimento">Procedimento</SelectItem>
-                    <SelectItem value="Manual">Manual</SelectItem>
-                    <SelectItem value="Formulário">Formulário</SelectItem>
-                    <SelectItem value="Certificado">Certificado</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="col-span-3">
+                  <Input
+                    id="categoria"
+                    name="categoria"
+                    placeholder="Digite ou selecione uma categoria"
+                    list="lista-categorias"
+                    value={newDocCategoria}
+                    onChange={(e) => setNewDocCategoria(e.target.value)}
+                    required
+                  />
+                  <datalist id="lista-categorias">
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="versao" className="text-right">
@@ -924,6 +844,23 @@ export default function DigitalLibraryComponent() {
                   Responsável
                 </Label>
                 <Input id="responsavel" name="responsavel" className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="arquivo" className="text-right">
+                  Arquivo
+                </Label>
+                <Input
+                  id="arquivo"
+                  name="arquivo"
+                  className="col-span-3"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0] || null
+                    setNewDocFile(file)
+                  }}
+                  required
+                />
               </div>
             </div>
             <DialogFooter>
@@ -967,24 +904,22 @@ export default function DigitalLibraryComponent() {
                 <Label htmlFor="categoria" className="text-right">
                   Categoria
                 </Label>
-                <Select
-                  name="categoria"
-                  value={editFormData.categoria}
-                  onValueChange={(value) => setEditFormData({ ...editFormData, categoria: value })}
-                  required
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Selecione uma categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Programa">Programa</SelectItem>
-                    <SelectItem value="Norma Regulamentadora">Norma Regulamentadora</SelectItem>
-                    <SelectItem value="Procedimento">Procedimento</SelectItem>
-                    <SelectItem value="Manual">Manual</SelectItem>
-                    <SelectItem value="Formulário">Formulário</SelectItem>
-                    <SelectItem value="Certificado">Certificado</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="col-span-3">
+                  <Input
+                    id="categoria-edit"
+                    name="categoria"
+                    placeholder="Digite ou selecione uma categoria"
+                    list="lista-categorias-edit"
+                    value={editFormData.categoria}
+                    onChange={(e) => setEditFormData({ ...editFormData, categoria: e.target.value })}
+                    required
+                  />
+                  <datalist id="lista-categorias-edit">
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="versao" className="text-right">

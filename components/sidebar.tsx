@@ -194,7 +194,7 @@ export function Sidebar({
         <div className="flex items-center justify-between p-3 sm:p-4 border-b border-sidebar-border bg-sidebar/50">
           {(!collapsed || isMobile) && (
             <div className="flex items-center justify-center min-w-0 flex-1">
-              <Logo variant="original" width={140} height={42} className="shrink-0" />
+          <Logo width={140} height={42} className="shrink-0" />
             </div>
           )}
           {!isMobile && (

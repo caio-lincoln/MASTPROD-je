@@ -12,7 +12,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Menu, Moon, Sun, User, LogOut } from "lucide-react"
 import { useTheme } from "next-themes"
-import { Logo } from "@/components/logo"
 import { CompanySelector } from "@/components/company-selector"
 import { MobileCompanySelector } from "@/components/mobile-company-selector"
 import { NotificationCenter } from "@/components/notifications/notification-center"
@@ -103,7 +102,7 @@ export function TopBar({
   return (
     <header className="bg-card border-b border-border px-2 sm:px-4 lg:px-6 py-2 sm:py-3 lg:py-4 shrink-0">
       <div className="flex items-center justify-between gap-2 sm:gap-4">
-        <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
+        <div className="flex items-center space-x-2 sm:space-x-4 min-w-0">
           <Button
             variant="ghost"
             size="sm"
@@ -112,15 +111,6 @@ export function TopBar({
           >
             <Menu className="h-4 w-4" />
           </Button>
-
-          <div className="min-w-0 flex-1">
-            <Logo
-              width={isMobile ? 120 : 160}
-              height={isMobile ? 36 : 48}
-              className="select-none"
-              priority
-            />
-          </div>
         </div>
 
         <div className="hidden lg:flex flex-1 justify-center max-w-xl xl:max-w-2xl mx-2 xl:mx-4">

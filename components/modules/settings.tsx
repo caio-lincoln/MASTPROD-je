@@ -41,6 +41,7 @@ import {
   XCircle,
   Loader2,
 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface User {
   id: string
@@ -70,6 +71,7 @@ interface Integration {
 }
 
 export function SettingsComponent() {
+  const { toast } = useToast()
   const { selectedCompany, companies, setSelectedCompany, addCompany, updateCompany, deleteCompany, loadAllCompanies, showAllCompanies } = useCompany()
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
@@ -96,7 +98,7 @@ export function SettingsComponent() {
       status: "active",
       lastSync: "2024-01-15T02:00:00Z",
       description: "Backup automático dos dados"
-    }
+}
   ])
 
   // Estados para diálogos
@@ -2535,10 +2537,7 @@ export function SettingsComponent() {
    )
  }
 
- // Função toast mock (você deve substituir pela implementação real)
- function toast({ title, description, variant }: { title: string; description: string; variant?: 'default' | 'destructive' }) {
-   console.log(`Toast: ${title} - ${description} (${variant || 'default'})`)
- }
+// Removido toast mock; usar useToast do hooks
 
  // Export default para compatibilidade com lazy loading
  export default SettingsComponent
