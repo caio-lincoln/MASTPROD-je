@@ -1,37 +1,47 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { signXMLWithSupabaseCertificate } from "@/lib/esocial/xml-signer"
+import { signXMLWithSupabaseCertificate, signXMLWithUserCertificate } from "@/lib/esocial/xml-signer"
 import { sanitizeString, isUuid } from "@/lib/security/validation"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
     const { empresaId, certPassword, rawXml } = await request.json()
 
+    const supabase = createRouteHandlerClient({ cookies })
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user?.id) {
+      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 })
+    }
+
     // Validar parâmetros obrigatórios
-    if (!empresaId || !certPassword || !rawXml) {
+    if (!certPassword || !rawXml) {
       return NextResponse.json(
         {
           success: false,
-          error: "Parâmetros obrigatórios: empresaId, certPassword, rawXml",
+          error: "Parâmetros obrigatórios: certPassword, rawXml",
         },
         { status: 400 },
       )
     }
 
     // Sanitização e validação básica
-    const safeEmpresaId = sanitizeString(empresaId)
     const safeCertPassword = sanitizeString(certPassword)
-    const safeXml = sanitizeString(rawXml)
-
-    if (!isUuid(safeEmpresaId)) {
+    // NUNCA sanitizar o XML bruto removendo < >, isso corrompe o conteúdo
+    // Apenas garantir que é string e limitar tamanho para evitar payloads excessivos
+    const safeXml = typeof rawXml === "string" ? rawXml : String(rawXml ?? "")
+    if (safeXml.length > 2_000_000) {
       return NextResponse.json(
-        { success: false, error: "empresaId inválido" },
-        { status: 400 }
+        { success: false, error: "XML muito grande" },
+        { status: 413 }
       )
     }
 
-    // Assinar XML
-    const result = await signXMLWithSupabaseCertificate({
-      empresaId: safeEmpresaId,
+    // Assinar XML com certificado vinculado à conta do usuário
+    const result = await signXMLWithUserCertificate({
+      userId: user.id,
       certPassword: safeCertPassword,
       rawXml: safeXml,
     })
@@ -39,7 +49,8 @@ export async function POST(request: NextRequest) {
     if (result.success) {
       return NextResponse.json({
         success: true,
-        signedXml: result.signedXml,
+        // Alinhar com DigitalSignatureService: campo esperado é xml_assinado
+        xml_assinado: result.signedXml,
       })
     } else {
       return NextResponse.json(

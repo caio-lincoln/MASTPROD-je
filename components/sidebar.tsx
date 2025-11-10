@@ -74,8 +74,15 @@ const menuGroups = [
     icon: FileBarChart,
       items: [
         { id: "reports", label: "Relatórios", icon: BarChart3 },
-        { id: "esocial", label: "eSocial", icon: Database },
       ],
+  },
+  {
+    id: "esocial",
+    label: "eSocial",
+    icon: Database,
+    items: [
+      { id: "esocial", label: "eSocial", icon: Database },
+    ],
   },
   {
     id: "settings",

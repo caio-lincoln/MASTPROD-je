@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { useCompany } from "@/contexts/company-context"
 
 export function MobileCompanySelector() {
-  const { selectedCompany, companies, setSelectedCompany, isLoading } = useCompany()
+  const { selectedCompany, companies, setSelectedCompany, isLoading, user } = useCompany()
   const [open, setOpen] = useState(false)
 
   if (isLoading) {
@@ -21,6 +21,19 @@ export function MobileCompanySelector() {
   }
 
   if (companies.length === 0) {
+    if (!user) {
+      return (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-9 p-0"
+          title="Faça login para ver empresas"
+          onClick={() => (window.location.href = "/auth/login")}
+        >
+          <Building2 className="h-4 w-4" />
+        </Button>
+      )
+    }
     return (
       <Button variant="ghost" size="sm" className="h-9 w-9 p-0" disabled title="Nenhuma empresa encontrada">
         <Building2 className="h-4 w-4 text-muted-foreground" />

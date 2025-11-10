@@ -3,6 +3,7 @@ import { EsocialSoapClient } from "./soap-client"
 import { DigitalSignatureService } from "./digital-signature"
 import { EsocialEventManager } from "./event-manager"
 import { getEsocialConfig } from "./config"
+import { esocialValidator } from "./validation"
 
 export class EsocialService {
   private supabase = createClient()
@@ -36,6 +37,26 @@ export class EsocialService {
         return { sucesso: false, erro: "XML original não encontrado" }
       }
 
+      // 2.1 Validação pré-assinatura para S-1000 (retificação, estrutura mínima)
+      const isS1000 = /<evtInfoEmpregador[\s>]/.test(evento.xml_original)
+      if (isS1000) {
+        const preIssues = esocialValidator.validate({ tipoEvento: "S-1000", xml: evento.xml_original })
+        const preErrors = preIssues.filter((i) => i.level === "error")
+        if (preErrors.length) {
+          await this.eventManager.atualizarStatusEvento(evento_id, "erro", empresa_id, {
+            erros: preErrors.map((e) => e.message),
+            detalhes: { validacao: preIssues },
+          })
+          return { sucesso: false, erro: preErrors[0].message }
+        }
+        // Registrar warnings sem bloquear
+        if (preIssues.length) {
+          await this.eventManager.atualizarStatusEvento(evento_id, "preparando", empresa_id, {
+            detalhes: { avisos_validacao: preIssues },
+          })
+        }
+      }
+
       // 2. Assinar XML digitalmente
       const assinaturaResult = await this.signatureService.assinarXML(
         evento.xml_original,
@@ -58,6 +79,24 @@ export class EsocialService {
           status: "preparando",
         })
         .eq("id", evento_id)
+
+      // 3.1 Validação pós-assinatura: algoritmos de assinatura e XSD (S-1000)
+      if (isS1000 && assinaturaResult.xml_assinado) {
+        const postIssues = esocialValidator.validate({ tipoEvento: "S-1000", xml: assinaturaResult.xml_assinado })
+        const postErrors = postIssues.filter((i) => i.level === "error")
+        if (postErrors.length) {
+          await this.eventManager.atualizarStatusEvento(evento_id, "erro", empresa_id, {
+            erros: postErrors.map((e) => e.message),
+            detalhes: { validacao_assinatura: postIssues },
+          })
+          return { sucesso: false, erro: postErrors[0].message }
+        }
+        if (postIssues.length) {
+          await this.eventManager.atualizarStatusEvento(evento_id, "preparando", empresa_id, {
+            detalhes: { avisos_validacao_assinatura: postIssues },
+          })
+        }
+      }
 
       // 4. Configurar cliente SOAP
       const { data: empresa } = await this.supabase.from("empresas").select("cnpj").eq("id", empresa_id).single()

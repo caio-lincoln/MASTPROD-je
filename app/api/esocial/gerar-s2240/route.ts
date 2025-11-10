@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .single()
 
-    // Gerar XML do evento
-    const xmlBuilder = new EsocialXmlBuilder()
+    // Gerar XML do evento (ambiente de produção)
+    const xmlBuilder = new EsocialXmlBuilder({ ambiente: "producao" })
     const xmlContent = await xmlBuilder.gerarS2240({
       funcionario,
       exposicao_riscos: exposicaoRiscos || [],

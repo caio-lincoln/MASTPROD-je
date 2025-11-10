@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
+import { apiFetch } from "@/lib/security/client-api"
 
 export interface Company {
   id: string
@@ -378,44 +379,88 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const loadAllCompanies = async (): Promise<void> => {
     try {
       setIsLoading(true)
-      console.log("Carregando todas as empresas...")
-      
-      // Buscar todas as empresas ativas
-      const { data: allCompanies, error } = await supabase
-        .from("empresas")
-        .select("id, nome, cnpj, endereco, telefone, email, logo_url, status, created_at")
-        .eq("status", true)
-        .order("created_at", { ascending: false })
+      console.log("Carregando empresas vinculadas ao certificado eSocial (via API)...")
 
-      console.log("Dados recebidos do Supabase:", allCompanies)
-      console.log("Erro do Supabase:", error)
-
-      if (error) {
-        console.error("Erro ao buscar todas as empresas:", error)
+      // Garantir sessão (RLS requer usuário autenticado)
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser()
+      // Expor usuário ao contexto para que UI possa reagir
+      setUser(currentUser || null)
+      if (!currentUser) {
+        console.warn("Usuário não autenticado; exibindo aviso de login e lista vazia.")
+        setCompanies([])
+        setShowAllCompanies(true)
         return
       }
 
-      const formattedCompanies: Company[] =
-        allCompanies?.map((empresa) => ({
-          id: empresa.id,
-          name: empresa.nome,
-          cnpj: empresa.cnpj || "",
-          address: empresa.endereco || "",
-          phone: empresa.telefone || "",
-          email: empresa.email || "",
-          logo: empresa.logo_url || undefined,
-          isActive: empresa.status,
-          createdAt: new Date(empresa.created_at),
-        })) || []
+      // 1) Tentar empresas vinculadas (ligação de certificado com CNPJ)
+      let response = await apiFetch("/api/esocial/empresas-vinculadas", { method: "GET" })
+      console.log("[Vinculadas] Requisição /api/esocial/empresas-vinculadas enviada")
+      console.log("[Vinculadas] Status da resposta:", response.status)
+      const clonedResponse = response.clone()
+      if (!response.ok) {
+        if (response.status === 401) {
+          const raw401 = await clonedResponse.text().catch(() => "<sem corpo>")
+          console.warn("Falha ao buscar empresas (vinculadas): 401 (não autorizado). Corpo:", raw401)
+          setCompanies([])
+          setShowAllCompanies(true)
+          return
+        }
+        // 2) Fallback: tentar via eventos S-1000 processados
+        const text = await clonedResponse.text().catch(() => "<sem corpo>")
+        console.warn("[Vinculadas] Falhou:", response.status, text, "-> Tentando S-1000...")
+        response = await apiFetch("/api/esocial/empresas-s1000", { method: "GET" })
+        console.log("[S-1000] Requisição /api/esocial/empresas-s1000 enviada")
+        console.log("[S-1000] Status da resposta:", response.status)
+        if (!response.ok) {
+          const text2 = await response.text().catch(() => "<sem corpo>")
+          console.error("Erro ao buscar empresas S-1000:", response.status, text2)
+          setCompanies([])
+          setShowAllCompanies(true)
+          return
+        }
+      }
 
-      console.log("Empresas formatadas:", formattedCompanies)
-      console.log("Total de empresas:", formattedCompanies.length)
+      const json = await response.json()
+      const raw = await clonedResponse.text().catch(() => "<sem corpo>")
+      console.log("[Empresas] Corpo bruto da resposta:", raw)
+      console.log("[Empresas] JSON retornado:", json)
+      const s1000Companies = (json?.empresas || []) as Array<{ id: string; nome: string; cnpj: string }>
+      console.log("[Empresas] Empresas retornadas (quantidade):", s1000Companies.length)
+
+      const formattedCompanies: Company[] = s1000Companies.map((emp) => ({
+        id: emp.id,
+        name: emp.nome,
+        cnpj: emp.cnpj || "",
+        address: "",
+        phone: "",
+        email: "",
+        logo: undefined,
+        isActive: true,
+        createdAt: new Date(),
+      }))
 
       setCompanies(formattedCompanies)
       setShowAllCompanies(true)
-      console.log("Estado atualizado - showAllCompanies:", true)
+      console.log("[Empresas] Empresas formatadas para UI:", formattedCompanies)
+
+      // Selecionar empresa padrão se não houver selecionada
+      if (formattedCompanies.length > 0 && !selectedCompany) {
+        const savedCompanyId = typeof window !== 'undefined' ? localStorage.getItem("selectedCompanyId") : null
+        const companyToSelect = savedCompanyId
+          ? formattedCompanies.find((c) => c.id === savedCompanyId) || formattedCompanies[0]
+          : formattedCompanies[0]
+
+        setSelectedCompany(companyToSelect)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem("selectedCompanyId", companyToSelect.id)
+        }
+      }
+
+      console.log("Empresas carregadas:", formattedCompanies.length)
     } catch (error) {
-      console.error("Erro ao carregar todas as empresas:", error)
+      console.error("Erro ao carregar empresas do eSocial:", error)
     } finally {
       setIsLoading(false)
     }

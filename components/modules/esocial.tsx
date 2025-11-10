@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+ 
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { 
@@ -35,8 +36,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { useToast } from "@/hooks/use-toast"
 import { useCompany } from "@/contexts/company-context"
 import { supabase } from "@/lib/supabase/client"
-import { apiFetch } from "@/lib/security/client-csrf"
+import { apiFetch } from "@/lib/security/client-api"
 import { getFriendlyErrorMessage } from "@/lib/utils/ui-error"
+import { DigitalSignatureService } from "@/lib/esocial/digital-signature"
+import { getCertificateInfoFromPath } from "@/lib/esocial/xml-signer"
 
 interface EventoEsocial {
   id: string
@@ -69,7 +72,7 @@ interface LogEsocial {
 }
 
 export function ESocial() {
-  const { selectedCompany } = useCompany()
+  const { selectedCompany, setSelectedCompany } = useCompany()
   const { toast } = useToast()
 
   const [eventos, setEventos] = useState<EventoEsocial[]>([])
@@ -78,6 +81,27 @@ export function ESocial() {
   const [funcionarios, setFuncionarios] = useState<any[]>([])
   const [exames, setExames] = useState<any[]>([])
   const [incidentes, setIncidentes] = useState<any[]>([])
+  // Certificado A1 (PKCS#12) - upload e validação
+  const [certFile, setCertFile] = useState<File | null>(null)
+  const [certPassword, setCertPassword] = useState("")
+  const [certUploading, setCertUploading] = useState(false)
+  const [certInfo, setCertInfo] = useState<{
+    subject?: string
+    issuer?: string
+    validFrom?: Date
+    validTo?: Date
+    tipoAssinatura?: string
+  } | null>(null)
+  const [hasCertificado, setHasCertificado] = useState<boolean>(false)
+  const [certAtual, setCertAtual] = useState<{ nome: string; data_validade: string | null; responsavel?: string } | null>(null)
+  const [hasCertificadoConta, setHasCertificadoConta] = useState<boolean>(false)
+  const [empresasS1000, setEmpresasS1000] = useState<{ id: string; nome: string; cnpj: string }[]>([])
+  const [empresaSelecionadaParaSalvar, setEmpresaSelecionadaParaSalvar] = useState<string>("")
+  const [trocarCertificado, setTrocarCertificado] = useState<boolean>(false)
+  // Perfil e CNPJ representado (fluxo eSocial)
+  const [perfilRepresentante, setPerfilRepresentante] = useState<string>("Procurador de Pessoa Jurídica - CNPJ")
+  const [cnpjRepresentado, setCnpjRepresentado] = useState<string>("")
+  const [verificandoRepresentado, setVerificandoRepresentado] = useState<boolean>(false)
   
   const [loading, setLoading] = useState(false)
   const [sendingEvent, setSendingEvent] = useState(false)
@@ -103,8 +127,290 @@ export function ESocial() {
       carregarFuncionarios()
       carregarExames()
       carregarIncidentes()
+      verificarCertificado()
     }
   }, [selectedCompany])
+
+  useEffect(() => {
+    verificarCertificadoConta()
+  }, [])
+
+  const verificarCertificado = async () => {
+    if (!selectedCompany?.id) return
+    try {
+      const { data, error } = await supabase
+        .from("certificados_esocial")
+        .select("empresa_id, nome, tipo, arquivo_url, data_validade, valido, responsavel")
+        .eq("empresa_id", selectedCompany.id)
+        .eq("valido", true)
+        .single()
+      if (error) return
+      setHasCertificado(!!data)
+      setCertAtual(data
+        ? { nome: data.nome, data_validade: data.data_validade, responsavel: (data as any).responsavel }
+        : null)
+    } catch (e) {
+      // silencioso
+    }
+  }
+
+  const verificarCertificadoConta = async () => {
+    try {
+      const { data: authUser } = await supabase.auth.getUser()
+      const uid = authUser.user?.id
+      if (!uid) return
+
+      // Buscar metadados na tabela certificados_conta
+      const { data: certConta, error } = await supabase
+        .from("certificados_conta")
+        .select("nome, subject, issuer, valid_from, valid_to, arquivo_url, valido")
+        .eq("user_id", uid)
+        .single()
+
+      const readFromStorageMeta = async () => {
+        // fallback: verificar existência do arquivo no storage e ler metadados JSON via signed URL
+        const filePath = `usuario-${uid}/certificado-a1.pfx`
+        const { data: signedCertUrl } = await supabase.storage
+          .from("certificados-esocial")
+          .createSignedUrl(filePath, 60)
+        const existeArquivo = !!signedCertUrl?.signedUrl
+
+        const metaPath = `usuario-${uid}/certificado-a1.json`
+        const { data: signedMetaUrl } = await supabase.storage
+          .from("certificados-esocial")
+          .createSignedUrl(metaPath, 60)
+        let meta: any = null
+        if (signedMetaUrl?.signedUrl) {
+          try {
+            const resp = await fetch(signedMetaUrl.signedUrl)
+            if (resp.ok) {
+              meta = await resp.json()
+            }
+          } catch (_) { /* silencioso */ }
+        }
+
+        const existe = existeArquivo || !!meta
+        setHasCertificadoConta(existe)
+        if (existe) {
+          const responsavel = authUser.user?.user_metadata?.nome || authUser.user?.email || "Usuário"
+          const nome = meta?.nome || "Certificado da Conta"
+          const valid_to = meta?.valid_to || null
+          setCertAtual({ nome, data_validade: valid_to, responsavel })
+          if (meta) {
+            setCertInfo({
+              subject: meta.subject || nome,
+              issuer: meta.issuer || undefined,
+              validFrom: meta.valid_from ? new Date(meta.valid_from) : undefined,
+              validTo: meta.valid_to ? new Date(meta.valid_to) : undefined,
+              tipoAssinatura: "RSA-SHA256",
+            })
+          }
+          carregarEmpresasS1000()
+        }
+      }
+
+      if (error) {
+        await readFromStorageMeta()
+        return
+      }
+
+      const existe = !!certConta
+      setHasCertificadoConta(existe)
+      if (existe) {
+        const responsavel = authUser.user?.user_metadata?.nome || authUser.user?.email || "Usuário"
+        setCertAtual({ nome: certConta?.nome || "Certificado da Conta", data_validade: certConta?.valid_to || null, responsavel })
+        // Preencher bloco de informações detalhadas
+        setCertInfo({
+          subject: certConta?.subject || certConta?.nome,
+          issuer: certConta?.issuer || undefined,
+          validFrom: certConta?.valid_from ? new Date(certConta.valid_from) : undefined,
+          validTo: certConta?.valid_to ? new Date(certConta.valid_to) : undefined,
+          tipoAssinatura: "RSA-SHA256",
+        })
+        carregarEmpresasS1000()
+      } else {
+        // Se não há registro na tabela, tentar storage metadados
+        await readFromStorageMeta()
+      }
+    } catch (e) {
+      // silencioso
+    }
+  }
+
+  const handleUploadCertificado = async () => {
+    if (hasCertificadoConta && !trocarCertificado) {
+      toast({ title: "Já existe certificado na sua conta", description: "Use 'Substituir certificado' para trocar o arquivo.", variant: "destructive" })
+      return
+    }
+    if (!certFile || !certPassword) {
+      toast({ title: "Informe arquivo e senha", description: "Envie o arquivo .p12/.pfx e a senha.", variant: "destructive" })
+      return
+    }
+
+    try {
+      setCertUploading(true)
+      // Identificar usuário e remover arquivos antigos do storage
+      const { data: authUser } = await supabase.auth.getUser()
+      const uid = authUser.user?.id
+      if (!uid) throw new Error("Usuário não autenticado")
+      const pfxPath = `usuario-${uid}/certificado-a1.pfx`
+      const metaPath = `usuario-${uid}/certificado-a1.json`
+      try {
+        await supabase.storage.from("certificados-esocial").remove([pfxPath, metaPath])
+      } catch (_) {
+        // silencioso
+      }
+      const ds = new DigitalSignatureService()
+      const result = await ds.uploadCertificadoA1(certFile, certPassword)
+      if (!result.sucesso) {
+        throw new Error(result.erro || "Falha no upload do certificado")
+      }
+
+      const info = await getCertificateInfoFromPath(result.arquivo_url!, certPassword)
+      if (!info.success) {
+        throw new Error(info.error || "Falha ao obter informações do certificado")
+      }
+
+      // Extrair CN do subject se disponível
+      const subject = info.subject || ""
+      const cnMatch = subject.match(/(?:CN|cn)=([^,]+)/)
+      const nomeCert = cnMatch ? cnMatch[1].trim() : certFile.name
+
+      // Salvar automaticamente na CONTA (tabela + metadados JSON)
+      const salvarResp = await ds.salvarCertificadoNaConta(
+        result.arquivo_url!,
+        nomeCert,
+        info.validTo ? info.validTo.toISOString() : "",
+        certPassword,
+        info.subject,
+        info.issuer,
+        info.validFrom ? info.validFrom.toISOString() : undefined,
+        info.validTo ? info.validTo.toISOString() : undefined,
+      )
+      if (!salvarResp.sucesso) {
+        throw new Error(salvarResp.erro || "Falha ao salvar certificado na conta")
+      }
+
+      setCertInfo({
+        subject: info.subject,
+        issuer: info.issuer,
+        validFrom: info.validFrom,
+        validTo: info.validTo,
+        tipoAssinatura: "RSA-SHA256",
+      })
+      setHasCertificado(true)
+      setHasCertificadoConta(true)
+      setCertAtual({
+        nome: nomeCert,
+        data_validade: info.validTo ? info.validTo.toISOString() : null,
+        responsavel: authUser.user?.user_metadata?.nome || authUser.user?.email || "Usuário",
+      })
+      setTrocarCertificado(false)
+
+      // Atualizar lista de empresas habilitadas
+      await carregarEmpresasS1000()
+
+      toast({ title: "Certificado substituído e salvo", description: "Validação e salvamento concluídos na mesma página." })
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Erro na configuração",
+        description: error instanceof Error ? error.message : "Falha ao configurar certificado",
+        variant: "destructive",
+      })
+    } finally {
+      setCertUploading(false)
+    }
+  }
+
+  const carregarEmpresasS1000 = async () => {
+    try {
+      // Verificar se há usuário autenticado antes da chamada
+      const { data: authData } = await supabase.auth.getUser()
+      if (!authData?.user) {
+        console.warn('[S-1000] Usuário não autenticado; abortando carga de empresas.')
+        toast({ title: 'Sessão necessária', description: 'Faça login para listar empresas com S-1000.', variant: 'default' })
+        return
+      }
+
+      // Agora lista todas empresas com eventos S-1000 (não apenas vinculadas pela credencial)
+      console.group('[S-1000] Empresas (modules/esocial.tsx)')
+      console.log('Disparando GET /api/esocial/empresas-s1000')
+      const response = await apiFetch('/api/esocial/empresas-s1000', { method: 'GET' })
+      console.log('[S-1000] Status da resposta:', response.status)
+      const rawBody = await response.clone().text()
+      console.log('[S-1000] Corpo bruto:', rawBody)
+      let parsed: any = null
+      try {
+        parsed = JSON.parse(rawBody)
+      } catch {
+        // manter parsed como null se não for JSON
+      }
+      console.log('[S-1000] JSON parseado:', parsed)
+
+      if (response.status === 401) {
+        console.warn('[S-1000] Não autorizado ao buscar empresas. Verifique sessão/cookies.')
+        toast({ title: 'Não autorizado', description: 'Faça login novamente para acessar empresas com S-1000.', variant: 'destructive' })
+        console.groupEnd()
+        return
+      }
+
+      if (!response.ok) {
+        console.groupEnd()
+        throw new Error('Falha ao obter empresas S-1000')
+      }
+
+      const res = parsed ?? (await response.json())
+      const empresas = (res?.empresas || []) as { id: string; nome: string; cnpj: string }[]
+      console.log('[S-1000] Empresas formatadas:', empresas.length)
+      setEmpresasS1000(empresas)
+      if (empresas.length > 0) {
+        setEmpresaSelecionadaParaSalvar(empresas[0].id)
+      }
+      console.groupEnd()
+    } catch (error) {
+      console.error("Erro ao carregar empresas S1000:", error)
+      toast({ title: "Erro", description: "Falha ao carregar empresas S-1000", variant: "destructive" })
+    }
+  }
+
+  const salvarCertificadoNaEmpresaSelecionada = async () => {
+    try {
+      const ds = new DigitalSignatureService()
+      const dataValidade = certInfo?.validTo
+        ? new Date(certInfo.validTo).toISOString().split("T")[0]
+        : (certAtual?.data_validade || new Date().toISOString().split("T")[0])
+      const nomeCert = certInfo?.subject
+        ? (certInfo.subject.match(/(?:CN|cn)=([^,]+)/)?.[1]?.trim() || certFile?.name || certAtual?.nome || "Certificado")
+        : (certAtual?.nome || certFile?.name || "Certificado")
+
+      // Recuperar último caminho do arquivo salvo (no upload)
+      const { data: userResp } = await supabase.auth.getUser()
+      const filePath = `usuario-${userResp.user?.id}/certificado-a1.pfx`
+
+      const result = await ds.salvarCertificadoNaConta(
+        filePath,
+        nomeCert,
+        dataValidade || new Date().toISOString().split("T")[0],
+        certPassword || undefined,
+        certInfo?.subject,
+        certInfo?.issuer,
+        certInfo?.validFrom ? new Date(certInfo.validFrom).toISOString() : undefined,
+        certInfo?.validTo ? new Date(certInfo.validTo).toISOString() : undefined,
+      )
+
+      if (!result.sucesso) {
+        throw new Error(result.erro || "Erro ao salvar certificado na conta")
+      }
+
+      toast({ title: "Certificado salvo na CONTA", description: "O certificado foi vinculado à sua conta com sucesso." })
+      // Atualizar visualização com os dados salvos
+      await verificarCertificadoConta()
+    } catch (error) {
+      console.error(error)
+      toast({ title: "Erro", description: error instanceof Error ? error.message : "Falha ao salvar na conta", variant: "destructive" })
+    }
+  }
 
   const carregarEventos = async () => {
     if (!selectedCompany?.id) return
@@ -651,19 +957,180 @@ export function ESocial() {
     return matchTipo && matchStatus && matchSearch
   })
 
-  if (!selectedCompany) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <Database className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-muted-foreground">Selecione uma empresa para visualizar os eventos eSocial</p>
-        </div>
-      </div>
-    )
+  const sanitizeCNPJ = (cnpj: string) => (cnpj || "").replace(/\D/g, "")
+
+  const handleVerificarRepresentado = async () => {
+    try {
+      const cnpjDigits = sanitizeCNPJ(cnpjRepresentado)
+      if (!cnpjDigits || cnpjDigits.length !== 14) {
+        toast({ title: "CNPJ inválido", description: "Informe um CNPJ com 14 dígitos.", variant: "destructive" })
+        return
+      }
+      setVerificandoRepresentado(true)
+      const resp = await apiFetch(`/api/esocial/empresas-vinculadas?cnpj=${cnpjDigits}`, { method: "GET" })
+      const json = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        const d = json?.diagnostics || {}
+        console.group("Diagnóstico empresas-vinculadas")
+        console.error("error:", json?.error)
+        console.log("hasRecord:", d.hasRecord)
+        console.log("hasArquivoUrl:", d.hasArquivoUrl)
+        console.log("hasArquivoBase64:", d.hasArquivoBase64)
+        console.log("storageTried:", d.storageTried)
+        console.log("storageError:", d.storageError)
+        console.log("metaChecked:", d.metaChecked)
+        console.log("metaFound:", d.metaFound)
+        console.log("metaArquivoUrl:", d.metaArquivoUrl)
+        console.log("directPathTried:", d.directPathTried)
+        console.log("directPathError:", d.directPathError)
+        console.log("pfxSource:", d.pfxSource)
+        console.log("pfxBytesLength:", d.pfxBytesLength)
+        console.log("senhaPresent:", d.senhaPresent)
+        console.groupEnd()
+        throw new Error(json?.error || "Falha na verificação do CNPJ representado")
+      }
+      if (json?.autorizado) {
+        const emp = (json.empresas || [])[0]
+        if (emp) {
+          const mapped = {
+            id: emp.id,
+            name: emp.nome,
+            cnpj: emp.cnpj || cnpjDigits,
+            address: "",
+            phone: "",
+            email: "",
+            logo: undefined,
+            isActive: true,
+            createdAt: new Date(),
+          }
+          setSelectedCompany(mapped)
+          toast({ title: "Autorizado", description: `Perfil: ${perfilRepresentante}. CNPJ verificado.` })
+        } else {
+          toast({ title: "Autorizado", description: "CNPJ verificado. Nenhuma empresa cadastrada corresponde ao CNPJ.", variant: "default" })
+        }
+      } else {
+        toast({ title: "Não autorizado", description: "O certificado não possui autorização para o CNPJ informado.", variant: "destructive" })
+      }
+    } catch (error) {
+      console.error("Erro ao verificar CNPJ representado:", error)
+      toast({ title: "Erro", description: getFriendlyErrorMessage(error, "Falha ao verificar CNPJ representado"), variant: "destructive" })
+    } finally {
+      setVerificandoRepresentado(false)
+    }
   }
 
+  // Oculta a configuração de certificado após salvo; primeira conexão apenas se não houver certificado na conta
   return (
     <div className="space-y-6">
+      {/* Seleção de perfil e CNPJ representado (fluxo eSocial) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Perfil e CNPJ Representado</CardTitle>
+          <CardDescription>Selecione o perfil e informe o CNPJ representado para acessar o módulo SST.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="md:col-span-1">
+              <Label>Selecione o seu perfil</Label>
+              <Select value={perfilRepresentante} onValueChange={(v) => setPerfilRepresentante(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione o perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Procurador de Pessoa Jurídica - CNPJ">Procurador de Pessoa Jurídica - CNPJ</SelectItem>
+                  <SelectItem value="Empregador/Contribuinte">Empregador/Contribuinte</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-1">
+              <Label>Informe o CNPJ representado</Label>
+              <Input placeholder="00.000.000/0000-00" value={cnpjRepresentado} onChange={(e) => setCnpjRepresentado(e.target.value)} />
+            </div>
+            <div className="md:col-span-1 flex gap-2">
+              <Button onClick={handleVerificarRepresentado} disabled={verificandoRepresentado}>
+                {verificandoRepresentado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                Verificar
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      {/* Configuração de Certificado eSocial (somente se não houver certificado salvo) */}
+      {!hasCertificadoConta && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Certificado eSocial</CardTitle>
+            <CardDescription>
+              Faça a primeira conexão via credencial (arquivo .p12/.pfx) e senha. Validaremos e salvaremos os dados.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="md:col-span-1">
+                <Label htmlFor="certFile">Arquivo PKCS#12 (.p12/.pfx)</Label>
+                <Input id="certFile" type="file" accept=".p12,.pfx" onChange={(e) => setCertFile(e.target.files?.[0] || null)} />
+              </div>
+              <div className="md:col-span-1">
+                <Label htmlFor="certPassword">Senha</Label>
+                <Input id="certPassword" type="password" value={certPassword} onChange={(e) => setCertPassword(e.target.value)} />
+              </div>
+              <div className="md:col-span-1 flex gap-2">
+                <Button onClick={handleUploadCertificado} disabled={certUploading}>
+                  {certUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  Validar e Salvar
+                </Button>
+              </div>
+            </div>
+
+            {certInfo && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Nome</Label>
+                  <p className="text-sm text-muted-foreground break-all">{certInfo.subject}</p>
+                </div>
+                <div>
+                  <Label>Emissor</Label>
+                  <p className="text-sm text-muted-foreground break-all">{certInfo.issuer}</p>
+                </div>
+                <div>
+                  <Label>Validade</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {certInfo.validFrom && certInfo.validTo
+                      ? `${format(certInfo.validFrom, "dd/MM/yyyy", { locale: ptBR })} até ${format(certInfo.validTo, "dd/MM/yyyy", { locale: ptBR })}`
+                      : "—"}
+                  </p>
+                </div>
+                <div>
+                  <Label>Tipo de Assinatura</Label>
+                  <p className="text-sm text-muted-foreground">{certInfo.tipoAssinatura}</p>
+                </div>
+              </div>
+            )}
+
+            {(certInfo && !hasCertificadoConta) && (
+              <div className="mt-6">
+                <Label className="uppercase">SALVAR CERTIFICADO NA CONTA ?</Label>
+                <div className="mt-2 flex gap-2">
+                  <Button onClick={salvarCertificadoNaEmpresaSelecionada}>
+                    <Send className="mr-2 h-4 w-4" />
+                    SIM
+                  </Button>
+                  <Button variant="outline" onClick={() => { /* cancelar */ }}>
+                    NÃO
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <p className="mt-4 text-xs text-muted-foreground">
+              Aviso: a senha do certificado é armazenada para uso futuro. Recomenda-se proteger com criptografia/KMS em produção.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      {!selectedCompany ? (
+        null
+      ) : (
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">eSocial</h1>
@@ -773,6 +1240,7 @@ export function ESocial() {
           </Dialog>
         </div>
       </div>
+      )}
 
       {employeeSyncStatus && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

@@ -49,7 +49,7 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import JSZip from "jszip"
+// JSZip import removed along with eSocial export handlers
 import { uploadRelatorio } from "@/lib/supabase/storage"
 
 interface ReportTemplate {
@@ -204,10 +204,6 @@ function Reports() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("configurar")
 
-  const [esocialEvents, setEsocialEvents] = useState<any[]>([])
-  const [fatoresRisco, setFatoresRisco] = useState<any[]>([])
-  const [loadingEsocial, setLoadingEsocial] = useState(false)
-  const [generatingEvent, setGeneratingEvent] = useState(false)
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
   const [newTemplate, setNewTemplate] = useState({
     nome: '',
@@ -225,13 +221,6 @@ function Reports() {
   const [isConfiguring, setIsConfiguring] = useState(false)
   const [selectedReport, setSelectedReport] = useState<any>(null)
   const [reportToDelete, setReportToDelete] = useState<any>(null)
-  const [selectedEsocialEvent, setSelectedEsocialEvent] = useState<any>(null)
-  const [isResending, setIsResending] = useState(false)
-  const [esocialConfig, setEsocialConfig] = useState({
-    eventTypes: [] as string[],
-    frequency: "manual",
-    companies: [] as string[],
-  })
 
   // Novos estados para agendados e configurações
   const [reportSettings, setReportSettings] = useState<any>({
@@ -254,48 +243,6 @@ function Reports() {
   const [setores, setSetores] = useState<string[]>([])
 
   const supabase = createClientComponentClient()
-
-  const loadEsocialEvents = async () => {
-    if (!selectedCompany) return
-
-    setLoadingEsocial(true)
-    try {
-      const { data, error } = await supabase
-        .from("view_eventos_esocial")
-        .select("*")
-        .eq("empresa_id", selectedCompany.id)
-        .order("created_at", { ascending: false })
-
-      if (error) throw error
-      setEsocialEvents(data || [])
-    } catch (error) {
-      console.error("[v0] Erro ao carregar eventos eSocial:", error)
-    } finally {
-      setLoadingEsocial(false)
-    }
-  }
-
-  const loadFatoresRisco = async () => {
-    if (!selectedCompany) return
-
-    try {
-      const { data, error } = await supabase
-        .from("fatores_risco")
-        .select(`
-          *,
-          funcionarios (
-            nome,
-            cpf
-          )
-        `)
-        .eq("empresa_id", selectedCompany.id)
-
-      if (error) throw error
-      setFatoresRisco(data || [])
-    } catch (error) {
-      console.error("[v0] Erro ao carregar fatores de risco:", error)
-    }
-  }
 
   const loadReportTemplates = async () => {
     if (!selectedCompany) return;
@@ -403,17 +350,13 @@ function Reports() {
   }
 
   useEffect(() => {
-    if (selectedCompany && activeTab === "esocial") {
-      loadEsocialEvents()
-      loadFatoresRisco()
-    }
     if (selectedCompany) {
       loadReportTemplates()
       loadReportHistory()
       loadReportSettings()
       loadSetores()
     }
-  }, [selectedCompany, activeTab])
+  }, [selectedCompany])
 
   // Prefill de destinatários removido junto ao módulo de agendados
 
@@ -520,127 +463,7 @@ function Reports() {
     }
   };
 
-  const generateS2220Event = async () => {
-    if (!selectedCompany) return
-
-    setGeneratingEvent(true)
-    try {
-      const { error } = await supabase.from("eventos_esocial").insert({
-        empresa_id: selectedCompany.id,
-        tipo_evento: "S-2220",
-        status: "preparando",
-        data_evento: new Date().toISOString(),
-      })
-
-      if (error) throw error
-
-      toast({
-        title: "Sucesso",
-        description: "Evento S-2220 gerado com sucesso!",
-      })
-      loadEsocialEvents() // Recarregar lista
-    } catch (error) {
-      console.error("Erro ao gerar evento S-2220:", error)
-      toast({
-        title: "Erro",
-        description: "Erro ao gerar evento S-2220",
-        variant: "destructive",
-      })
-    } finally {
-      setGeneratingEvent(false)
-    }
-  }
-
-  const generateS2240Event = async () => {
-    if (!selectedCompany) return
-
-    setGeneratingEvent(true)
-    try {
-      const { error } = await supabase.from("eventos_esocial").insert({
-        empresa_id: selectedCompany.id,
-        tipo_evento: "S-2240",
-        status: "preparando",
-        data_evento: new Date().toISOString(),
-      })
-
-      if (error) throw error
-
-      toast({
-        title: "Sucesso",
-        description: "Evento S-2240 gerado com sucesso!",
-      })
-      loadEsocialEvents() // Recarregar lista
-    } catch (error) {
-      console.error("Erro ao gerar evento S-2240:", error)
-      toast({
-        title: "Erro",
-        description: "Erro ao gerar evento S-2240",
-        variant: "destructive",
-      })
-    } finally {
-      setGeneratingEvent(false)
-    }
-  }
-
-  const handleExportXML = async (eventId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("eventos_esocial")
-        .select("xml_gerado, tipo_evento")
-        .eq("id", eventId)
-        .maybeSingle()
-
-      if (error) {
-        console.error("Erro ao buscar XML:", error)
-        toast({
-          title: "Erro",
-          description: "Erro ao buscar dados do evento",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (!data) {
-        toast({
-          title: "Erro",
-          description: "Evento não encontrado",
-          variant: "destructive",
-        })
-        return
-      }
-
-      if (data.xml_gerado) {
-        const blob = new Blob([data.xml_gerado], { type: "application/xml" })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `${data.tipo_evento}_${eventId}.xml`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-
-        toast({
-          title: "XML exportado",
-          description: "Arquivo XML baixado com sucesso.",
-          variant: "default",
-        })
-      } else {
-        toast({
-          title: "XML não disponível",
-          description: "Este evento ainda não possui XML gerado.",
-          variant: "warning",
-        })
-      }
-    } catch (error) {
-      console.error("Erro ao exportar XML:", error)
-      toast({
-        title: "Erro na exportação",
-        description: "Não foi possível exportar o XML. Tente novamente.",
-        variant: "destructive",
-      })
-    }
-  }
+  // eSocial handlers removed
 
   const handleGenerateReport = async (template: any) => {
     if (!selectedCompany) return
@@ -776,142 +599,6 @@ function Reports() {
     }
   }
 
-  const handleViewEsocialEvent = (event: any) => {
-    setSelectedEsocialEvent(event)
-  }
-
-  const handleResendEsocialEvent = async (event: any) => {
-    if (!selectedCompany) return
-
-    setIsResending(true)
-    try {
-      const { error } = await supabase.from("eventos_esocial").update({ status: "preparando" }).eq("id", event.id)
-
-      if (error) throw error
-
-      toast({
-        title: "Evento Reenviado",
-        description: `Evento ${event.tipo_evento} marcado para reenvio!`,
-      })
-      loadEsocialEvents() // Recarregar lista
-    } catch (error) {
-      console.error("Erro ao reenviar:", error)
-      toast({
-        title: "Erro",
-        description: "Erro ao reenviar evento.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsResending(false)
-    }
-  }
-
-  const handleExportEsocial = async (exportFormat: string) => {
-    try {
-      if (exportFormat === "xml") {
-        const { data, error } = await supabase
-          .from("eventos_esocial")
-          .select("id, tipo_evento, xml_gerado, data_evento")
-          .eq("empresa_id", selectedCompany?.id)
-          .not("xml_gerado", "is", null)
-
-        if (error) throw error
-
-        if (data && data.length > 0) {
-          // Criar ZIP com todos os XMLs usando JSZip
-          const zip = new JSZip()
-
-          // Adicionar cada XML ao ZIP
-          data.forEach((event) => {
-            const fileName = `${event.tipo_evento}_${event.id}_${format(new Date(event.data_evento), "yyyyMMdd")}.xml`
-            zip.file(fileName, event.xml_gerado)
-          })
-
-          // Gerar o arquivo ZIP
-          const zipBlob = await zip.generateAsync({ type: "blob" })
-
-          // Download do ZIP
-          const url = URL.createObjectURL(zipBlob)
-          const a = document.createElement("a")
-          a.href = url
-          a.download = `esocial_xmls_${selectedCompany?.name || 'empresa'}_${format(new Date(), "yyyyMMdd")}.zip`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-
-          toast({
-            title: "Exportação concluída",
-            description: `${data.length} arquivos XML exportados em ZIP.`,
-            variant: "default",
-          })
-        } else {
-          toast({
-            title: "Nenhum XML disponível",
-            description: "Não há eventos com XML gerado para exportação.",
-            variant: "warning",
-          })
-        }
-      } else if (exportFormat === "csv") {
-        const { data, error } = await supabase
-          .from("eventos_esocial")
-          .select("*")
-          .eq("empresa_id", selectedCompany?.id)
-          .order("data_evento", { ascending: false })
-
-        if (error) throw error
-
-        if (data && data.length > 0) {
-          // Converter para CSV
-          const headers = ["ID", "Tipo Evento", "Data Evento", "Status", "Funcionário", "Data Envio", "Protocolo"]
-          const csvContent = [
-            headers.join(","),
-            ...data.map((event) =>
-              [
-                event.id,
-                event.tipo_evento,
-                format(new Date(event.data_evento), "dd/MM/yyyy"),
-                event.status,
-                event.funcionario_nome || "",
-                event.data_envio ? format(new Date(event.data_envio), "dd/MM/yyyy HH:mm") : "",
-                event.protocolo_recepcao || "",
-              ].join(","),
-            ),
-          ].join("\n")
-
-          // Download do CSV
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement("a")
-          a.href = url
-          a.download = `esocial_eventos_${selectedCompany?.name || 'empresa'}_${format(new Date(), "yyyyMMdd")}.csv`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-
-          toast({
-            title: "CSV exportado",
-            description: `${data.length} eventos exportados em CSV.`,
-            variant: "default",
-          })
-        } else {
-          toast({
-            title: "Nenhum evento disponível",
-            description: "Não há eventos para exportação.",
-            variant: "warning",
-          })
-        }
-      }
-    } catch (error) {
-      console.error("Erro na exportação:", error)
-      toast({
-        title: "Erro na exportação",
-        description: "Não foi possível completar a exportação. Tente novamente.",
-        variant: "destructive",
-      })
-    }
-  }
 
   const getStatusColor = (status: string) => {
     const s = (status || "").toLowerCase()
@@ -946,19 +633,7 @@ function Reports() {
     }
   }
 
-  const getEsocialStatusIcon = (status: string) => {
-    const s = (status || "").toLowerCase()
-    switch (s) {
-      case "enviado":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "preparando":
-        return <Clock className="h-4 w-4 text-yellow-500" />
-      case "erro":
-        return <XCircle className="h-4 w-4 text-red-500" />
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />
-    }
-  }
+  // eSocial status icon helper removed
 
   if (!selectedCompany) {
     return (
@@ -1138,7 +813,6 @@ function Reports() {
         <TabsList>
           <TabsTrigger value="templates">Modelos</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
-          <TabsTrigger value="esocial">eSocial</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
@@ -1398,216 +1072,7 @@ function Reports() {
           </Card>
         </TabsContent>
 
-        {selectedEsocialEvent && (
-          <Dialog open={!!selectedEsocialEvent} onOpenChange={(open) => !open && setSelectedEsocialEvent(null)}>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Detalhes do Evento eSocial</DialogTitle>
-                <DialogDescription>Informações do evento e mensagens de retorno</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Evento</Label>
-                    <div className="font-medium">
-                      {selectedEsocialEvent?.tipo_evento}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedEsocialEvent?.tipo_descricao}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Funcionário</Label>
-                    <div className="font-medium">{selectedEsocialEvent?.funcionario_nome}</div>
-                    <div className="text-sm text-muted-foreground">CPF: {selectedEsocialEvent?.cpf}</div>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Data</Label>
-                    <div className="font-medium">{format(new Date(selectedEsocialEvent?.created_at), "dd/MM/yyyy HH:mm")}</div>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Status</Label>
-                    <div className="flex items-center gap-2">
-                      {getEsocialStatusIcon(selectedEsocialEvent?.status)}
-                      <Badge variant={getStatusColor(selectedEsocialEvent?.status) as any}>{selectedEsocialEvent?.status}</Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Protocolo</Label>
-                    <div className="font-medium">{selectedEsocialEvent?.protocolo_envio || selectedEsocialEvent?.protocolo || '-'}</div>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Recibo</Label>
-                    <div className="font-medium">{selectedEsocialEvent?.numero_recibo || '-'}</div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Mensagens de erro/retorno</Label>
-                  {Array.isArray(selectedEsocialEvent?.erros) && selectedEsocialEvent?.erros?.length > 0 ? (
-                    <div className="space-y-1">
-                      {selectedEsocialEvent.erros.map((msg: string, idx: number) => (
-                        <Alert key={idx} variant="destructive">
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertDescription>{msg}</AlertDescription>
-                        </Alert>
-                      ))}
-                    </div>
-                  ) : (
-                    <Alert variant="default">
-                      <FileText className="h-4 w-4" />
-                      <AlertDescription>
-                        {selectedEsocialEvent?.mensagem_erro || selectedEsocialEvent?.mensagem_retorno || "Sem mensagens de erro."}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setSelectedEsocialEvent(null)}>Fechar</Button>
-                  <Button onClick={() => selectedEsocialEvent && handleExportXML(selectedEsocialEvent.id)}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar XML
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-
-        <TabsContent value="esocial" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Relatórios eSocial - {selectedCompany.name}</CardTitle>
-              <CardDescription>Eventos eSocial transmitidos e em preparação</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex space-x-2">
-                  <Input placeholder="Buscar por funcionário ou evento..." className="w-64" />
-                  <Select>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Evento" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="s-2220">S-2220</SelectItem>
-                      <SelectItem value="s-2240">S-2240</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select>
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="enviado">Enviado</SelectItem>
-                      <SelectItem value="pendente">Pendente</SelectItem>
-                      <SelectItem value="erro">Erro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex space-x-2">
-                  <Button variant="outline">
-                    <Settings className="h-4 w-4 mr-2" />
-                    Configurações
-                  </Button>
-                  <Button disabled={generatingEvent}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    {generatingEvent ? "Gerando..." : "Gerar Manualmente"}
-                  </Button>
-                </div>
-              </div>
-
-              {loadingEsocial ? (
-                <div className="text-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-                  <p>Carregando eventos eSocial...</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Evento</TableHead>
-                      <TableHead>Funcionário</TableHead>
-                      <TableHead>CPF</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {esocialEvents.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8">
-                          <FileSpreadsheet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                          <p className="text-muted-foreground">Nenhum evento eSocial para esta empresa.</p>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      esocialEvents.map((event) => (
-                        <TableRow key={event.id}>
-                          <TableCell>
-                            <div>
-                              <p className="font-medium">{event.tipo_evento}</p>
-                              <p className="text-sm text-muted-foreground">{event.tipo_descricao}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>{event.funcionario_nome}</TableCell>
-                          <TableCell>{event.cpf}</TableCell>
-                          <TableCell>{format(new Date(event.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              {getEsocialStatusIcon(event.status)}
-                              <Badge variant={getStatusColor(event.status) as any}>{event.status}</Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleViewEsocialEvent(event)}
-                                title="Visualizar"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              {(event.status === "erro" || event.status === "pendente") && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleResendEsocialEvent(event)}
-                                  disabled={isResending}
-                                  title="Reenviar"
-                                >
-                                  {isResending ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <RefreshCw className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleExportXML(event.id)}
-                                title="Exportar XML"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* eSocial tab, dialog, and content removed */}
 
         
 

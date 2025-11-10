@@ -10,7 +10,7 @@ import { useCompany } from "@/contexts/company-context"
 import { cn } from "@/lib/utils"
 
 export function CompanySelector() {
-  const { selectedCompany, companies, setSelectedCompany, isLoading } = useCompany()
+  const { selectedCompany, companies, setSelectedCompany, isLoading, user } = useCompany()
   const [open, setOpen] = useState(false)
 
   const compactName = (name: string) => {
@@ -32,6 +32,15 @@ export function CompanySelector() {
   }
 
   if (companies.length === 0) {
+    if (!user) {
+      return (
+        <div className="flex items-center space-x-3">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Faça login para ver empresas ativas no eSocial</span>
+          <Button size="sm" variant="secondary" onClick={() => (window.location.href = "/auth/login")}>Entrar</Button>
+        </div>
+      )
+    }
     return (
       <div className="flex items-center space-x-2 text-muted-foreground">
         <Building2 className="h-4 w-4" />

@@ -17,6 +17,12 @@ interface SignXMLParams {
   rawXml: string
 }
 
+interface SignXMLByUserParams {
+  userId: string
+  certPassword: string
+  rawXml: string
+}
+
 interface SignXMLResult {
   success: boolean
   signedXml?: string
@@ -29,27 +35,33 @@ export async function signXMLWithSupabaseCertificate({
   rawXml,
 }: SignXMLParams): Promise<SignXMLResult> {
   try {
-    const supabaseUrl = getSupabaseUrl()
-    const supabaseKey = getSupabaseAnonKey()
+    // Usar client com Service Role se disponível (declarado no topo)
+    // Buscar certificado ativo da empresa na tabela para obter o caminho correto no storage
+    const { data: certRow, error: certRowError } = await supabase
+      .from("certificados_esocial")
+      .select("arquivo_url, valido")
+      .eq("empresa_id", empresaId)
+      .eq("valido", true)
+      .single()
 
-    if (!supabaseUrl || !supabaseKey) {
+    if (certRowError || !certRow?.arquivo_url) {
       return {
         success: false,
-        error: "Configuração do Supabase não encontrada",
+        error: "Certificado A1 não encontrado para esta empresa",
       }
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const arquivoUrl: string = certRow.arquivo_url
 
-    // Buscar certificado A1 da empresa
+    // Baixar certificado do storage usando caminho armazenado
     const { data: certificateData, error: fetchError } = await supabase.storage
       .from("certificados-esocial")
-      .download(`empresa-${empresaId}/certificado-a1.pfx`)
+      .download(arquivoUrl)
 
     if (fetchError || !certificateData) {
       return {
         success: false,
-        error: "Certificado A1 não encontrado para esta empresa",
+        error: "Falha ao baixar certificado do storage",
       }
     }
 
@@ -122,19 +134,47 @@ export async function signXMLWithSupabaseCertificate({
       }
     }
 
-    // Assinar XML usando XMLDSig
+    // Assinar XML usando XMLDSig, conforme eSocial: referência no elemento <evento Id="...">
     try {
       const sig = new SignedXml()
-      
-      // Configurar chave privada
+
+      // Configurar algoritmos
+      sig.signatureAlgorithm = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+      sig.canonicalizationAlgorithm = "http://www.w3.org/2001/10/xml-exc-c14n#"
+
+      // Configurar chave privada (PEM)
       sig.privateKey = forge.pki.privateKeyToPem(privateKey)
-      
-      // Configurar referência para o elemento eSocial
-      sig.addReference({ xpath: "//*[local-name(.)='eSocial']" })
-      
-      // Computar assinatura
-      sig.computeSignature(rawXml)
-      
+
+      // KeyInfo com certificado X509
+      const certPem = forge.pki.certificateToPem(certificate)
+      const certBase64 = certPem
+        .replace("-----BEGIN CERTIFICATE-----", "")
+        .replace("-----END CERTIFICATE-----", "")
+        .replace(/\n/g, "")
+      sig.keyInfoProvider = {
+        getKeyInfo() {
+          return `<X509Data><X509Certificate>${certBase64}</X509Certificate></X509Data>`
+        },
+      } as any
+
+      // Referência ao elemento <evento> com atributo Id
+      sig.addReference(
+        "//*[local-name(.)='evento' and @Id]",
+        [
+          "http://www.w3.org/2000/09/xmldsig#enveloped-signature",
+          "http://www.w3.org/2001/10/xml-exc-c14n#",
+        ],
+        "http://www.w3.org/2001/04/xmlenc#sha256",
+      )
+
+      // Inserir assinatura dentro do elemento <evento>
+      sig.computeSignature(rawXml, {
+        location: {
+          reference: "//*[local-name(.)='evento' and @Id]",
+          action: "append",
+        },
+      })
+
       const signedXml = sig.getSignedXml()
 
       return {
@@ -144,7 +184,7 @@ export async function signXMLWithSupabaseCertificate({
     } catch (signError) {
       return {
         success: false,
-        error: "Erro ao assinar o XML. Verifique se o XML está no formato correto para eSocial.",
+        error: "Erro ao assinar o XML. Verifique o elemento <evento> e o atributo Id.",
       }
     }
   } catch (error) {
@@ -153,6 +193,93 @@ export async function signXMLWithSupabaseCertificate({
       success: false,
       error: "Erro interno ao processar a assinatura. Tente novamente.",
     }
+  }
+}
+
+// Assinar XML usando certificado vinculado à CONTA do usuário (bucket path: usuario-<uid>/certificado-a1.pfx)
+export async function signXMLWithUserCertificate({
+  userId,
+  certPassword,
+  rawXml,
+}: SignXMLByUserParams): Promise<SignXMLResult> {
+  try {
+    const arquivoUrl = `usuario-${userId}/certificado-a1.pfx`
+
+    const { data: certificateData, error: fetchError } = await supabase.storage
+      .from("certificados-esocial")
+      .download(arquivoUrl)
+
+    if (fetchError || !certificateData) {
+      return {
+        success: false,
+        error: "Falha ao baixar certificado do storage da conta",
+      }
+    }
+
+    // Converter blob para buffer
+    const certificateBuffer = await certificateData.arrayBuffer()
+    const certificateBytes = new Uint8Array(certificateBuffer)
+
+    // Carregar certificado PKCS#12
+    let p12Asn1: forge.asn1.Asn1
+    try {
+      p12Asn1 = forge.asn1.fromDer(forge.util.binary.raw.encode(certificateBytes))
+    } catch (error) {
+      return {
+        success: false,
+        error: "Arquivo de certificado inválido (PKCS#12)",
+      }
+    }
+
+    let p12: forge.pkcs12.Pkcs12Pfx
+    try {
+      p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certPassword)
+    } catch (error) {
+      return {
+        success: false,
+        error: "Senha do certificado incorreta",
+      }
+    }
+
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
+    const certBag = certBags[forge.pki.oids.certBag]?.[0]
+    if (!certBag || !certBag.cert) {
+      return {
+        success: false,
+        error: "Certificado não encontrado no arquivo .pfx",
+      }
+    }
+
+    const privateKeyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })
+    const privateKeyBag = privateKeyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0]
+    if (!privateKeyBag || !privateKeyBag.key) {
+      return {
+        success: false,
+        error: "Chave privada não encontrada no certificado",
+      }
+    }
+
+    const privateKey = privateKeyBag.key
+    const certificate = certBag.cert
+
+    // Preparar XML para assinatura
+    const doc = new DOMParser().parseFromString(rawXml)
+    const signer = new SignedXml()
+    signer.addReference("//*[local-name(.)='evtInfoEmpregador']", [
+      "http://www.w3.org/2000/09/xmldsig#enveloped-signature",
+      "http://www.w3.org/2001/10/xml-exc-c14n#",
+    ])
+    signer.signingKey = forge.pki.privateKeyToPem(privateKey)
+    signer.keyInfoProvider = {
+      getKeyInfo: () => forge.pki.certificateToPem(certificate),
+    } as any
+    signer.computeSignature(doc)
+
+    const signedXml = signer.getSignedXml()
+    return { success: true, signedXml }
+  } catch (error) {
+    console.error("Erro na assinatura com certificado da conta:", error)
+    return { success: false, error: "Erro interno ao assinar XML" }
   }
 }
 
@@ -223,6 +350,47 @@ export async function getCertificateInfo(empresaId: string, certPassword: string
       success: false,
       error: "Erro interno ao assinar XML",
     }
+  }
+}
+
+/**
+ * Extrai informações do certificado armazenado no Supabase a partir de um caminho arbitrário.
+ * @param path Caminho no bucket `certificados-esocial` (ex.: usuario-<uid>/certificado-a1.pfx)
+ * @param certPassword Senha do certificado
+ */
+export async function getCertificateInfoFromPath(path: string, certPassword: string) {
+  try {
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from("certificados-esocial")
+      .createSignedUrl(path, 60)
+
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      throw new Error("Certificado não encontrado")
+    }
+
+    const certBuffer = await axios
+      .get(signedUrlData.signedUrl, { responseType: "arraybuffer" })
+      .then((res) => res.data)
+
+    const p12Asn1 = forge.asn1.fromDer(forge.util.createBuffer(certBuffer))
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certPassword)
+
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag })
+    const certBag = certBags[forge.pki.oids.certBag]?.[0]
+    if (!certBag || !certBag.cert) {
+      throw new Error("Certificado não encontrado no arquivo .pfx")
+    }
+    const cert = certBag.cert
+
+    return {
+      success: true,
+      subject: cert.subject.attributes.map((attr) => `${attr.name}=${attr.value}`).join(", "),
+      issuer: cert.issuer.attributes.map((attr) => `${attr.name}=${attr.value}`).join(", "),
+      validFrom: cert.validity.notBefore,
+      validTo: cert.validity.notAfter,
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Erro ao obter informações" }
   }
 }
 

@@ -18,7 +18,7 @@ export interface EsocialConfig {
 export interface EventoEsocial {
   id: string
   empresa_id: string
-  tipo_evento: "S-2220" | "S-2240" | "S-2210" | "S-2230"
+  tipo_evento: "S-1000" | "S-2220" | "S-2240" | "S-2210" | "S-2230"
   status: "preparando" | "enviado" | "aguardando" | "processado" | "erro" | "rejeitado"
   xml_original?: string
   xml_assinado?: string
@@ -72,6 +72,11 @@ export interface DadosS2240 {
     pis: string
     matricula: string
   }
+  // Opcional: empresa emissora do evento (CNPJ), para preencher ideEmpregador/Transmissor
+  empresa?: {
+    cnpj: string
+    razao_social?: string
+  }
   ambiente: {
     setor: string
     descricao_atividade: string
@@ -107,5 +112,66 @@ export interface DadosS2210 {
   empresa: {
     cnpj: string
     razao_social: string
+  }
+}
+
+// S-1000 - Informações do Empregador/Contribuinte/Órgão Público (S-1.3)
+export interface DadosS1000 {
+  ideEvento: {
+    indRetif?: "1" | "2" // 1=Original, 2=Retificação
+    nrRecibo?: string // Número do recibo quando indRetif=2
+    tpAmb: "1" | "2" // 1=Produção, 2=Homologação
+    procEmi: "1" | "2" | "3" | "4" // Forma de emissão
+    verProc: string // Versão do aplicativo emissor
+  }
+  idePeriodo: {
+    iniValid: string // AAAA-MM
+    fimValid?: string // AAAA-MM
+  }
+  /**
+   * Operação de infoEmpregador: 'inclusao' (default), 'alteracao' ou 'exclusao'
+   */
+  operacao?: "inclusao" | "alteracao" | "exclusao"
+  infoCadastro: {
+    classTrib: string // Classificação tributária (código)
+    indCoop?: "0" | "1"
+    indConstr?: "0" | "1"
+    indDesFolha?: "0" | "1"
+    indOptRegEletron?: "0" | "1"
+    indEntEd?: "0" | "1"
+    indEtt?: "0" | "1"
+    contato: {
+      nmCtt: string
+      cpfCtt: string
+      foneFix?: string
+      foneCel?: string
+      email: string
+    }
+    softHouse?: {
+      cnpjSoft: string
+      nmRazao: string
+      nmContato?: string
+      telefone?: string
+      email?: string
+    }
+  }
+  /**
+   * Dados para operação de alteração (S-1000/infoEmpregador/alteracao)
+   */
+  alteracao?: {
+    idePeriodo: {
+      iniValid: string
+      fimValid?: string
+    }
+    infoCadastro: DadosS1000["infoCadastro"]
+  }
+  /**
+   * Dados para operação de exclusão (S-1000/infoEmpregador/exclusao)
+   */
+  exclusao?: {
+    idePeriodo: {
+      iniValid: string
+      fimValid?: string
+    }
   }
 }

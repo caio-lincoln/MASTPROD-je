@@ -2,14 +2,11 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 import { getSupabaseUrl, getSupabaseAnonKey } from "@/lib/config/supabase-config"
 import { getSecurityHeaders } from "@/lib/security/headers"
-import { getOrSetCsrfToken, verifyCsrf } from "@/lib/security/csrf"
 import { checkRateLimit } from "@/lib/security/rate-limit"
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
   const securityHeaders = getSecurityHeaders()
-  // Initialize CSRF token cookie if missing
-  const csrfToken = getOrSetCsrfToken(request, supabaseResponse)
 
   const isProd = process.env.NODE_ENV === "production"
   const isInternalJob = request.headers.get("x-internal-job") === "true"
@@ -62,7 +59,6 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/login") ||
     path.startsWith("/auth") ||
     path.startsWith("/api/auth") ||
-    path.startsWith("/api/csrf") ||
     path.startsWith("/api/health")
 
   if (
@@ -116,39 +112,6 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // CSRF verification for state-changing API requests (only enabled in production)
-  if (
-    isProd &&
-    !isInternalJob &&
-    ["POST", "PUT", "PATCH", "DELETE"].includes(request.method) &&
-    request.nextUrl.pathname.startsWith("/api/")
-  ) {
-    const validCsrf = verifyCsrf(request)
-    if (!validCsrf) {
-      // Log suspicious attempt for authenticated users
-      try {
-        if (user) {
-          await supabase.rpc("log_acao", {
-            acao_input: "bloqueio_csrf",
-            entidade_input: "seguranca",
-            entidade_id_input: null,
-            descricao_input: `CSRF inválido em ${request.nextUrl.pathname}`,
-            dados_anteriores_input: null,
-            dados_novos_input: null,
-            ip_address_input: (request.headers.get("x-forwarded-for") || "") as any,
-            user_agent_input: request.headers.get("user-agent") || "",
-          })
-        }
-      } catch {
-        // ignore logging failures
-      }
-      const blocked = new NextResponse(JSON.stringify({ error: "CSRF token inválido" }), { status: 403 })
-      if (isProd) {
-        Object.entries(securityHeaders).forEach(([k, v]) => blocked.headers.set(k, v))
-      }
-      return blocked
-    }
-  }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
   // If you're creating a new response object with NextResponse.next() make sure to:
@@ -166,6 +129,5 @@ export async function updateSession(request: NextRequest) {
   if (isProd) {
     Object.entries(securityHeaders).forEach(([k, v]) => supabaseResponse.headers.set(k, v))
   }
-  // Expose CSRF token to clients (for fetching via /api/csrf) without leaking value here
   return supabaseResponse
 }

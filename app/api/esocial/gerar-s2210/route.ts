@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
       console.error("Erro ao buscar detalhes do acidente:", detalhesError)
     }
 
-    // Gerar XML do evento
-    const xmlBuilder = new EsocialXmlBuilder()
+    // Gerar XML do evento (ambiente de produção)
+    const xmlBuilder = new EsocialXmlBuilder({ ambiente: "producao" })
     const xmlContent = await xmlBuilder.gerarS2210({
       incidente,
       detalhes_acidente: detalhesAcidente

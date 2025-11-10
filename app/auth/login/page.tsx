@@ -15,7 +15,7 @@ import { useState } from "react"
 import { useLoading } from "@/hooks/use-loading"
 import { useTheme } from "next-themes"
 import { Logo } from "@/components/logo"
-import { apiFetch } from "@/lib/security/client-csrf"
+import { apiFetch } from "@/lib/security/client-api"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")

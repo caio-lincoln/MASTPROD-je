@@ -27,7 +27,8 @@ export function LazyModuleLoader({
       "@/components/modules/training": () => import("@/components/modules/training"),
       "@/components/modules/reports": () => import("@/components/modules/reports"),
       "@/components/modules/esocial": () => import("@/components/modules/esocial"),
-      "@/components/modules/esocial-integration": () => import("@/components/modules/esocial-integration"),
+      // Legacy module removed; alias to new API-backed eSocial
+      "@/components/modules/esocial-integration": () => import("@/components/modules/esocial"),
       "@/components/modules/digital-library": () => import("@/components/modules/digital-library"),
       "@/components/modules/risk-management": () => import("@/components/modules/risk-management"),
       "@/components/modules/workplace-safety": () => import("@/components/modules/workplace-safety"),
@@ -116,7 +117,8 @@ export function preloadModule(importPath: string) {
     "@/components/modules/occupational-health": () => import("@/components/modules/occupational-health"),
     "@/components/modules/training": () => import("@/components/modules/training"),
     "@/components/modules/reports": () => import("@/components/modules/reports"),
-    "@/components/modules/esocial-integration": () => import("@/components/modules/esocial-integration"),
+    // Legacy module removed; alias to new API-backed eSocial
+    "@/components/modules/esocial-integration": () => import("@/components/modules/esocial"),
     "@/components/modules/digital-library": () => import("@/components/modules/digital-library"),
     "@/components/modules/risk-management": () => import("@/components/modules/risk-management"),
     "@/components/modules/workplace-safety": () => import("@/components/modules/workplace-safety"),

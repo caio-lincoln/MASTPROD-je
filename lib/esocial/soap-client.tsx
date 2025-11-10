@@ -1,5 +1,6 @@
 import { EsocialConfig } from "./types"
 import { createEsocialFetchOptions } from "./ssl-config"
+import * as fs from "fs"
 
 export interface SoapResponse {
   sucesso: boolean
@@ -28,6 +29,18 @@ export class EsocialSoapClient {
     this.config = config
   }
 
+  private getClientCertPfxBuffer(): Buffer | undefined {
+    try {
+      const certPath = this.config.certificado?.arquivo
+      if (certPath && fs.existsSync(certPath)) {
+        return fs.readFileSync(certPath)
+      }
+    } catch (_) {
+      // silencioso: se não houver arquivo local, agente será criado sem pfx
+    }
+    return undefined
+  }
+
   // Enviar lote de eventos para o eSocial
   async enviarLoteEventos(xmlLote: string): Promise<SoapResponse> {
     try {
@@ -37,6 +50,10 @@ export class EsocialSoapClient {
       const fetchOptions = createEsocialFetchOptions('POST', soapEnvelope, {
         SOAPAction:
           "http://www.esocial.gov.br/servicos/empregador/lote/eventos/envio/v1_1_1/ServicoEnviarLoteEventos/EnviarLoteEventos",
+      }, {
+        pfx: this.getClientCertPfxBuffer(),
+        passphrase: this.config.certificado?.senha,
+        rejectUnauthorized: this.config.ambiente === 'producao',
       })
 
       const response = await fetch(this.config.urls.recepcaoLote, fetchOptions)
@@ -70,6 +87,10 @@ export class EsocialSoapClient {
       const fetchOptions = createEsocialFetchOptions('POST', soapEnvelope, {
         SOAPAction:
           "http://www.esocial.gov.br/servicos/empregador/consultaloteeventos/v1_1_0/ServicoConsultarLoteEventos/ConsultarLoteEventos",
+      }, {
+        pfx: this.getClientCertPfxBuffer(),
+        passphrase: this.config.certificado?.senha,
+        rejectUnauthorized: this.config.ambiente === 'producao',
       })
 
       const response = await fetch(this.config.urls.consultaLote, fetchOptions)
@@ -102,7 +123,11 @@ export class EsocialSoapClient {
       // Usar configurações SSL centralizadas
       const fetchOptions = createEsocialFetchOptions('POST', soapEnvelope, {
         SOAPAction:
-          "http://www.esocial.gov.br/servicos/empregador/download/v1_0_0/ServicoDownloadEventos/DownloadEventos",
+          "http://www.esocial.gov.br/servicos/empregador/download/solicitacao/v1_0_0/ServicoSolicitarDownloadEventos/SolicitarDownloadEventos",
+      }, {
+        pfx: this.getClientCertPfxBuffer(),
+        passphrase: this.config.certificado?.senha,
+        rejectUnauthorized: this.config.ambiente === 'producao',
       })
 
       const response = await fetch(this.config.urls.downloadEvento, fetchOptions)
@@ -349,9 +374,14 @@ export class EsocialSoapClient {
   async testarConectividade(): Promise<{ conectado: boolean; erro?: string }> {
     try {
       // Fazer uma requisição simples para testar conectividade
-      const response = await fetch(this.config.urls.recepcaoLote, {
-        method: "HEAD",
-      })
+      const response = await fetch(
+        this.config.urls.recepcaoLote,
+        createEsocialFetchOptions('HEAD', undefined, undefined, {
+          pfx: this.getClientCertPfxBuffer(),
+          passphrase: this.config.certificado?.senha,
+          rejectUnauthorized: this.config.ambiente === 'producao',
+        })
+      )
 
       return {
         conectado: response.status < 500,

@@ -4,7 +4,7 @@ import type { EventoEsocial, LoteEventos } from "./types"
 
 export class EsocialEventManager {
   private supabase = createClient()
-  private xmlBuilder = new EsocialXmlBuilder()
+  private xmlBuilder = new EsocialXmlBuilder({ ambiente: "producao" })
 
   // Método para criar logs
   private async criarLog(

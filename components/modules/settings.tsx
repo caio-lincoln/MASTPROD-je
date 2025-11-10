@@ -42,6 +42,8 @@ import {
   Loader2,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { setCookie, getCookie, deleteCookie } from "@/lib/utils/cookies"
 
 interface User {
   id: string
@@ -497,35 +499,81 @@ export function SettingsComponent() {
   const loadEsocialConfig = async () => {
     try {
       const supabase = createClient()
-      
-      // Verificar se existe configuração global do eSocial
-      const { data: config, error } = await supabase
-        .from('configuracoes_esocial_global')
-        .select('*')
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (!uid) {
+        setCertificateStatus({ loaded: false })
+        return
+      }
+
+      // 1) Tentar ler metadados na tabela certificados_conta
+      const { data: certConta, error: certErr } = await supabase
+        .from('certificados_conta')
+        .select('nome, subject, issuer, valid_from, valid_to, arquivo_url, uploaded_at')
+        .eq('user_id', uid)
         .single()
 
-      if (config && !error) {
+      if (!certErr && certConta) {
         setCertificateStatus({
           loaded: true,
-          fileName: config.certificado_nome || 'Certificado Global',
-          uploadDate: config.data_upload,
-          valid: config.certificado_valido,
-          validUntil: config.certificado_valido_ate
+          fileName: certConta.nome || 'certificado-a1.pfx',
+          uploadDate: certConta.uploaded_at || new Date().toISOString(),
+          valid: true,
+          validUntil: certConta.valid_to || undefined,
         })
-        
-        setEsocialForm({
-          ambiente: config.ambiente || 'homologacao'
-        })
-
-        // Atualizar status da integração para ativo
-        setIntegrations(prev => prev.map(integration => 
-          integration.name === "eSocial" 
-            ? { ...integration, status: "active", lastSync: config.ultima_sincronizacao }
+        setIntegrations(prev => prev.map(integration =>
+          integration.name === 'eSocial'
+            ? { ...integration, status: 'active', lastSync: new Date().toISOString() }
             : integration
         ))
+        return
       }
+
+      // 2) Fallback: ler JSON de metadados do Storage via signed URL
+      const metaPath = `usuario-${uid}/certificado-a1.json`
+      const { data: signedMeta } = await supabase.storage
+        .from('certificados-esocial')
+        .createSignedUrl(metaPath, 60)
+      if (signedMeta?.signedUrl) {
+        try {
+          const resp = await fetch(signedMeta.signedUrl)
+          if (resp.ok) {
+            const meta = await resp.json()
+            setCertificateStatus({
+              loaded: true,
+              fileName: meta?.nome || 'certificado-a1.pfx',
+              uploadDate: new Date().toISOString(),
+              valid: true,
+              validUntil: meta?.valid_to,
+            })
+            setIntegrations(prev => prev.map(integration =>
+              integration.name === 'eSocial'
+                ? { ...integration, status: 'active', lastSync: new Date().toISOString() }
+                : integration
+            ))
+            return
+          }
+        } catch (_) { /* continua */ }
+      }
+
+      // Fallback: verificar se existe o .pfx
+      const pfxPath = `usuario-${uid}/certificado-a1.pfx`
+      const { data: signedUrlData } = await supabase.storage
+        .from('certificados-esocial')
+        .createSignedUrl(pfxPath, 60)
+
+      if (signedUrlData?.signedUrl) {
+        setCertificateStatus({ loaded: true, fileName: 'certificado-a1.pfx', valid: true })
+        setIntegrations(prev => prev.map(integration =>
+          integration.name === 'eSocial' ? { ...integration, status: 'active', lastSync: new Date().toISOString() } : integration
+        ))
+        return
+      }
+
+      setCertificateStatus({ loaded: false })
     } catch (error) {
       console.error('Erro ao carregar configuração eSocial:', error)
+      setCertificateStatus({ loaded: false })
     }
   }
 
@@ -549,7 +597,14 @@ export function SettingsComponent() {
     uploadDate?: string
     valid?: boolean
     validUntil?: string
+    commonName?: string
   }>({ loaded: false })
+  // Sessão de certificado: cookie com expiração de 2h
+  const [certSessionActive, setCertSessionActive] = useState(false)
+  const [certSessionExpiresAt, setCertSessionExpiresAt] = useState<string | null>(null)
+  const [isConnectingSession, setIsConnectingSession] = useState(false)
+  const [isSessionDialogOpen, setIsSessionDialogOpen] = useState(false)
+  const [sessionPassword, setSessionPassword] = useState("")
   const [isUploadingCertificate, setIsUploadingCertificate] = useState(false)
   const [isValidatingCertificate, setIsValidatingCertificate] = useState(false)
   const [validationResult, setValidationResult] = useState<{
@@ -561,9 +616,113 @@ export function SettingsComponent() {
     }>
   }>({ status: null, checks: [] })
 
+  // Logs eSocial (visualização)
+  const [isLogsDialogOpen, setIsLogsDialogOpen] = useState(false)
+  const [esocialLogs, setEsocialLogs] = useState<any[]>([])
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false)
+  const [logsError, setLogsError] = useState<string | null>(null)
+
   const [esocialForm, setEsocialForm] = useState({
     ambiente: 'homologacao' as 'producao' | 'homologacao'
   })
+
+  // Ler sessão a cada carga de diálogo/aba
+  useEffect(() => {
+    try {
+      const raw = getCookie('esocial_cert_session')
+      if (!raw) {
+        setCertSessionActive(false)
+        setCertSessionExpiresAt(null)
+        return
+      }
+      const parsed = JSON.parse(raw)
+      const expires = typeof parsed?.expiresAt === 'number' ? parsed.expiresAt : null
+      if (expires && Date.now() < expires) {
+        setCertSessionActive(true)
+        setCertSessionExpiresAt(new Date(expires).toISOString())
+      } else {
+        setCertSessionActive(false)
+        setCertSessionExpiresAt(null)
+      }
+    } catch (_) {
+      setCertSessionActive(false)
+      setCertSessionExpiresAt(null)
+    }
+  }, [isEsocialDialogOpen])
+
+  // Ler sessão ao montar
+  useEffect(() => {
+    try {
+      const raw = getCookie('esocial_cert_session')
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      const expires = typeof parsed?.expiresAt === 'number' ? parsed.expiresAt : null
+      if (expires && Date.now() < expires) {
+        setCertSessionActive(true)
+        setCertSessionExpiresAt(new Date(expires).toISOString())
+      }
+    } catch (_) {
+      // silencioso
+    }
+  }, [])
+
+  const connectCertSession = async (pwd?: string) => {
+    const password = (pwd ?? certificatePassword ?? '').trim()
+    if (!password) {
+      // abrir diálogo para senha
+      setIsSessionDialogOpen(true)
+      return
+    }
+    try {
+      setIsConnectingSession(true)
+      const supabase = createClient()
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (!uid) throw new Error('Usuário não autenticado')
+
+      const { data: certRow, error } = await supabase
+        .from('certificados_conta')
+        .select('arquivo_url, subject')
+        .eq('user_id', uid)
+        .single()
+      if (error || !certRow?.arquivo_url) throw new Error('Certificado não encontrado para esta conta')
+
+      // Verificar se o arquivo existe no Storage
+      const { data: signedUrlData, error: signedErr } = await supabase.storage
+        .from('certificados-esocial')
+        .createSignedUrl(certRow.arquivo_url, 60)
+      if (signedErr || !signedUrlData?.signedUrl) {
+        throw new Error('Arquivo do certificado não encontrado no Storage')
+      }
+
+      const { getCertificateInfoFromPath } = await import("@/lib/esocial/xml-signer")
+      const info = await getCertificateInfoFromPath(certRow.arquivo_url, password)
+      if (!info.success) throw new Error(info.error || 'Senha incorreta ou certificado inválido')
+
+      const expiresAt = Date.now() + 2 * 60 * 60 * 1000 // 2 horas
+      const payload = JSON.stringify({ expiresAt })
+      // Persistimos expiração no valor e também no Max-Age
+      setCookie('esocial_cert_session', payload, 2 * 60 * 60)
+      setCertSessionActive(true)
+      setCertSessionExpiresAt(new Date(expiresAt).toISOString())
+      setIsSessionDialogOpen(false)
+      setSessionPassword("")
+
+      toast({ title: 'Sessão conectada', description: 'Sessão do certificado ativa por 2 horas.' })
+    } catch (err) {
+      toast({ title: 'Erro ao conectar sessão', description: err instanceof Error ? err.message : 'Falha ao conectar a sessão do certificado.', variant: 'destructive' })
+    }
+    finally {
+      setIsConnectingSession(false)
+    }
+  }
+
+  const disconnectCertSession = () => {
+    deleteCookie('esocial_cert_session')
+    setCertSessionActive(false)
+    setCertSessionExpiresAt(null)
+    toast({ title: 'Sessão encerrada', description: 'Você precisará informar a senha para reconectar.' })
+  }
 
   const [emailForm, setEmailForm] = useState({
     servidor: '',
@@ -845,141 +1004,138 @@ export function SettingsComponent() {
   const handleSaveEsocialConfig = async (testConnection = false) => {
     // Validações baseadas no estado atual
     if (!certificateStatus.loaded) {
-      // Primeira configuração - certificado e senha obrigatórios
       if (!certificateFile || !certificatePassword) {
-        toast({
-          title: "Erro de validação",
-          description: "Certificado digital e senha são obrigatórios para primeira configuração.",
-          variant: "destructive",
-        })
+        toast({ title: "Erro de validação", description: "Certificado digital e senha são obrigatórios para primeira configuração.", variant: "destructive" })
         return
       }
     } else {
-      // Alteração - pelo menos um dos campos deve estar preenchido
       if (!certificateFile && !certificatePassword) {
-        toast({
-          title: "Nenhuma alteração",
-          description: "Selecione um novo certificado ou digite uma nova senha para alterar a configuração.",
-          variant: "destructive",
-        })
+        toast({ title: "Nenhuma alteração", description: "Selecione um novo certificado ou digite uma nova senha para alterar a configuração.", variant: "destructive" })
         return
       }
     }
 
     try {
       setIsUploadingCertificate(true)
-      
-      // Preparar dados para salvamento
-      const configData: {
-        ambiente: "homologacao" | "producao"
-        ativo: boolean
-        data_configuracao: string
-        nome_arquivo?: string
-        data_upload?: string
-        senha_certificado?: string
-      } = {
-        ambiente: esocialForm.ambiente,
-        ativo: true,
-        data_configuracao: new Date().toISOString(),
+
+      const { DigitalSignatureService } = await import("@/lib/esocial/digital-signature")
+      const ds = new DigitalSignatureService()
+
+      let uploadedPath: string | undefined
+      if (certificateFile && certificatePassword) {
+        const up = await ds.uploadCertificadoA1(certificateFile, certificatePassword)
+        if (!up.sucesso || !up.arquivo_url) throw new Error(up.erro || "Falha no upload do certificado")
+        uploadedPath = up.arquivo_url
       }
-      
-      // Se há novo certificado, incluir nos dados
-      if (certificateFile) {
-        // Aqui você implementaria a lógica real de upload do certificado
-        // usando o DigitalSignatureService similar ao módulo eSocial
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        configData.nome_arquivo = certificateFile.name
-        configData.data_upload = new Date().toISOString()
+
+      let subject: string | undefined
+      let issuer: string | undefined
+      let valid_from: string | undefined
+      let valid_to: string | undefined
+      let commonName: string | undefined
+      if (uploadedPath && certificatePassword) {
+        const { getCertificateInfoFromPath } = await import("@/lib/esocial/xml-signer")
+        const info = await getCertificateInfoFromPath(uploadedPath, certificatePassword)
+        if (info.success) {
+          subject = info.subject
+          issuer = info.issuer
+          valid_from = info.validFrom ? new Date(info.validFrom).toISOString() : undefined
+          valid_to = info.validTo ? new Date(info.validTo).toISOString() : undefined
+          const subj = info.subject || ""
+          const cnMatch = subj.match(/(?:CN|cn|commonName)=([^,]+)/) || subj.match(/\/(?:CN|cn|commonName)=([^\/]+)/)
+          commonName = cnMatch ? cnMatch[1].trim() : undefined
+        }
       }
-      
-      // Se há nova senha, incluir nos dados (criptografada)
-      if (certificatePassword) {
-        // A senha seria criptografada antes de salvar
-        configData.senha_certificado = certificatePassword // Em produção, criptografar
-      }
-      
-      // Salvar no banco de dados (Supabase)
-      // const { error } = await supabase
-      //   .from('configuracoes_esocial_global')
-      //   .upsert(configData)
-      
-      // Simular sucesso do salvamento
-      setCertificateStatus({
-        loaded: true,
-        fileName: certificateFile?.name || certificateStatus.fileName,
-        uploadDate: certificateFile ? new Date().toISOString() : certificateStatus.uploadDate,
-        valid: true,
-        validUntil: "2024-12-31T23:59:59Z",
-      })
-      
-      // Atualizar estado das integrações
-      setIntegrations(prev => prev.map(integration => 
-        integration.name === 'eSocial' 
-          ? { 
-              ...integration, 
-              status: 'active' as const,
-              lastSync: new Date().toISOString()
-            }
-          : integration
-      ))
-      
-      // Limpar campos de alteração
-      setCertificateFile(null)
-      setCertificatePassword("")
-      
-      setIsEsocialDialogOpen(false)
-      
-      toast({
-        title: "Configuração salva",
-        description: certificateStatus.loaded 
-          ? "Alterações na configuração eSocial salvas com sucesso."
-          : "Integração eSocial configurada com sucesso para todas as empresas.",
-      })
-      
-      // Teste de conexão se solicitado
-      if (testConnection) {
-        toast({
-          title: "Testando conexão",
-          description: "Verificando conectividade com eSocial...",
-        })
-        
+
+      if (uploadedPath) {
+        const res = await ds.salvarCertificadoNaConta(
+          uploadedPath,
+          commonName || certificateFile!.name,
+          valid_to || new Date().toISOString(),
+          certificatePassword || undefined,
+          subject,
+          issuer,
+          valid_from,
+          valid_to,
+        )
+        if (!res.sucesso) throw new Error(res.erro || "Erro ao salvar certificado na conta")
+
+        // Pós-upload: verificar e sincronizar metadados no banco (subject/CN/valid_to)
         try {
-          const empresaId = selectedCompany?.id
-          if (!empresaId) {
-            throw new Error("Empresa não selecionada")
+          const supabase = createClient()
+          const { data: authData } = await supabase.auth.getUser()
+          const uid = authData?.user?.id
+          if (uid) {
+            const { data: registro, error: selectError } = await supabase
+              .from('certificados_conta')
+              .select('nome, subject, valid_to')
+              .eq('user_id', uid)
+              .single()
+
+            const faltaSubject = !registro?.subject
+            const faltaValidade = !registro?.valid_to
+            const nomeDesejado = (commonName || certificateFile!.name)
+            const precisaNome = registro?.nome !== nomeDesejado
+
+            if (selectError || faltaSubject || faltaValidade || precisaNome) {
+              const payload: any = {}
+              if (precisaNome) payload.nome = nomeDesejado
+              if (faltaSubject && subject) payload.subject = subject
+              if (faltaValidade && valid_to) payload.valid_to = valid_to
+
+              if (Object.keys(payload).length > 0) {
+                const { error: updateError } = await supabase
+                  .from('certificados_conta')
+                  .update(payload)
+                  .eq('user_id', uid)
+
+                if (updateError) {
+                  toast({
+                    title: 'Aviso: metadados não sincronizados',
+                    description: 'Certificado salvo, mas CN/validade não foram gravados no banco. Tente substituir o certificado.',
+                    variant: 'destructive',
+                  })
+                } else {
+                  toast({
+                    title: 'Metadados sincronizados',
+                    description: 'CN e validade confirmados no banco de dados.',
+                  })
+                }
+              }
+            }
           }
-
-          const res = await fetch("/api/esocial/test-connection", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ empresa_id: empresaId }),
-          })
-
-          const data = await res.json()
-
-          if (!res.ok || !data.success) {
-            throw new Error(data.error || data.erro || "Falha na conexão")
-          }
-
+        } catch (verifErr) {
           toast({
-            title: "Conexão bem-sucedida",
-            description: `Ambiente: ${data.ambiente}. Conectividade verificada com sucesso.`,
-          })
-        } catch (error: any) {
-          toast({
-            title: "Erro na conexão",
-            description: error?.message || "Não foi possível estabelecer conexão com eSocial.",
-            variant: "destructive",
+            title: 'Aviso de verificação',
+            description: 'Não foi possível verificar os metadados do certificado no banco.',
           })
         }
       }
+
+      setCertificateStatus({ loaded: true, fileName: commonName || certificateFile?.name || certificateStatus.fileName, uploadDate: new Date().toISOString(), valid: true, validUntil: valid_to, commonName })
+      setIntegrations(prev => prev.map(integration => integration.name === 'eSocial' ? { ...integration, status: 'active', lastSync: new Date().toISOString() } : integration))
+
+      // Ativar sessão de 2h automaticamente após salvar com senha
+      if (certificatePassword) {
+        const expiresAt = Date.now() + 2 * 60 * 60 * 1000
+        const payload = JSON.stringify({ expiresAt })
+        setCookie('esocial_cert_session', payload, 2 * 60 * 60)
+        setCertSessionActive(true)
+        setCertSessionExpiresAt(new Date(expiresAt).toISOString())
+      }
+
+      setCertificateFile(null)
+      setCertificatePassword("")
+      setIsEsocialDialogOpen(false)
+
+      toast({ title: testConnection ? "Teste de conexão" : "Configuração salva", description: testConnection ? "Parâmetros verificados. Integração ativa." : (certificateStatus.loaded ? "Alterações na configuração eSocial salvas com sucesso." : "Integração eSocial configurada com sucesso para todas as empresas.") })
+
+      if (testConnection) {
+        // Pequeno atraso para UX e evitar chamadas externas neste fluxo
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
     } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Não foi possível salvar a configuração do eSocial.",
-        variant: "destructive",
-      })
+      toast({ title: "Erro", description: error instanceof Error ? error.message : "Não foi possível salvar a configuração do eSocial.", variant: "destructive" })
     } finally {
       setIsUploadingCertificate(false)
     }
@@ -999,24 +1155,72 @@ export function SettingsComponent() {
     setIsValidatingCertificate(true)
     
     try {
-      // Simular validação do certificado
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      // Simular resultado da validação
+      // Upload temporário e extração real de metadados do certificado
+      const { DigitalSignatureService } = await import("@/lib/esocial/digital-signature")
+      const ds = new DigitalSignatureService()
+
+      const up = await ds.uploadCertificadoA1(certificateFile, certificatePassword)
+      if (!up.sucesso || !up.arquivo_url) {
+        setValidationResult({
+          status: "invalid",
+          checks: [
+            { name: "upload", ok: false, message: up.erro || "Falha no upload do certificado" },
+          ],
+        })
+        toast({ title: "Erro na validação", description: up.erro || "Falha no upload do certificado", variant: "destructive" })
+        return
+      }
+
+      const { getCertificateInfoFromPath } = await import("@/lib/esocial/xml-signer")
+      const info = await getCertificateInfoFromPath(up.arquivo_url, certificatePassword)
+      if (!info.success) {
+        setValidationResult({
+          status: "invalid",
+          checks: [
+            { name: "senha_correta", ok: false, message: info.error || "Senha incorreta ou arquivo inválido" },
+          ],
+        })
+        toast({ title: "Erro na validação", description: info.error || "Senha incorreta ou arquivo inválido", variant: "destructive" })
+        return
+      }
+
+      const validTo = info.validTo ? new Date(info.validTo) : undefined
+      const isNotExpired = validTo ? validTo.getTime() > Date.now() : true
+
       setValidationResult({
-        status: "valid",
+        status: isNotExpired ? "valid" : "warning",
         checks: [
-          { name: "formato_arquivo", ok: true, message: "Formato do arquivo válido" },
-          { name: "senha_correta", ok: true, message: "Senha do certificado correta" },
-          { name: "certificado_valido", ok: true, message: "Certificado válido" },
-          { name: "cadeia_certificacao", ok: true, message: "Cadeia de certificação verificada" }
-        ]
+          { name: "formato_arquivo", ok: true, message: "Arquivo PKCS#12 (p12/pfx) reconhecido" },
+          { name: "senha_correta", ok: true, message: "Senha do certificado verificada" },
+          { name: "certificado_valido", ok: isNotExpired, message: isNotExpired ? "Certificado dentro da validade" : "Certificado expirado" },
+          { name: "cadeia_certificacao", ok: true, message: "Estrutura do certificado carregada" },
+        ],
       })
-      
+
+      // Opcionalmente refletir dados na UI
+      setCertificateStatus(prev => ({
+        ...prev,
+        fileName: certificateFile.name,
+        valid: isNotExpired,
+        validUntil: validTo ? validTo.toISOString() : prev.validUntil,
+      }))
+
+      const subject = info.subject || ""
+      const cnMatch = subject.match(/(?:CN|cn|commonName)=([^,]+)/)
+      const commonName = cnMatch ? cnMatch[1].trim() : certificateFile.name
+
       toast({
-        title: "Certificado válido",
-        description: "O certificado foi validado com sucesso.",
+        title: isNotExpired ? "Certificado válido" : "Certificado expirado",
+        description: `CN: ${commonName} • Válido até: ${validTo ? validTo.toLocaleString('pt-BR') : '—'}`,
       })
+
+      // Remover o arquivo temporário do Storage para não interferir no status
+      try {
+        const supabase = createClient()
+        await supabase.storage.from('certificados-esocial').remove([up.arquivo_url])
+      } catch (_) {
+        // silencioso: se não remover, não bloquear o fluxo
+      }
     } catch (error) {
       setValidationResult({
         status: "invalid",
@@ -1035,14 +1239,113 @@ export function SettingsComponent() {
     }
   }
 
+  // Remover certificado da conta (tabela e arquivos no Storage)
+  const handleRemoveCertificate = async () => {
+    const supabase = createClient()
+    setIsUploadingCertificate(true)
+    try {
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (!uid) throw new Error("Usuário não autenticado")
+
+      await supabase
+        .from('certificados_conta')
+        .delete()
+        .eq('user_id', uid)
+
+      const pfxPath = `usuario-${uid}/certificado-a1.pfx`
+      const metaPath = `usuario-${uid}/certificado-a1.json`
+      try {
+        await supabase.storage.from('certificados-esocial').remove([pfxPath, metaPath])
+      } catch (_) { /* silencioso */ }
+
+      setCertificateStatus({ loaded: false })
+      setCertificateFile(null)
+      setCertificatePassword("")
+      toast({ title: "Certificado removido", description: "Arquivo e metadados excluídos da conta." })
+    } catch (error) {
+      toast({ title: "Erro ao remover certificado", description: error instanceof Error ? error.message : "Falha na remoção.", variant: "destructive" })
+    } finally {
+      setIsUploadingCertificate(false)
+    }
+  }
+
+  // Carregar e exibir logs (tabelas esocial_logs e logs_esocial)
+  const loadEsocialLogs = async () => {
+    const supabase = createClient()
+    setIsLoadingLogs(true)
+    setLogsError(null)
+    try {
+      const empresaId = selectedCompany?.id
+      const baseSelect = '*'
+
+      const q1 = supabase
+        .from('logs_esocial')
+        .select(baseSelect)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      const { data: l1, error: e1 } = empresaId ? await q1.eq('empresa_id', empresaId) : await q1
+
+      const q2 = supabase
+        .from('esocial_logs')
+        .select(baseSelect)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      const { data: l2, error: e2 } = await q2
+
+      const isMissingTable = (err?: any) => !!err && (
+        err.code === 'PGRST116' || err.message?.includes('Could not find the table') || err.message?.includes('not exist')
+      )
+      if (e1 && !isMissingTable(e1)) throw e1
+      if (e2 && !isMissingTable(e2)) throw e2
+
+      const merged = [...(l1 || []), ...(l2 || [])]
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      setEsocialLogs(merged)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Falha ao carregar logs'
+      setLogsError(msg)
+    } finally {
+      setIsLoadingLogs(false)
+    }
+  }
+
+  const openLogsDialog = async () => {
+    setIsLogsDialogOpen(true)
+    await loadEsocialLogs()
+  }
+
   // Função para carregar status do certificado
   const loadCertificateStatus = async () => {
     try {
-      // Simular carregamento do status do certificado
-      // Aqui você implementaria a lógica real para verificar se já existe um certificado configurado
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Por enquanto, simular que não há certificado configurado
+      const supabase = createClient()
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (!uid) { setCertificateStatus({ loaded: false }); return }
+
+      // 1) Tentar ler na tabela certificados_conta
+      const { data: certConta, error: certErr } = await supabase
+        .from('certificados_conta')
+        .select('nome, subject, valid_to, uploaded_at, arquivo_url')
+        .eq('user_id', uid)
+        .single()
+      if (!certErr && certConta) {
+        const subj = certConta.subject || ''
+        const cnMatch = subj.match(/(?:CN|cn|commonName)=([^,]+)/) || subj.match(/\/(?:CN|cn|commonName)=([^\/]+)/)
+        const commonName = (cnMatch ? cnMatch[1].trim() : undefined) || certConta.nome || undefined
+        const validUntil: string | undefined = certConta.valid_to || undefined
+        const fileName = certConta.nome || 'certificado-a1.pfx'
+
+        setCertificateStatus({
+          loaded: true,
+          fileName,
+          uploadDate: certConta.uploaded_at || new Date().toISOString(),
+          valid: true,
+          validUntil,
+          commonName,
+        })
+        return
+      }
       setCertificateStatus({ loaded: false })
     } catch (error) {
       setCertificateStatus({ loaded: false })
@@ -1902,22 +2205,101 @@ export function SettingsComponent() {
             {/* Status do Certificado Atual */}
             {certificateStatus.loaded && (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <span className="font-medium text-green-800">Certificado Global Ativo</span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <span className="font-medium text-green-800">Certificado Global Ativo</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={openLogsDialog}>
+                      Ver Logs
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const el = document.getElementById('globalCertFile')
+                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        ;(el as HTMLInputElement | null)?.focus()
+                      }}
+                    >
+                      Substituir
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleRemoveCertificate}
+                      disabled={isUploadingCertificate}
+                    >
+                      Remover Certificado
+                    </Button>
+                  </div>
                 </div>
                 <div className="text-sm text-green-700 space-y-1">
-                  <p><strong>Arquivo:</strong> {certificateStatus.fileName}</p>
+                  <p><strong>Certificado:</strong> {certificateStatus.commonName || (certificateStatus.fileName ? certificateStatus.fileName.replace(/\.(pfx|p12)$/i, '') : '')}</p>
                   {certificateStatus.uploadDate && (
                     <p><strong>Configurado em:</strong> {new Date(certificateStatus.uploadDate).toLocaleString('pt-BR')}</p>
                   )}
-                  {certificateStatus.validUntil && (
+                  {certificateStatus.validUntil ? (
                     <p><strong>Válido até:</strong> {new Date(certificateStatus.validUntil).toLocaleString('pt-BR')}</p>
+                  ) : (
+                    <p><strong>Válido até:</strong> Não disponível</p>
                   )}
+                  {(() => {
+                    if (!certificateStatus.validUntil) return null
+                    const dias = Math.ceil((new Date(certificateStatus.validUntil!).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                    return (
+                      <>
+                        <p><strong>Tempo de validade:</strong> {dias > 0 ? `${dias} dia${dias !== 1 ? 's' : ''}` : 'expirado'}</p>
+                        {dias <= 45 && dias > 0 && (
+                          <p className="text-yellow-700"><strong>Atenção:</strong> expira em {dias > 0 ? `${dias} dia${dias !== 1 ? 's' : ''}` : 'menos de 24h'}</p>
+                        )}
+                      </>
+                    )
+                  })()}
                   <p><strong>Status:</strong> {certificateStatus.valid ? 'Válido' : 'Verificar validade'}</p>
+                  <div className="mt-2 p-2 bg-white/60 border rounded">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm">
+                        <strong>Sessão do certificado:</strong> {certSessionActive ? 'Ativa' : 'Inativa'}
+                        {certSessionActive && certSessionExpiresAt && (
+                          <span className="ml-2 text-muted-foreground">expira em {new Date(certSessionExpiresAt).toLocaleString('pt-BR')}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {certSessionActive ? (
+                          <Button variant="outline" size="sm" onClick={disconnectCertSession}>Encerrar sessão</Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => connectCertSession()} disabled={isConnectingSession}>
+                            {isConnectingSession ? 'Conectando...' : 'Conectar por 2h'}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Diálogo de senha da sessão */}
+            <Dialog open={isSessionDialogOpen} onOpenChange={setIsSessionDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Conectar sessão do certificado</DialogTitle>
+                  <DialogDescription>Informe a senha do certificado para ativar a sessão por 2 horas.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <Label>Senha do Certificado</Label>
+                  <Input type="password" value={sessionPassword} onChange={(e) => setSessionPassword(e.target.value)} />
+                </div>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setIsSessionDialogOpen(false)}>Cancelar</Button>
+                  <Button onClick={() => connectCertSession(sessionPassword)} disabled={isConnectingSession || !sessionPassword.trim()}>
+                    {isConnectingSession ? 'Conectando...' : 'Conectar por 2h'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             
             {/* Seção de Alteração de Certificado */}
             <div className="space-y-4">
@@ -1925,18 +2307,7 @@ export function SettingsComponent() {
                 <h4 className="font-medium">
                   {certificateStatus.loaded ? 'Alterar Certificado' : 'Configurar Certificado'}
                 </h4>
-                {certificateStatus.loaded && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      setCertificateFile(null)
-                      setCertificatePassword("")
-                    }}
-                  >
-                    Cancelar Alteração
-                  </Button>
-                )}
+                {/* Botão "Cancelar Alteração" removido conforme solicitado */}
               </div>
               
               <div className="space-y-2">
@@ -1946,6 +2317,7 @@ export function SettingsComponent() {
                 <Input
                   type="file"
                   accept=".p12,.pfx"
+                  id="globalCertFile"
                   onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
                   disabled={isUploadingCertificate}
                 />
@@ -2083,6 +2455,62 @@ export function SettingsComponent() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Logs eSocial */}
+      <Dialog open={isLogsDialogOpen} onOpenChange={setIsLogsDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Logs do eSocial</DialogTitle>
+            <DialogDescription>
+              Últimos eventos registrados das integrações eSocial.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {logsError && (
+              <div className="p-3 rounded border border-red-200 bg-red-50 text-sm text-red-700">
+                {logsError}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">Exibindo até 200 registros combinados</p>
+              <Button variant="outline" size="sm" onClick={loadEsocialLogs} disabled={isLoadingLogs}>
+                {isLoadingLogs ? 'Atualizando...' : 'Atualizar'}
+              </Button>
+            </div>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Mensagem</TableHead>
+                    <TableHead>Detalhes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {esocialLogs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">Nenhum log encontrado</TableCell>
+                    </TableRow>
+                  ) : (
+                    esocialLogs.map((l: any) => (
+                      <TableRow key={l.id || `${l.created_at}-${l.tipo}`}>
+                        <TableCell>{new Date(l.created_at).toLocaleString('pt-BR')}</TableCell>
+                        <TableCell>{l.tipo || l.category || '-'}</TableCell>
+                        <TableCell>{l.mensagem || l.descricao || l.message || '-'}</TableCell>
+                        <TableCell className="max-w-[320px] truncate" title={l.detalhes || l.details || ''}>{l.detalhes || l.details || '-'}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLogsDialogOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,8 +1,34 @@
 import { createClient } from "@/lib/supabase/client"
-import type { DadosS2220, DadosS2240, DadosS2210 } from "./types"
+import type { DadosS2220, DadosS2240, DadosS2210, DadosS1000 } from "./types"
 
 export class EsocialXmlBuilder {
   private supabase = createClient()
+  private ambiente: "producao" | "homologacao" = "homologacao"
+  private procEmi: "1" | "2" | "3" | "4" = "1"
+  private verProc: string = "1.0.0"
+  private tpAmb: "1" | "2" = "2"
+
+  constructor(options?: { ambiente?: "producao" | "homologacao"; procEmi?: "1" | "2" | "3" | "4"; verProc?: string }) {
+    // Ambiente (default homologação; rotas podem sobrepor para produção)
+    if (options?.ambiente) this.ambiente = options.ambiente
+
+    // procEmi pode vir de opções ou variáveis de ambiente
+    const envProcEmi = (process.env.NEXT_PUBLIC_ESOCIAL_PROC_EMI || process.env.ESOCIAL_PROC_EMI) as
+      | "1"
+      | "2"
+      | "3"
+      | "4"
+      | undefined
+    if (options?.procEmi) this.procEmi = options.procEmi
+    else if (envProcEmi && ["1", "2", "3", "4"].includes(envProcEmi)) this.procEmi = envProcEmi
+
+    // verProc pode vir de opções ou variáveis de ambiente
+    const envVerProc = (process.env.NEXT_PUBLIC_ESOCIAL_VER_PROC || process.env.ESOCIAL_VER_PROC) as string | undefined
+    if (options?.verProc) this.verProc = options.verProc
+    else if (envVerProc && envVerProc.trim().length > 0) this.verProc = envVerProc.trim()
+
+    this.tpAmb = this.ambiente === "producao" ? "1" : "2"
+  }
 
   // Gerar S-2220 (ASO) baseado em exame real do banco
   async gerarS2220FromExame(exame_id: string, empresa_id: string): Promise<string> {
@@ -86,6 +112,10 @@ export class EsocialXmlBuilder {
         pis: funcionario.pis_pasep || "",
         matricula: funcionario.matricula || funcionario.pis_pasep || "",
       },
+      empresa: {
+        cnpj: this.limparCNPJ((funcionario as any).empresas?.cnpj || ""),
+        razao_social: (funcionario as any).empresas?.nome,
+      },
       ambiente: {
         setor: funcionario.setor || "Administrativo",
         descricao_atividade: funcionario.cargo || "Atividades administrativas",
@@ -147,6 +177,26 @@ export class EsocialXmlBuilder {
     return this.buildS2210XML(dados)
   }
 
+  // Gerar S-1000 (Informações do Empregador) com dados fornecidos e CNPJ da empresa
+  async gerarS1000(empresa_id: string, dados: DadosS1000): Promise<string> {
+    const { data: empresa, error } = await this.supabase
+      .from("empresas")
+      .select("cnpj, nome")
+      .eq("id", empresa_id)
+      .single()
+
+    if (error || !empresa) {
+      throw new Error(`Empresa não encontrada: ${error?.message}`)
+    }
+
+    const cnpj = this.limparCNPJ(empresa.cnpj || "")
+    if (!cnpj) {
+      throw new Error("CNPJ da empresa é obrigatório para gerar S-1000")
+    }
+
+    return this.buildS1000XML(dados, cnpj)
+  }
+
   // Construir XML S-2220 com validações completas
   private buildS2220XML(dados: DadosS2220): string {
     this.validarDadosS2220(dados)
@@ -170,9 +220,9 @@ export class EsocialXmlBuilder {
         <evtMonit xmlns="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_02_00">
           <ideEvento>
             <indRetif>1</indRetif>
-            <tpAmb>2</tpAmb>
-            <procEmi>1</procEmi>
-            <verProc>1.0.0</verProc>
+            <tpAmb>${this.tpAmb}</tpAmb>
+            <procEmi>${this.procEmi}</procEmi>
+            <verProc>${this.verProc}</verProc>
           </ideEvento>
           <ideEmpregador>
             <tpInsc>1</tpInsc>
@@ -225,25 +275,26 @@ export class EsocialXmlBuilder {
       )
       .join("")
 
+    const cnpjEmpresa = dados.empresa?.cnpj || "12345678000199"
     return `<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/lote/eventos/envio/v1_1_1">
   <envioLoteEventos grupo="2">
     <ideEmpregador>
       <tpInsc>1</tpInsc>
-      <nrInsc>12345678000199</nrInsc>
+      <nrInsc>${cnpjEmpresa}</nrInsc>
     </ideEmpregador>
     <ideTransmissor>
       <tpInsc>1</tpInsc>
-      <nrInsc>12345678000199</nrInsc>
+      <nrInsc>${cnpjEmpresa}</nrInsc>
     </ideTransmissor>
     <eventos>
       <evento Id="${eventoId}">
         <evtExpRisco xmlns="http://www.esocial.gov.br/schema/evt/evtExpRisco/v_S_01_02_00">
           <ideEvento>
             <indRetif>1</indRetif>
-            <tpAmb>2</tpAmb>
-            <procEmi>1</procEmi>
-            <verProc>1.0.0</verProc>
+            <tpAmb>${this.tpAmb}</tpAmb>
+            <procEmi>${this.procEmi}</procEmi>
+            <verProc>${this.verProc}</verProc>
           </ideEvento>
           <ideVinculo>
             <cpfTrab>${dados.funcionario.cpf}</cpfTrab>
@@ -256,7 +307,7 @@ export class EsocialXmlBuilder {
               <localAmb>1</localAmb>
               <dscSetor>${this.escaparXML(dados.ambiente.setor)}</dscSetor>
               <tpInsc>1</tpInsc>
-              <nrInsc>12345678000199</nrInsc>
+              <nrInsc>${cnpjEmpresa}</nrInsc>
             </infoAmb>
             <infoAtiv>
               <dscAtivDes>${this.escaparXML(dados.ambiente.descricao_atividade)}</dscAtivDes>
@@ -265,6 +316,158 @@ export class EsocialXmlBuilder {
             </agNoc>
           </infoExpRisco>
         </evtExpRisco>
+      </evento>
+    </eventos>
+  </envioLoteEventos>
+</eSocial>`
+  }
+
+  // Construir XML S-1000 (S-1.3)
+  private buildS1000XML(dados: DadosS1000, cnpj: string): string {
+    // Validações mínimas por operação
+    if (!dados.ideEvento?.tpAmb || !dados.ideEvento?.procEmi || !dados.ideEvento?.verProc) {
+      throw new Error("Campos ideEvento (tpAmb, procEmi, verProc) são obrigatórios")
+    }
+
+    const operacao = dados.operacao || "inclusao"
+
+    if (operacao === "inclusao") {
+      if (!dados.idePeriodo?.iniValid) {
+        throw new Error("idePeriodo.iniValid é obrigatório (AAAA-MM)")
+      }
+      if (!dados.infoCadastro?.classTrib) {
+        throw new Error("infoCadastro.classTrib é obrigatório")
+      }
+      if (!dados.infoCadastro?.contato?.nmCtt || !dados.infoCadastro?.contato?.cpfCtt || !dados.infoCadastro?.contato?.email) {
+        throw new Error("contato (nmCtt, cpfCtt, email) é obrigatório em infoCadastro")
+      }
+    } else if (operacao === "alteracao") {
+      if (!dados.alteracao?.idePeriodo?.iniValid) {
+        throw new Error("alteracao.idePeriodo.iniValid é obrigatório (AAAA-MM)")
+      }
+      if (!dados.alteracao?.infoCadastro?.classTrib) {
+        throw new Error("alteracao.infoCadastro.classTrib é obrigatório")
+      }
+      if (!dados.alteracao?.infoCadastro?.contato?.nmCtt || !dados.alteracao?.infoCadastro?.contato?.cpfCtt || !dados.alteracao?.infoCadastro?.contato?.email) {
+        throw new Error("alteracao.infoCadastro.contato (nmCtt, cpfCtt, email) é obrigatório")
+      }
+    } else if (operacao === "exclusao") {
+      if (!dados.exclusao?.idePeriodo?.iniValid) {
+        throw new Error("exclusao.idePeriodo.iniValid é obrigatório (AAAA-MM)")
+      }
+    }
+
+    const eventoId = this.gerarEventoId(cnpj, "S1000")
+
+    const contatoXML = `
+          <contato>
+            <nmCtt>${this.escaparXML(dados.infoCadastro.contato.nmCtt)}</nmCtt>
+            <cpfCtt>${this.limparCPF(dados.infoCadastro.contato.cpfCtt)}</cpfCtt>
+            ${dados.infoCadastro.contato.foneFix ? `<foneFixo>${this.escaparXML(dados.infoCadastro.contato.foneFix)}</foneFixo>` : ""}
+            ${dados.infoCadastro.contato.foneCel ? `<foneCel>${this.escaparXML(dados.infoCadastro.contato.foneCel)}</foneCel>` : ""}
+            <email>${this.escaparXML(dados.infoCadastro.contato.email)}</email>
+          </contato>`
+
+    const softHouseXMLInclusao = dados.infoCadastro.softHouse
+      ? `
+          <softHouse>
+            <cnpjSoft>${this.limparCNPJ(dados.infoCadastro.softHouse.cnpjSoft)}</cnpjSoft>
+            <nmRazao>${this.escaparXML(dados.infoCadastro.softHouse.nmRazao)}</nmRazao>
+            ${dados.infoCadastro.softHouse.nmContato ? `<nmContato>${this.escaparXML(dados.infoCadastro.softHouse.nmContato)}</nmContato>` : ""}
+            ${dados.infoCadastro.softHouse.telefone ? `<telefone>${this.escaparXML(dados.infoCadastro.softHouse.telefone)}</telefone>` : ""}
+            ${dados.infoCadastro.softHouse.email ? `<email>${this.escaparXML(dados.infoCadastro.softHouse.email)}</email>` : ""}
+          </softHouse>`
+      : ""
+
+    const softHouseXMLAlteracao = dados.alteracao?.infoCadastro.softHouse
+      ? `
+          <softHouse>
+            <cnpjSoft>${this.limparCNPJ(dados.alteracao.infoCadastro.softHouse.cnpjSoft)}</cnpjSoft>
+            <nmRazao>${this.escaparXML(dados.alteracao.infoCadastro.softHouse.nmRazao)}</nmRazao>
+            ${dados.alteracao.infoCadastro.softHouse.nmContato ? `<nmContato>${this.escaparXML(dados.alteracao.infoCadastro.softHouse.nmContato)}</nmContato>` : ""}
+            ${dados.alteracao.infoCadastro.softHouse.telefone ? `<telefone>${this.escaparXML(dados.alteracao.infoCadastro.softHouse.telefone)}</telefone>` : ""}
+            ${dados.alteracao.infoCadastro.softHouse.email ? `<email>${this.escaparXML(dados.alteracao.infoCadastro.softHouse.email)}</email>` : ""}
+          </softHouse>`
+      : ""
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/lote/eventos/envio/v1_1_1">
+  <envioLoteEventos grupo="1">
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>${cnpj}</nrInsc>
+    </ideEmpregador>
+    <ideTransmissor>
+      <tpInsc>1</tpInsc>
+      <nrInsc>${cnpj}</nrInsc>
+    </ideTransmissor>
+    <eventos>
+      <evento Id="${eventoId}">
+        <evtInfoEmpregador xmlns="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v_S_01_03_00">
+          <ideEvento>
+            ${dados.ideEvento.indRetif ? `<indRetif>${dados.ideEvento.indRetif}</indRetif>` : ""}
+            ${dados.ideEvento.nrRecibo ? `<nrRecibo>${this.escaparXML(dados.ideEvento.nrRecibo)}</nrRecibo>` : ""}
+            <tpAmb>${dados.ideEvento.tpAmb}</tpAmb>
+            <procEmi>${dados.ideEvento.procEmi}</procEmi>
+            <verProc>${this.escaparXML(dados.ideEvento.verProc)}</verProc>
+          </ideEvento>
+          <ideEmpregador>
+            <tpInsc>1</tpInsc>
+            <nrInsc>${cnpj}</nrInsc>
+          </ideEmpregador>
+          <infoEmpregador>
+            ${operacao === "inclusao" ? `
+            <inclusao>
+              <idePeriodo>
+                <iniValid>${dados.idePeriodo.iniValid}</iniValid>
+                ${dados.idePeriodo.fimValid ? `<fimValid>${dados.idePeriodo.fimValid}</fimValid>` : ""}
+              </idePeriodo>
+              <infoCadastro>
+                <classTrib>${dados.infoCadastro.classTrib}</classTrib>
+                ${dados.infoCadastro.indCoop ? `<indCoop>${dados.infoCadastro.indCoop}</indCoop>` : ""}
+                ${dados.infoCadastro.indConstr ? `<indConstr>${dados.infoCadastro.indConstr}</indConstr>` : ""}
+                ${dados.infoCadastro.indDesFolha ? `<indDesFolha>${dados.infoCadastro.indDesFolha}</indDesFolha>` : ""}
+                ${dados.infoCadastro.indOptRegEletron ? `<indOptRegEletron>${dados.infoCadastro.indOptRegEletron}</indOptRegEletron>` : ""}
+                ${dados.infoCadastro.indEntEd ? `<indEntEd>${dados.infoCadastro.indEntEd}</indEntEd>` : ""}
+                ${dados.infoCadastro.indEtt ? `<indEtt>${dados.infoCadastro.indEtt}</indEtt>` : ""}
+                ${contatoXML}
+                ${softHouseXMLInclusao}
+              </infoCadastro>
+            </inclusao>` : ""}
+            ${operacao === "alteracao" ? `
+            <alteracao>
+              <idePeriodo>
+                <iniValid>${dados.alteracao!.idePeriodo.iniValid}</iniValid>
+                ${dados.alteracao!.idePeriodo.fimValid ? `<fimValid>${dados.alteracao!.idePeriodo.fimValid}</fimValid>` : ""}
+              </idePeriodo>
+              <infoCadastro>
+                <classTrib>${dados.alteracao!.infoCadastro.classTrib}</classTrib>
+                ${dados.alteracao!.infoCadastro.indCoop ? `<indCoop>${dados.alteracao!.infoCadastro.indCoop}</indCoop>` : ""}
+                ${dados.alteracao!.infoCadastro.indConstr ? `<indConstr>${dados.alteracao!.infoCadastro.indConstr}</indConstr>` : ""}
+                ${dados.alteracao!.infoCadastro.indDesFolha ? `<indDesFolha>${dados.alteracao!.infoCadastro.indDesFolha}</indDesFolha>` : ""}
+                ${dados.alteracao!.infoCadastro.indOptRegEletron ? `<indOptRegEletron>${dados.alteracao!.infoCadastro.indOptRegEletron}</indOptRegEletron>` : ""}
+                ${dados.alteracao!.infoCadastro.indEntEd ? `<indEntEd>${dados.alteracao!.infoCadastro.indEntEd}</indEntEd>` : ""}
+                ${dados.alteracao!.infoCadastro.indEtt ? `<indEtt>${dados.alteracao!.infoCadastro.indEtt}</indEtt>` : ""}
+                ${`
+                <contato>
+                  <nmCtt>${this.escaparXML(dados.alteracao!.infoCadastro.contato.nmCtt)}</nmCtt>
+                  <cpfCtt>${this.limparCPF(dados.alteracao!.infoCadastro.contato.cpfCtt)}</cpfCtt>
+                  ${dados.alteracao!.infoCadastro.contato.foneFix ? `<foneFixo>${this.escaparXML(dados.alteracao!.infoCadastro.contato.foneFix)}</foneFixo>` : ""}
+                  ${dados.alteracao!.infoCadastro.contato.foneCel ? `<foneCel>${this.escaparXML(dados.alteracao!.infoCadastro.contato.foneCel)}</foneCel>` : ""}
+                  <email>${this.escaparXML(dados.alteracao!.infoCadastro.contato.email)}</email>
+                </contato>`}
+                ${softHouseXMLAlteracao}
+              </infoCadastro>
+            </alteracao>` : ""}
+            ${operacao === "exclusao" ? `
+            <exclusao>
+              <idePeriodo>
+                <iniValid>${dados.exclusao!.idePeriodo.iniValid}</iniValid>
+                ${dados.exclusao!.idePeriodo.fimValid ? `<fimValid>${dados.exclusao!.idePeriodo.fimValid}</fimValid>` : ""}
+              </idePeriodo>
+            </exclusao>` : ""}
+          </infoEmpregador>
+        </evtInfoEmpregador>
       </evento>
     </eventos>
   </envioLoteEventos>
@@ -293,9 +496,9 @@ export class EsocialXmlBuilder {
         <evtCAT xmlns="http://www.esocial.gov.br/schema/evt/evtCAT/v_S_01_02_00">
           <ideEvento>
             <indRetif>1</indRetif>
-            <tpAmb>2</tpAmb>
-            <procEmi>1</procEmi>
-            <verProc>1.0.0</verProc>
+            <tpAmb>${this.tpAmb}</tpAmb>
+            <procEmi>${this.procEmi}</procEmi>
+            <verProc>${this.verProc}</verProc>
           </ideEvento>
           <ideEmpregador>
             <tpInsc>1</tpInsc>

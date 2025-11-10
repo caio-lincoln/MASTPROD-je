@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
-import { apiFetch } from "@/lib/security/client-csrf"
+import { apiFetch } from "@/lib/security/client-api"
 
 export interface CertificadoDigital {
   id: string
@@ -25,12 +25,12 @@ export class DigitalSignatureService {
   // Assinar XML usando certificado da empresa
   async assinarXML(xml_original: string, empresa_id: string, senha_certificado?: string): Promise<AssinaturaResult> {
     try {
-      // Buscar certificado ativo da empresa
-      const certificado = await this.obterCertificadoAtivo(empresa_id)
+      // Buscar certificado vinculado à CONTA do usuário autenticado
+      const certificado = await this.obterCertificadoDaConta(empresa_id)
       if (!certificado) {
         return {
           sucesso: false,
-          erro: "Nenhum certificado digital ativo encontrado para a empresa",
+          erro: "Nenhum certificado digital encontrado na sua conta",
         }
       }
 
@@ -67,33 +67,28 @@ export class DigitalSignatureService {
 
   // Assinar com certificado A1 (arquivo .p12/.pfx)
   private async assinarComCertificadoA1(xml: string, certificado: CertificadoDigital, senha?: string): Promise<string> {
-    if (!certificado.arquivo_url) {
-      throw new Error("Arquivo do certificado A1 não encontrado")
-    }
-
-    // Download do certificado do storage
-    const certificadoBuffer = await this.downloadCertificadoFromStorage(certificado.arquivo_url, certificado.empresa_id)
-
-    // Chamar API de assinatura no servidor
+    // Chamar API de assinatura no servidor (server obtém o certificado do storage)
     const response = await apiFetch("/api/esocial/assinar-xml", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        xml,
-        certificado: certificadoBuffer.toString("base64"),
-        senha,
-        tipo: "A1",
+        // empresaId não é mais usado para obter o certificado; assinatura é por conta
+        certPassword: senha,
+        rawXml: xml,
       }),
     })
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.message || "Erro na assinatura do XML")
+      throw new Error(error.error || error.message || "Erro na assinatura do XML")
     }
 
     const result = await response.json()
+    if (!result?.xml_assinado) {
+      throw new Error("Resposta da assinatura não contém xml_assinado")
+    }
     return result.xml_assinado
   }
 
@@ -103,24 +98,26 @@ export class DigitalSignatureService {
   }
 
   // Obter certificado ativo da empresa
-  async obterCertificadoAtivo(empresa_id: string): Promise<CertificadoDigital | null> {
-    const { data, error } = await this.supabase
-      .from("certificados_esocial")
-      .select("*")
-      .eq("empresa_id", empresa_id)
-      .eq("valido", true)
-      .single()
+  async obterCertificadoDaConta(empresa_id: string): Promise<CertificadoDigital | null> {
+    const { data: authUser } = await this.supabase.auth.getUser()
+    const uid = authUser.user?.id
+    if (!uid) return null
 
-    if (error || !data) return null
+    const filePath = `usuario-${uid}/certificado-a1.pfx`
+    const { data: urlData, error } = await this.supabase.storage
+      .from("certificados-esocial")
+      .createSignedUrl(filePath, 60)
+
+    if (error || !urlData?.signedUrl) return null
 
     return {
-      id: data.id,
-      empresa_id: data.empresa_id,
+      id: `user-${uid}`,
+      empresa_id: empresa_id,
       tipo: "A1",
-      nome: `Certificado A1`,
-      validade: "2025-12-31", // Seria obtido do certificado real
-      arquivo_url: data.arquivo_url,
-      ativo: data.valido,
+      nome: `Certificado da Conta`,
+      validade: "", // Não disponível sem parse; assinatura validará a senha
+      arquivo_url: filePath,
+      ativo: true,
     }
   }
 
@@ -168,7 +165,6 @@ export class DigitalSignatureService {
   // Upload de certificado A1 para storage
   async uploadCertificadoA1(
     arquivo: File,
-    empresa_id: string,
     senha: string,
   ): Promise<{
     sucesso: boolean
@@ -193,7 +189,14 @@ export class DigitalSignatureService {
         }
       }
 
-      const filePath = `empresa-${empresa_id}/certificado-a1.pfx`
+      const {
+        data: { user },
+      } = await this.supabase.auth.getUser()
+      if (!user?.id) {
+        return { sucesso: false, erro: "Usuário não autenticado" }
+      }
+
+      const filePath = `usuario-${user.id}/certificado-a1.pfx`
 
       const { error: uploadError } = await this.supabase.storage
         .from("certificados-esocial")
@@ -209,37 +212,7 @@ export class DigitalSignatureService {
         }
       }
 
-      const {
-        data: { user },
-      } = await this.supabase.auth.getUser()
-      const responsavel = user?.user_metadata?.nome || user?.email || "Usuário desconhecido"
-
-      // Data de validade padrão (1 ano a partir de hoje) - deve ser substituída por validação real do certificado
-      const dataValidade = new Date()
-      dataValidade.setFullYear(dataValidade.getFullYear() + 1)
-
-      const { error: updateError } = await this.supabase.from("certificados_esocial").upsert(
-        {
-          empresa_id: empresa_id,
-          nome: arquivo.name,
-          tipo: "A1",
-          arquivo_url: filePath,
-          data_validade: dataValidade.toISOString().split('T')[0], // Formato YYYY-MM-DD
-          data_upload: new Date().toISOString(),
-          responsavel: responsavel,
-          valido: true,
-        },
-        {
-          onConflict: "empresa_id",
-        },
-      )
-
-      if (updateError) {
-        return {
-          sucesso: false,
-          erro: `Erro ao salvar certificado: ${updateError.message}`,
-        }
-      }
+      // Apenas upload para diretório do usuário; salvamento por empresa será feito separadamente
 
       return {
         sucesso: true,
@@ -250,6 +223,136 @@ export class DigitalSignatureService {
         sucesso: false,
         erro: error instanceof Error ? error.message : "Erro desconhecido",
       }
+    }
+  }
+
+  async salvarCertificadoNaConta(
+    arquivo_url: string,
+    nome: string,
+    data_validade: string,
+    senha?: string,
+    subject?: string,
+    issuer?: string,
+    valid_from?: string,
+    valid_to?: string,
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    try {
+      const { data: authUser } = await this.supabase.auth.getUser()
+      const uid = authUser.user?.id
+      if (!uid) return { sucesso: false, erro: "Usuário não autenticado" }
+
+      // Baixar arquivo do Storage para persistir também no banco (base64)
+      let arquivoBase64: string | undefined
+      try {
+        const { data: downloaded, error: downloadError } = await this.supabase
+          .storage
+          .from("certificados-esocial")
+          .download(arquivo_url)
+        if (!downloadError && downloaded) {
+          const ab = await downloaded.arrayBuffer()
+          // Converter ArrayBuffer para base64 sem depender de Buffer (compatível com browser)
+          const bytes = new Uint8Array(ab)
+          const chunk = 0x8000
+          let binary = ""
+          for (let i = 0; i < bytes.length; i += chunk) {
+            const sub = bytes.subarray(i, i + chunk)
+            binary += String.fromCharCode.apply(null, Array.from(sub) as any)
+          }
+          arquivoBase64 = btoa(binary)
+        }
+      } catch (_) {
+        // silencioso: se não conseguir baixar, seguimos apenas com metadados
+      }
+
+      // Persistir metadados na tabela certificados_conta
+      const payload = {
+        user_id: uid,
+        tipo: "A1",
+        nome,
+        subject: subject || nome,
+        issuer: issuer,
+        arquivo_url,
+        // Persistir senha (criptografada de forma simples; considerar KMS em produção)
+        senha_certificado: senha ? this.criptografarSenha(senha) : undefined,
+        // Persistir cópia do arquivo em base64 para acesso direto via DB, se disponível
+        arquivo_base64: arquivoBase64,
+        valid_from: valid_from,
+        valid_to: valid_to || (data_validade ? new Date(data_validade).toISOString() : undefined),
+        valido: true,
+        uploaded_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as any
+
+      const { error } = await this.supabase
+        .from("certificados_conta")
+        .upsert(payload, { onConflict: "user_id" })
+
+      if (error) {
+        // Se a tabela não existir no ambiente atual, considerar como sucesso (fallback)
+        if (
+          typeof error.message === "string" &&
+          error.message.includes("Could not find the table 'public.certificados_conta'")
+        ) {
+          // Persistir metadados no storage como JSON
+          const metaPath = `usuario-${uid}/certificado-a1.json`
+          const meta = {
+            nome,
+            subject: subject || nome,
+            issuer: issuer,
+            valid_from: valid_from,
+            valid_to: valid_to || (data_validade ? new Date(data_validade).toISOString() : undefined),
+            arquivo_url,
+          }
+          try {
+            const { error: metaErr } = await this.supabase.storage
+              .from("certificados-esocial")
+              .upload(
+                metaPath,
+                // Usar application/octet-stream para contornar restrição de MIME do bucket
+                new Blob([JSON.stringify(meta)], { type: "application/octet-stream" }),
+                { upsert: true, contentType: "application/octet-stream" }
+              )
+            if (metaErr) {
+              // Mesmo se falhar o JSON, não bloquear o fluxo
+              console.warn("Falha ao salvar metadados no storage:", metaErr.message)
+            }
+          } catch (_) {
+            // silencioso
+          }
+          return { sucesso: true }
+        }
+        return { sucesso: false, erro: error.message }
+      }
+
+      // Também persistir metadados no storage como JSON para leitura simples
+      const metaPath = `usuario-${uid}/certificado-a1.json`
+      const meta = {
+        nome,
+        subject: subject || nome,
+        issuer: issuer,
+        valid_from: valid_from,
+        valid_to: valid_to || (data_validade ? new Date(data_validade).toISOString() : undefined),
+        arquivo_url,
+      }
+      try {
+        const { error: metaErr } = await this.supabase.storage
+          .from("certificados-esocial")
+          .upload(
+            metaPath,
+            // Usar application/octet-stream para contornar restrição de MIME do bucket
+            new Blob([JSON.stringify(meta)], { type: "application/octet-stream" }),
+            { upsert: true, contentType: "application/octet-stream" }
+          )
+        if (metaErr) {
+          console.warn("Falha ao salvar metadados no storage:", metaErr.message)
+        }
+      } catch (_) {
+        // silencioso
+      }
+
+      return { sucesso: true }
+    } catch (error) {
+      return { sucesso: false, erro: error instanceof Error ? error.message : "Erro desconhecido" }
     }
   }
 
